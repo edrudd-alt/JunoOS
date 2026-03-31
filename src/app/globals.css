@@ -1,26 +1,101 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --navy: #0f2744;
+  --teal: #1d9e75;
+  --bg: #f7f7f5;
+  --card: #ffffff;
+  --card-border: #e8e7e0;
+  --positive: #0f6e56;
+  --negative: #a32d2d;
+  --warning: #ba7517;
+  --info: #185fa5;
+  --purple: #534ab7;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
 }
+
+/* Tables */
+table { border-collapse: collapse; width: 100%; }
+th {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #aaa;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 0.5px solid var(--card-border);
+  white-space: nowrap;
+}
+td {
+  padding: 10px 12px;
+  border-bottom: 0.5px solid var(--card-border);
+  font-size: 12px;
+}
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #fafaf8; }
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 0.5px solid var(--card-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+/* Pills */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pill-green  { background: #e1f5ee; color: #085041; }
+.pill-amber  { background: #fef3dd; color: #7a4b0d; }
+.pill-red    { background: #fde8e8; color: #7a1a1a; }
+.pill-grey   { background: #f0f0ec; color: #555; }
+.pill-purple { background: #eeedfe; color: #3c3489; }
+.pill-blue   { background: #e0eaf9; color: #185fa5; }
+.pill-navy   { background: var(--navy); color: #fff; }
+.pill-teal   { background: #d0f0e6; color: #0a5a3d; }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  border: none;
+  transition: opacity 0.1s;
+}
+.btn:hover { opacity: 0.85; }
+.btn-primary { background: var(--navy); color: #fff; }
+.btn-secondary { background: #fff; color: #333; border: 0.5px solid var(--card-border); }
+.btn-ghost { background: transparent; color: #555; }
+.btn-teal { background: var(--teal); color: #fff; }
+
+/* Expand arrow */
+.expand-arrow { transition: transform 0.15s; display: inline-block; }
+.expand-arrow.open { transform: rotate(90deg); }
+
+/* Positive / negative text */
+.text-positive { color: var(--positive); }
+.text-negative { color: var(--negative); }
+.text-warning { color: var(--warning); }
+.text-muted { color: #888; }
+.text-navy { color: var(--navy); }
