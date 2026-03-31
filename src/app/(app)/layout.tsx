@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .from('team_members')
     .select('full_name, initials')
     .eq('id', user.id)
-    .single()
+    .maybeSingle()
 
   const displayName = member?.full_name ?? user.email ?? 'User'
   const initials = member?.initials ?? getInitials(displayName)
