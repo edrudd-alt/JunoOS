@@ -746,10 +746,22 @@ function RecordTransactionModal({
   }, [investments, modalType, heldBy, fromClient, fromLocation, location, companyId, shareClass])
 
   const sharesRequested = shares ? parseInt(shares) : 0
+  const remainingAfter = availableShares !== null ? availableShares - sharesRequested : null
+
   const insufficientShares =
     (modalType === 'sell' || modalType === 'transfer') &&
     availableShares !== null &&
     sharesRequested > availableShares
+
+  // Warn if a tiny fragment would remain — likely a data entry mistake
+  const isDeMinimis =
+    (modalType === 'sell' || modalType === 'transfer') &&
+    !insufficientShares &&
+    remainingAfter !== null &&
+    availableShares !== null &&
+    remainingAfter > 0 &&
+    availableShares > 0 &&
+    remainingAfter / availableShares < 0.01
 
   async function handleSave() {
     setErr('')
@@ -961,6 +973,14 @@ function RecordTransactionModal({
               : `✓ ${availableShares.toLocaleString()} shares available at this location`}
           </div>
         )}
+        {modalType === 'sell' && isDeMinimis && remainingAfter !== null && (
+          <div style={{
+            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
+            background: '#fffbeb', border: '0.5px solid #f0c674', color: '#78500a',
+          }}>
+            ⚠ This would leave only {remainingAfter.toLocaleString()} share{remainingAfter !== 1 ? 's' : ''} ({((remainingAfter / availableShares!) * 100).toFixed(2)}% of the holding). Confirm this is intended and not a rounding error.
+          </div>
+        )}
 
         {/* Transfer: from / to / type */}
         {modalType === 'transfer' && (
@@ -1011,6 +1031,14 @@ function RecordTransactionModal({
             {insufficientShares
               ? `⚠ Only ${availableShares.toLocaleString()} shares available at this location`
               : `✓ ${availableShares.toLocaleString()} shares available at this location`}
+          </div>
+        )}
+        {modalType === 'transfer' && isDeMinimis && remainingAfter !== null && (
+          <div style={{
+            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
+            background: '#fffbeb', border: '0.5px solid #f0c674', color: '#78500a',
+          }}>
+            ⚠ This would leave only {remainingAfter.toLocaleString()} share{remainingAfter !== 1 ? 's' : ''} ({((remainingAfter / availableShares!) * 100).toFixed(2)}% of the holding). Confirm this is intended and not a rounding error.
           </div>
         )}
 
