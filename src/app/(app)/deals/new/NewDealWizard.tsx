@@ -1164,7 +1164,7 @@ function CompleteStep({
     setCompleting(true)
     const supabase = createClient()
 
-    await supabase.from('deals').update({ status: 'complete' }).eq('id', dealId)
+    await supabase.from('deals').update({ status: 'complete', updated_at: new Date().toISOString() }).eq('id', dealId)
 
     for (const inv of investors) {
       await supabase

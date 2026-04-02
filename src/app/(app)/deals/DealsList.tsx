@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 interface Deal {
@@ -8,6 +9,7 @@ interface Deal {
   deal_type: string
   status: string
   created_at: string
+  updated_at: string | null
   investment_amount: number | null
   companies: { id: string; name: string } | null
   deal_investors: {
@@ -40,6 +42,12 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
   const open   = typed.filter(d => d.status !== 'complete')
   const closed = typed.filter(d => d.status === 'complete')
 
+  const thStyle: React.CSSProperties = {
+    fontSize: 11, fontWeight: 500, color: '#888',
+    padding: '8px 12px', borderBottom: '0.5px solid #e8e7e0',
+    textAlign: 'left', whiteSpace: 'nowrap',
+  }
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -59,19 +67,19 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
             Open
           </div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th style={{ width: '20%' }}>Type</th>
-                  <th style={{ width: '20%' }}>Company</th>
-                  <th style={{ width: '24%' }}>Investors</th>
-                  <th style={{ width: '14%' }}>Amount</th>
-                  <th style={{ width: '12%' }}>Status</th>
-                  <th style={{ width: '10%' }}>Started</th>
+                <tr style={{ background: '#f9f9f7' }}>
+                  <th style={{ ...thStyle, width: '22%' }}>Company</th>
+                  <th style={{ ...thStyle, width: '18%' }}>Type</th>
+                  <th style={{ ...thStyle, width: '24%' }}>Investor</th>
+                  <th style={{ ...thStyle, width: '14%' }}>Amount</th>
+                  <th style={{ ...thStyle, width: '12%' }}>Status</th>
+                  <th style={{ ...thStyle, width: '10%' }}>Started</th>
                 </tr>
               </thead>
               <tbody>
-                {open.map(deal => <DealRow key={deal.id} deal={deal} />)}
+                {open.map(deal => <DealRow key={deal.id} deal={deal} dateLabel="started" />)}
               </tbody>
             </table>
           </div>
@@ -93,19 +101,19 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
             Completed
           </div>
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <table>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>
-                  <th style={{ width: '20%' }}>Type</th>
-                  <th style={{ width: '20%' }}>Company</th>
-                  <th style={{ width: '24%' }}>Investors</th>
-                  <th style={{ width: '14%' }}>Amount</th>
-                  <th style={{ width: '12%' }}>Status</th>
-                  <th style={{ width: '10%' }}>Started</th>
+                <tr style={{ background: '#f9f9f7' }}>
+                  <th style={{ ...thStyle, width: '22%' }}>Company</th>
+                  <th style={{ ...thStyle, width: '18%' }}>Type</th>
+                  <th style={{ ...thStyle, width: '24%' }}>Investor</th>
+                  <th style={{ ...thStyle, width: '14%' }}>Amount</th>
+                  <th style={{ ...thStyle, width: '12%' }}>Status</th>
+                  <th style={{ ...thStyle, width: '10%' }}>Completed</th>
                 </tr>
               </thead>
               <tbody>
-                {closed.map(deal => <DealRow key={deal.id} deal={deal} />)}
+                {closed.map(deal => <DealRow key={deal.id} deal={deal} dateLabel="completed" />)}
               </tbody>
             </table>
           </div>
@@ -115,7 +123,8 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
   )
 }
 
-function DealRow({ deal }: { deal: Deal }) {
+function DealRow({ deal, dateLabel }: { deal: Deal; dateLabel: 'started' | 'completed' }) {
+  const router = useRouter()
   const status = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
   const investors = deal.deal_investors ?? []
   const investorNames = investors
@@ -125,25 +134,42 @@ function DealRow({ deal }: { deal: Deal }) {
     .join(', ')
   const overflow = investors.length > 2 ? ` +${investors.length - 2} more` : ''
 
+  const dateValue = dateLabel === 'completed'
+    ? (deal.updated_at ?? deal.created_at)
+    : deal.created_at
+
   return (
-    <tr>
-      <td style={{ fontWeight: 500 }}>{DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type}</td>
-      <td>
+    <tr
+      onClick={() => router.push(`/deals/${deal.id}`)}
+      style={{ cursor: 'pointer' }}
+      onMouseEnter={e => (e.currentTarget.style.background = '#f9f9f7')}
+      onMouseLeave={e => (e.currentTarget.style.background = '')}
+    >
+      <td style={{ padding: '10px 12px', fontSize: 12, fontWeight: 500, borderBottom: '0.5px solid #f0f0ec' }}>
         {deal.companies ? (
-          <Link href={`/portfolio/${deal.companies.id}`} style={{ color: '#0f2744', textDecoration: 'none' }}>
+          <Link
+            href={`/portfolio/${deal.companies.id}`}
+            onClick={e => e.stopPropagation()}
+            style={{ color: '#0f2744', textDecoration: 'none' }}
+          >
             {deal.companies.name}
           </Link>
         ) : '—'}
       </td>
-      <td style={{ fontSize: 12, color: '#555' }}>
+      <td style={{ padding: '10px 12px', fontSize: 12, borderBottom: '0.5px solid #f0f0ec' }}>
+        {DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type}
+      </td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: '#555', borderBottom: '0.5px solid #f0f0ec' }}>
         {investorNames || '—'}{overflow && <span style={{ color: '#aaa' }}>{overflow}</span>}
       </td>
-      <td>{deal.investment_amount ? formatCurrency(deal.investment_amount) : '—'}</td>
-      <td><span className={`pill ${status.cls}`}>{status.label}</span></td>
-      <td>
-        <Link href={`/deals/${deal.id}`} style={{ fontSize: 12, color: '#185fa5', textDecoration: 'none' }}>
-          {formatDate(deal.created_at)}
-        </Link>
+      <td style={{ padding: '10px 12px', fontSize: 12, borderBottom: '0.5px solid #f0f0ec' }}>
+        {deal.investment_amount ? formatCurrency(deal.investment_amount) : '—'}
+      </td>
+      <td style={{ padding: '10px 12px', borderBottom: '0.5px solid #f0f0ec' }}>
+        <span className={`pill ${status.cls}`}>{status.label}</span>
+      </td>
+      <td style={{ padding: '10px 12px', fontSize: 12, color: '#888', borderBottom: '0.5px solid #f0f0ec' }}>
+        {formatDate(dateValue)}
       </td>
     </tr>
   )

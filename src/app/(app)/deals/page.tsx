@@ -7,7 +7,7 @@ export default async function DealsPage() {
   const { data: deals } = await supabase
     .from('deals')
     .select(`
-      id, deal_type, status, created_at, investment_amount,
+      id, deal_type, status, created_at, updated_at, investment_amount,
       companies (id, name),
       deal_investors (
         id, amount, signing_status,
