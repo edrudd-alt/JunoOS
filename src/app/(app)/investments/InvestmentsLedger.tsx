@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
@@ -688,6 +688,18 @@ function PerformanceView({ holdings }: { holdings: CompanyHolding[] }) {
 
 // ─── Record transaction modal ─────────────────────────────────────────────────
 
+interface LocationRow {
+  id: string
+  location: string
+  shares: string
+  eis: string
+  available?: number
+}
+
+function uid() { return Math.random().toString(36).slice(2) }
+
+const BUY_LOCATIONS = ['Direct', 'Nominee', 'ISA', 'SIPP', 'Other']
+
 function RecordTransactionModal({
   companies, clients, investments, preset, onSave, onClose,
 }: {
@@ -698,41 +710,36 @@ function RecordTransactionModal({
   onSave: (inv: RawInvestment[]) => void
   onClose: () => void
 }) {
-  const [modalType, setModalType]   = useState<'buy' | 'sell' | 'transfer'>(preset?.txType ?? 'buy')
-  const [companyId,   setCompanyId]   = useState(preset?.companyId ?? '')
-  const [shareClass,  setShareClass]  = useState('')
-  const [txDate,      setTxDate]      = useState(new Date().toISOString().slice(0, 10))
-  const [shares,      setShares]      = useState('')
-  const [price,       setPrice]       = useState('')
-  const [heldBy,      setHeldBy]      = useState('')
-  const [location,    setLocation]    = useState<'direct' | 'nominee'>('direct')
-  const [eis,         setEis]         = useState('tbc')
-  const [notes,       setNotes]       = useState('')
-  // Transfer fields
-  const [xferType,    setXferType]    = useState<'commercial' | 'gift'>('commercial')
-  const [fromClient,  setFromClient]  = useState('')
-  const [fromLocation, setFromLocation] = useState<'direct' | 'nominee'>('direct')
-  const [toClient,    setToClient]    = useState('')
-  const [buyerLoc,    setBuyerLoc]    = useState<'direct' | 'nominee'>('direct')
-  const [saving,      setSaving]      = useState(false)
-  const [err,         setErr]         = useState('')
+  const [modalType,    setModalType]    = useState<'buy' | 'sell' | 'transfer'>(preset?.txType ?? 'buy')
+  const [companyId,    setCompanyId]    = useState(preset?.companyId ?? '')
+  const [shareClass,   setShareClass]   = useState('')
+  const [txDate,       setTxDate]       = useState(new Date().toISOString().slice(0, 10))
+  const [price,        setPrice]        = useState('')
+  const [heldBy,       setHeldBy]       = useState('')
+  const [fromClient,   setFromClient]   = useState('')
+  const [locationRows, setLocationRows] = useState<LocationRow[]>([
+    { id: uid(), location: '', shares: '', eis: 'tbc' },
+  ])
+  // Transfer-to fields
+  const [toClient,   setToClient]   = useState('')
+  const [toLocation, setToLocation] = useState('direct')
+  const [xferType,   setXferType]   = useState<'commercial' | 'gift'>('commercial')
+  const [notes,      setNotes]      = useState('')
+  const [saving,     setSaving]     = useState(false)
+  const [err,        setErr]        = useState('')
 
   const selectedCompany = companies.find(c => c.id === companyId)
   const shareClasses = Array.isArray(selectedCompany?.share_classes)
     ? selectedCompany!.share_classes as { name: string }[]
     : []
 
-  const amount = shares && price
-    ? (parseFloat(shares) * parseFloat(price)).toFixed(2)
-    : null
-
-  // Net holdings per (client_id → holding_location) for the selected company + share class
+  // Net holdings per (clientId → location) for selected company (+shareClass when set)
   const holdingsMap = useMemo(() => {
     const map: Record<string, Record<string, number>> = {}
-    if (!companyId || !shareClass) return map
+    if (!companyId) return map
     for (const inv of investments) {
-      if (inv.company_id  !== companyId)  continue
-      if (inv.share_class !== shareClass) continue
+      if (inv.company_id !== companyId) continue
+      if (shareClass && inv.share_class !== shareClass) continue
       const { client_id, holding_location } = inv
       if (!map[client_id]) map[client_id] = {}
       if (!map[client_id][holding_location]) map[client_id][holding_location] = 0
@@ -743,75 +750,119 @@ function RecordTransactionModal({
     return map
   }, [investments, companyId, shareClass])
 
-  // Clients that hold any shares in this company + share class
-  const sellableClients = useMemo(
-    () => clients.filter(c => Object.values(holdingsMap[c.id] ?? {}).some(n => n > 0)),
-    [clients, holdingsMap]
-  )
+  // Net holdings per company (any class) → used to filter company list for sell/transfer
+  const companyClientNet = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    for (const inv of investments) {
+      const { company_id, client_id, shares_purchased, transaction_type } = inv
+      if (!map[company_id]) map[company_id] = {}
+      if (!map[company_id][client_id]) map[company_id][client_id] = 0
+      const tt = transaction_type ?? 'buy'
+      if (tt === 'buy'  || tt === 'transfer_in')  map[company_id][client_id] += shares_purchased
+      if (tt === 'sell' || tt === 'transfer_out') map[company_id][client_id] -= shares_purchased
+    }
+    return map
+  }, [investments])
 
-  // Locations where a given client has positive holdings
-  function locationsFor(clientId: string): string[] {
-    return Object.entries(holdingsMap[clientId] ?? {})
+  const companiesWithHoldings = useMemo(() => {
+    const set = new Set<string>()
+    for (const [compId, clientMap] of Object.entries(companyClientNet)) {
+      if (Object.values(clientMap).some(n => n > 0)) set.add(compId)
+    }
+    return set
+  }, [companyClientNet])
+
+  // Investors eligible in the "Held by / Transferring from" dropdown
+  const eligibleInvestors = useMemo(() => {
+    if (modalType === 'buy') return clients
+    return clients.filter(c => Object.values(holdingsMap[c.id] ?? {}).some(n => n > 0))
+  }, [modalType, clients, holdingsMap])
+
+  // Investor currently acting as the source (sell → heldBy, transfer → fromClient)
+  const activeClient = modalType === 'transfer' ? fromClient : heldBy
+
+  // Auto-populate location rows for sell/transfer when investor or holdings change
+  useEffect(() => {
+    if (modalType === 'buy') return
+    if (!activeClient) { setLocationRows([]); return }
+    const locs = holdingsMap[activeClient] ?? {}
+    const rows: LocationRow[] = Object.entries(locs)
       .filter(([, n]) => n > 0)
-      .map(([loc]) => loc)
+      .map(([loc, available]) => ({ id: uid(), location: loc, shares: '', eis: 'tbc', available }))
+    setLocationRows(rows)
+  }, [activeClient, holdingsMap, modalType])
+
+  // Total amount across all filled rows
+  const priceNum = parseFloat(price) || 0
+  const totalAmount = locationRows.reduce((sum, row) => sum + (parseInt(row.shares) || 0) * priceNum, 0)
+
+  function updateRow(id: string, field: keyof LocationRow, value: string) {
+    setLocationRows(rows => rows.map(r => r.id === id ? { ...r, [field]: value } : r))
   }
 
-  // Available shares for the exact (client, location) currently selected
-  const availableShares = useMemo(() => {
-    const clientId = modalType === 'transfer' ? fromClient : heldBy
-    const loc      = modalType === 'transfer' ? fromLocation : location
-    if (!clientId || !loc) return null
-    return holdingsMap[clientId]?.[loc] ?? null
-  }, [holdingsMap, modalType, heldBy, fromClient, fromLocation, location])
+  function addRow() {
+    setLocationRows(rows => [...rows, { id: uid(), location: '', shares: '', eis: 'tbc' }])
+  }
 
-  const sharesRequested = shares ? parseInt(shares) : 0
-  const remainingAfter = availableShares !== null ? availableShares - sharesRequested : null
+  function removeRow(id: string) {
+    setLocationRows(rows => rows.filter(r => r.id !== id))
+  }
 
-  const insufficientShares =
-    (modalType === 'sell' || modalType === 'transfer') &&
-    availableShares !== null &&
-    sharesRequested > availableShares
+  // Per-row errors (oversell) and warnings (de minimis)
+  const rowErrors = useMemo(() => {
+    if (modalType === 'buy') return {} as Record<string, string>
+    const errs: Record<string, string> = {}
+    for (const row of locationRows) {
+      const n = parseInt(row.shares) || 0
+      if (n > 0 && row.available !== undefined && n > row.available) {
+        errs[row.id] = `Only ${row.available.toLocaleString()} available`
+      }
+    }
+    return errs
+  }, [locationRows, modalType])
 
-  // Warn if a tiny fragment would remain — likely a data entry mistake
-  const isDeMinimis =
-    (modalType === 'sell' || modalType === 'transfer') &&
-    !insufficientShares &&
-    remainingAfter !== null &&
-    availableShares !== null &&
-    remainingAfter > 0 &&
-    availableShares > 0 &&
-    remainingAfter / availableShares < 0.01
+  const rowWarnings = useMemo(() => {
+    if (modalType === 'buy') return {} as Record<string, string>
+    const warns: Record<string, string> = {}
+    for (const row of locationRows) {
+      const n = parseInt(row.shares) || 0
+      const avail = row.available ?? 0
+      if (n > 0 && avail > 0 && !rowErrors[row.id]) {
+        const remaining = avail - n
+        if (remaining > 0 && remaining / avail < 0.01) {
+          warns[row.id] = `Only ${remaining.toLocaleString()} share${remaining !== 1 ? 's' : ''} would remain (${((remaining / avail) * 100).toFixed(2)}%)`
+        }
+      }
+    }
+    return warns
+  }, [locationRows, rowErrors, modalType])
 
   async function handleSave() {
     setErr('')
     if (!companyId)  { setErr('Select a company'); return }
     if (!shareClass) { setErr('Select a share class'); return }
-    if (!shares || isNaN(parseInt(shares))) { setErr('Enter number of shares'); return }
-    if (!price)  { setErr('Enter price per share'); return }
-    if (modalType !== 'transfer' && !heldBy)  { setErr('Select who holds the shares'); return }
-    if (modalType === 'transfer' && (!fromClient || !toClient)) { setErr('Select both parties'); return }
+    if (!price)      { setErr('Enter price per share'); return }
 
-    // Hard block: cannot sell/transfer more than available
-    if (insufficientShares) {
-      const clientName = clients.find(c => c.id === (modalType === 'transfer' ? fromClient : heldBy))?.full_name ?? 'This investor'
-      const loc = modalType === 'transfer' ? fromLocation : location
-      setErr(`${clientName} only holds ${(availableShares ?? 0).toLocaleString()} shares in ${shareClass} (${loc}). Cannot ${modalType === 'transfer' ? 'transfer' : 'sell'} ${parseInt(shares).toLocaleString()}.`)
+    if (modalType === 'buy' && !heldBy)        { setErr('Select who holds the shares'); return }
+    if (modalType === 'sell' && !heldBy)        { setErr('Select who holds the shares'); return }
+    if (modalType === 'transfer' && !fromClient){ setErr('Select the transferring party'); return }
+    if (modalType === 'transfer' && !toClient)  { setErr('Select the recipient'); return }
+
+    const filledRows = locationRows.filter(r => r.location && parseInt(r.shares) > 0)
+    if (filledRows.length === 0) { setErr('Enter shares for at least one location'); return }
+    if (Object.keys(rowErrors).length > 0) {
+      setErr('One or more rows exceed available shares — correct before saving')
       return
     }
 
     setSaving(true)
     const supabase = createClient()
-    const sharesNum = parseInt(shares)
-    const priceNum  = parseFloat(price)
-    const amtNum    = sharesNum * priceNum
 
     const base = {
       company_id:           companyId,
       share_class:          shareClass,
       investment_date:      txDate,
       original_share_price: priceNum,
-      shares_purchased:     sharesNum,
-      sum_subscribed:       amtNum,
       status:               'active',
       notes:                notes || null,
     }
@@ -819,35 +870,47 @@ function RecordTransactionModal({
     let rows: Record<string, unknown>[]
 
     if (modalType === 'transfer') {
-      rows = [
-        {
-          ...base,
-          client_id:                fromClient,
-          transaction_type:         'transfer_out',
-          holding_location:         fromLocation,
-          eis_status:               'tbc',
-          transfer_counterparty_id: toClient,
-          transfer_type:            xferType,
-        },
-        {
-          ...base,
-          client_id:                toClient,
-          transaction_type:         'transfer_in',
-          holding_location:         buyerLoc,
-          eis_status:               'tbc',
-          transfer_counterparty_id: fromClient,
-          transfer_type:            xferType,
-          cost_basis:               xferType === 'gift' ? priceNum : null,
-        },
-      ]
+      rows = filledRows.flatMap(r => {
+        const sharesNum = parseInt(r.shares)
+        return [
+          {
+            ...base,
+            client_id:                fromClient,
+            transaction_type:         'transfer_out',
+            holding_location:         r.location,
+            eis_status:               r.eis,
+            shares_purchased:         sharesNum,
+            sum_subscribed:           sharesNum * priceNum,
+            transfer_counterparty_id: toClient,
+            transfer_type:            xferType,
+          },
+          {
+            ...base,
+            client_id:                toClient,
+            transaction_type:         'transfer_in',
+            holding_location:         toLocation,
+            eis_status:               r.eis,
+            shares_purchased:         sharesNum,
+            sum_subscribed:           sharesNum * priceNum,
+            transfer_counterparty_id: fromClient,
+            transfer_type:            xferType,
+            cost_basis:               xferType === 'gift' ? priceNum : null,
+          },
+        ]
+      })
     } else {
-      rows = [{
-        ...base,
-        client_id:        heldBy,
-        transaction_type: modalType,
-        holding_location: location,
-        eis_status:       eis,
-      }]
+      rows = filledRows.map(r => {
+        const sharesNum = parseInt(r.shares)
+        return {
+          ...base,
+          client_id:        heldBy,
+          transaction_type: modalType,
+          holding_location: r.location,
+          eis_status:       r.eis,
+          shares_purchased: sharesNum,
+          sum_subscribed:   sharesNum * priceNum,
+        }
+      })
     }
 
     const { data, error } = await supabase
@@ -866,12 +929,22 @@ function RecordTransactionModal({
     onSave((data ?? []) as unknown as RawInvestment[])
   }
 
-  const typeBtn = (t: 'buy' | 'sell' | 'transfer', label: string): React.CSSProperties => ({
+  const typeBtn = (t: 'buy' | 'sell' | 'transfer'): React.CSSProperties => ({
     flex: 1, padding: '8px 0', fontSize: 12, fontWeight: modalType === t ? 600 : 400,
     background: modalType === t ? '#0f2744' : '#fff',
     color: modalType === t ? '#fff' : '#555',
     border: '0.5px solid #d0d0c8', cursor: 'pointer',
   })
+
+  const filteredCompanies = modalType === 'buy'
+    ? companies
+    : companies.filter(c => companiesWithHoldings.has(c.id))
+
+  const thCell: React.CSSProperties = {
+    fontSize: 10, fontWeight: 500, color: '#888',
+    padding: '6px 8px', borderBottom: '0.5px solid #e8e7e0', textAlign: 'left',
+  }
+  const thCellR: React.CSSProperties = { ...thCell, textAlign: 'right' }
 
   return (
     <div style={{
@@ -880,7 +953,7 @@ function RecordTransactionModal({
     }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="card" style={{ width: 520, maxHeight: '90vh', overflowY: 'auto', padding: '24px 28px' }}>
+      <div className="card" style={{ width: 580, maxHeight: '90vh', overflowY: 'auto', padding: '24px 28px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>Record transaction</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#aaa' }}>×</button>
@@ -888,37 +961,54 @@ function RecordTransactionModal({
 
         {/* Type selector */}
         <div style={{ display: 'flex', borderRadius: 6, overflow: 'hidden', marginBottom: 20 }}>
-          <button style={typeBtn('buy', 'Buy')}      onClick={() => setModalType('buy')}>Buy</button>
-          <button style={typeBtn('sell', 'Sell')}    onClick={() => setModalType('sell')}>Sell</button>
-          <button style={typeBtn('transfer', 'Internal transfer')} onClick={() => setModalType('transfer')}>Internal transfer</button>
+          <button style={typeBtn('buy')} onClick={() => {
+            setModalType('buy'); setHeldBy(''); setFromClient('')
+            setLocationRows([{ id: uid(), location: '', shares: '', eis: 'tbc' }])
+          }}>Buy</button>
+          <button style={typeBtn('sell')} onClick={() => {
+            setModalType('sell'); setHeldBy(''); setFromClient(''); setLocationRows([])
+          }}>Sell</button>
+          <button style={typeBtn('transfer')} onClick={() => {
+            setModalType('transfer'); setHeldBy(''); setFromClient(''); setLocationRows([])
+          }}>Internal transfer</button>
         </div>
 
-        {/* FIFO note for sells */}
+        {/* Contextual notes */}
         {modalType === 'sell' && (
           <div style={{ background: '#f9f9f7', border: '0.5px solid #e8e7e0', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#888' }}>
             Oldest lots sold first (FIFO). Cost basis will be allocated automatically.
           </div>
         )}
-
-        {/* Transfer gift note */}
         {modalType === 'transfer' && xferType === 'gift' && (
           <div style={{ background: '#fffbeb', border: '0.5px solid #f0c674', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78500a' }}>
             Gift transfer: recipient inherits the donor&apos;s cost basis for P&amp;L purposes.
           </div>
         )}
 
-        {/* Common fields */}
+        {/* Company */}
+        <F label="Company *">
+          <select
+            value={companyId}
+            onChange={e => { setCompanyId(e.target.value); setShareClass(''); setHeldBy(''); setFromClient(''); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
+            style={inputStyle}
+          >
+            <option value="">Select company…</option>
+            {filteredCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {modalType !== 'buy' && filteredCompanies.length === 0 && companyId === '' && (
+            <div style={{ fontSize: 10, color: '#aaa', marginTop: 2 }}>No companies with existing holdings recorded</div>
+          )}
+        </F>
+
+        {/* Share class + Date side by side */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <F label="Company *">
-              <select value={companyId} onChange={e => { setCompanyId(e.target.value); setShareClass('') }} style={inputStyle}>
-                <option value="">Select company…</option>
-                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </F>
-          </div>
           <F label="Share class *">
-            <select value={shareClass} onChange={e => setShareClass(e.target.value)} style={inputStyle} disabled={!companyId}>
+            <select
+              value={shareClass}
+              onChange={e => { setShareClass(e.target.value); setHeldBy(''); setFromClient(''); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
+              style={inputStyle}
+              disabled={!companyId}
+            >
               <option value="">Select…</option>
               {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
               <option value="Ordinary">Ordinary</option>
@@ -927,174 +1017,182 @@ function RecordTransactionModal({
           <F label="Date *">
             <input type="date" value={txDate} onChange={e => setTxDate(e.target.value)} style={inputStyle} />
           </F>
-          <F label="Shares (whole number) *">
-            <input
-              type="number" min="1" step="1"
-              value={shares} onChange={e => setShares(e.target.value)}
-              placeholder="10000" style={inputStyle}
-            />
-          </F>
-          <F label="Price per share (£) *">
-            <input
-              type="number" min="0" step="0.0001"
-              value={price} onChange={e => setPrice(e.target.value)}
-              placeholder="1.0000" style={inputStyle}
-            />
-          </F>
         </div>
 
-        {/* Auto-calculated amount */}
-        {amount && (
-          <div style={{ fontSize: 12, color: '#555', marginBottom: 14, padding: '8px 10px', background: '#f9f9f7', borderRadius: 5 }}>
-            Amount: <strong>{fmtAmt(parseFloat(amount))}</strong>
-          </div>
-        )}
+        {/* Price per share */}
+        <F label="Price per share (£) *">
+          <input
+            type="number" min="0" step="0.0001"
+            value={price} onChange={e => setPrice(e.target.value)}
+            placeholder="1.0000"
+            style={{ ...inputStyle, width: '50%' }}
+          />
+        </F>
 
-        {/* Buy / Sell: Held by + Location + EIS */}
-        {(modalType === 'buy' || modalType === 'sell') && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <F label="Held by *">
-                <select
-                  value={heldBy}
-                  onChange={e => { setHeldBy(e.target.value); setLocation('direct') }}
-                  style={inputStyle}
-                  disabled={modalType === 'sell' && !shareClass}
-                >
-                  <option value="">
-                    {modalType === 'sell' && !shareClass
-                      ? 'Select a share class first…'
-                      : 'Select client / entity…'}
-                  </option>
-                  {(modalType === 'sell' ? sellableClients : clients).map(c =>
-                    <option key={c.id} value={c.id}>{c.full_name}</option>
-                  )}
-                </select>
-              </F>
+        {/* Held by / Transferring from */}
+        <F label={modalType === 'transfer' ? 'Transferring from *' : 'Held by *'}>
+          <select
+            value={activeClient}
+            onChange={e => {
+              if (modalType === 'transfer') setFromClient(e.target.value)
+              else setHeldBy(e.target.value)
+            }}
+            style={inputStyle}
+            disabled={!companyId || (modalType !== 'buy' && !shareClass)}
+          >
+            <option value="">
+              {!companyId ? 'Select a company first…'
+                : modalType !== 'buy' && !shareClass ? 'Select a share class first…'
+                : 'Select…'}
+            </option>
+            {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+          </select>
+        </F>
+
+        {/* Location table */}
+        {(modalType === 'buy' || activeClient) && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 500, color: '#555', marginBottom: 8 }}>
+              {modalType === 'buy' ? 'Locations' : 'Locations with available shares'}
             </div>
-            <F label="Location *">
-              {modalType === 'sell' ? (
-                <select
-                  value={location}
-                  onChange={e => setLocation(e.target.value as 'direct' | 'nominee')}
-                  style={inputStyle}
-                  disabled={!heldBy}
-                >
-                  <option value="">{!heldBy ? 'Select investor first…' : 'Select…'}</option>
-                  {locationsFor(heldBy).map(loc => (
-                    <option key={loc} value={loc}>{loc.charAt(0).toUpperCase() + loc.slice(1)}</option>
+
+            {locationRows.length === 0 && modalType !== 'buy' && (
+              <div style={{ fontSize: 12, color: '#aaa', padding: '8px 0' }}>
+                No shares found for the selected investor and share class.
+              </div>
+            )}
+
+            {locationRows.length > 0 && (
+              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 4 }}>
+                <thead>
+                  <tr style={{ background: '#f9f9f7' }}>
+                    <th style={thCell}>Location</th>
+                    {modalType !== 'buy' && <th style={thCellR}>Available</th>}
+                    <th style={thCellR}>Shares</th>
+                    <th style={thCell}>EIS qualifying</th>
+                    {modalType === 'buy' && <th style={{ ...thCell, width: 24 }}></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {locationRows.map(row => (
+                    <tr key={row.id}>
+                      <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec' }}>
+                        {modalType === 'buy' ? (
+                          <select
+                            value={row.location}
+                            onChange={e => updateRow(row.id, 'location', e.target.value)}
+                            style={{ ...inputStyle, padding: '5px 8px' }}
+                          >
+                            <option value="">Select…</option>
+                            {BUY_LOCATIONS.map(l => (
+                              <option key={l} value={l.toLowerCase()}>{l}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 500 }}>
+                            {row.location.charAt(0).toUpperCase() + row.location.slice(1)}
+                          </span>
+                        )}
+                      </td>
+                      {modalType !== 'buy' && (
+                        <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec', textAlign: 'right', fontSize: 12, color: '#555' }}>
+                          {row.available?.toLocaleString() ?? '—'}
+                        </td>
+                      )}
+                      <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec' }}>
+                        <input
+                          type="number" min="0" step="1"
+                          value={row.shares}
+                          onChange={e => updateRow(row.id, 'shares', e.target.value)}
+                          placeholder="0"
+                          style={{
+                            ...inputStyle, padding: '5px 8px', textAlign: 'right',
+                            borderColor: rowErrors[row.id] ? '#fca5a5' : '#d0d0c8',
+                          }}
+                        />
+                        {rowErrors[row.id] && (
+                          <div style={{ fontSize: 10, color: '#a32d2d', marginTop: 2 }}>
+                            ⚠ {rowErrors[row.id]}
+                          </div>
+                        )}
+                        {rowWarnings[row.id] && !rowErrors[row.id] && (
+                          <div style={{ fontSize: 10, color: '#78500a', marginTop: 2 }}>
+                            ⚠ {rowWarnings[row.id]}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec' }}>
+                        <select
+                          value={row.eis}
+                          onChange={e => updateRow(row.id, 'eis', e.target.value)}
+                          style={{ ...inputStyle, padding: '5px 8px' }}
+                        >
+                          <option value="tbc">TBC</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                        </select>
+                      </td>
+                      {modalType === 'buy' && (
+                        <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec', textAlign: 'center' }}>
+                          {locationRows.length > 1 && (
+                            <button
+                              onClick={() => removeRow(row.id)}
+                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: 15, padding: 0, lineHeight: 1 }}
+                            >×</button>
+                          )}
+                        </td>
+                      )}
+                    </tr>
                   ))}
-                </select>
-              ) : (
-                <select value={location} onChange={e => setLocation(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
-                  <option value="direct">Direct</option>
-                  <option value="nominee">Nominee</option>
-                </select>
-              )}
-            </F>
+                </tbody>
+              </table>
+            )}
+
             {modalType === 'buy' && (
-              <F label="EIS qualifying">
-                <select value={eis} onChange={e => setEis(e.target.value)} style={inputStyle}>
-                  <option value="tbc">TBC</option>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </F>
+              <button
+                onClick={addRow}
+                style={{ fontSize: 11, color: '#0f2744', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
+              >
+                + Add location
+              </button>
             )}
           </div>
         )}
 
-        {/* Available shares indicator for sells */}
-        {modalType === 'sell' && availableShares !== null && (
-          <div style={{
-            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
-            background: insufficientShares ? '#fef2f2' : '#f0faf5',
-            border: `0.5px solid ${insufficientShares ? '#fca5a5' : '#a8dfc5'}`,
-            color: insufficientShares ? '#a32d2d' : '#0f5c38',
-          }}>
-            {insufficientShares
-              ? `⚠ Only ${availableShares.toLocaleString()} shares available at this location`
-              : `✓ ${availableShares.toLocaleString()} shares available at this location`}
-          </div>
-        )}
-        {modalType === 'sell' && isDeMinimis && remainingAfter !== null && (
-          <div style={{
-            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
-            background: '#fffbeb', border: '0.5px solid #f0c674', color: '#78500a',
-          }}>
-            ⚠ This would leave only {remainingAfter.toLocaleString()} share{remainingAfter !== 1 ? 's' : ''} ({((remainingAfter / availableShares!) * 100).toFixed(2)}% of the holding). Confirm this is intended and not a rounding error.
+        {/* Total amount */}
+        {totalAmount > 0 && (
+          <div style={{ fontSize: 12, color: '#555', marginBottom: 14, padding: '8px 10px', background: '#f9f9f7', borderRadius: 5 }}>
+            Total amount: <strong>{fmtAmt(totalAmount)}</strong>
           </div>
         )}
 
-        {/* Transfer: from / to / type */}
+        {/* Transfer-to section */}
         {modalType === 'transfer' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div style={{ gridColumn: '1 / -1' }}>
-              <F label="Transfer type">
-                <select value={xferType} onChange={e => setXferType(e.target.value as 'commercial' | 'gift')} style={inputStyle}>
-                  <option value="commercial">Commercial sale</option>
-                  <option value="gift">Gift</option>
+          <div style={{ borderTop: '0.5px solid #e8e7e0', paddingTop: 16, marginTop: 4, marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 12 }}>Transfer to</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <F label="Transfer type">
+                  <select value={xferType} onChange={e => setXferType(e.target.value as 'commercial' | 'gift')} style={inputStyle}>
+                    <option value="commercial">Commercial sale</option>
+                    <option value="gift">Gift</option>
+                  </select>
+                </F>
+              </div>
+              <F label="Transferring to *">
+                <select value={toClient} onChange={e => setToClient(e.target.value)} style={inputStyle}>
+                  <option value="">Select…</option>
+                  {clients.filter(c => c.id !== fromClient).map(c =>
+                    <option key={c.id} value={c.id}>{c.full_name}</option>
+                  )}
+                </select>
+              </F>
+              <F label="Recipient location">
+                <select value={toLocation} onChange={e => setToLocation(e.target.value)} style={inputStyle}>
+                  {BUY_LOCATIONS.map(l => <option key={l} value={l.toLowerCase()}>{l}</option>)}
                 </select>
               </F>
             </div>
-            <F label="Transferring from *">
-              <select
-                value={fromClient}
-                onChange={e => { setFromClient(e.target.value); setFromLocation('direct') }}
-                style={inputStyle}
-                disabled={!shareClass}
-              >
-                <option value="">{!shareClass ? 'Select a share class first…' : 'Select…'}</option>
-                {sellableClients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </select>
-            </F>
-            <F label="From location *">
-              <select
-                value={fromLocation}
-                onChange={e => setFromLocation(e.target.value as 'direct' | 'nominee')}
-                style={inputStyle}
-                disabled={!fromClient}
-              >
-                <option value="">{!fromClient ? 'Select investor first…' : 'Select…'}</option>
-                {locationsFor(fromClient).map(loc => (
-                  <option key={loc} value={loc}>{loc.charAt(0).toUpperCase() + loc.slice(1)}</option>
-                ))}
-              </select>
-            </F>
-            <F label="Transferring to *">
-              <select value={toClient} onChange={e => setToClient(e.target.value)} style={inputStyle}>
-                <option value="">Select…</option>
-                {clients.filter(c => c.id !== fromClient).map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </select>
-            </F>
-            <F label="Recipient location">
-              <select value={buyerLoc} onChange={e => setBuyerLoc(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
-                <option value="direct">Direct</option>
-                <option value="nominee">Nominee</option>
-              </select>
-            </F>
-          </div>
-        )}
-
-        {/* Available shares indicator for transfers */}
-        {modalType === 'transfer' && availableShares !== null && (
-          <div style={{
-            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
-            background: insufficientShares ? '#fef2f2' : '#f0faf5',
-            border: `0.5px solid ${insufficientShares ? '#fca5a5' : '#a8dfc5'}`,
-            color: insufficientShares ? '#a32d2d' : '#0f5c38',
-          }}>
-            {insufficientShares
-              ? `⚠ Only ${availableShares.toLocaleString()} shares available at this location`
-              : `✓ ${availableShares.toLocaleString()} shares available at this location`}
-          </div>
-        )}
-        {modalType === 'transfer' && isDeMinimis && remainingAfter !== null && (
-          <div style={{
-            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
-            background: '#fffbeb', border: '0.5px solid #f0c674', color: '#78500a',
-          }}>
-            ⚠ This would leave only {remainingAfter.toLocaleString()} share{remainingAfter !== 1 ? 's' : ''} ({((remainingAfter / availableShares!) * 100).toFixed(2)}% of the holding). Confirm this is intended and not a rounding error.
           </div>
         )}
 
