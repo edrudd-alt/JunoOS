@@ -100,7 +100,7 @@ export default async function ClientRecordPage({ params }: Props) {
   // Pending investments (awaiting deal completion)
   const { data: pendingInvestments } = await supabase
     .from('investments')
-    .select('id, share_class, companies(id, name)')
+    .select('id, share_class, company_id, companies(id, name)')
     .in('client_id', allGroupIds)
     .eq('status', 'pending')
 

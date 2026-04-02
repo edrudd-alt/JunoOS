@@ -6,6 +6,7 @@ import { formatDate } from '@/lib/utils'
 interface PendingInvestment {
   id: string
   share_class: string
+  company_id: string | null
   companies: { id: string; name: string } | null
 }
 
@@ -37,6 +38,12 @@ export default function PendingActionsTab({
   pendingInvestments, activeDeals, followUpNotes,
   investments, documents,
 }: Props) {
+  // Map company_id → deal_id for pending investment links
+  const dealByCompany = new Map<string, string>()
+  for (const deal of activeDeals) {
+    const cid = deal.companies?.id
+    if (cid && !dealByCompany.has(cid)) dealByCompany.set(cid, deal.id)
+  }
   // EIS certificates outstanding
   const eisCompanyMap = new Map<string, string>()
   for (const inv of investments) {
@@ -79,16 +86,19 @@ export default function PendingActionsTab({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Pending investments */}
-      {pendingInvestments.map(inv => (
-        <ActionCard
-          key={`inv-${inv.id}`}
-          dot="#e8a820"
-          title={`Investment pending completion — ${inv.companies?.name ?? '—'} ${inv.share_class}`}
-          subtitle="Awaiting deal completion"
-          actionLabel="View deals"
-          href="/deals"
-        />
-      ))}
+      {pendingInvestments.map(inv => {
+        const dealId = inv.company_id ? dealByCompany.get(inv.company_id) : undefined
+        return (
+          <ActionCard
+            key={`inv-${inv.id}`}
+            dot="#e8a820"
+            title={`Investment pending completion — ${inv.companies?.name ?? '—'} ${inv.share_class}`}
+            subtitle="Awaiting deal completion"
+            actionLabel={dealId ? 'Continue deal' : 'View deals'}
+            href={dealId ? `/deals/${dealId}` : '/deals'}
+          />
+        )
+      })}
 
       {/* Active deals */}
       {activeDeals.map(deal => {
@@ -130,6 +140,8 @@ export default function PendingActionsTab({
             dot="#aaa"
             title="Follow-up note"
             subtitle={`"${excerpt}" · ${formatDate(note.created_at)}`}
+            actionLabel="View notes"
+            href={`/clients/${clientId}?tab=notes`}
           />
         )
       })}

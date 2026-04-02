@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import OverviewTab from './tabs/OverviewTab'
@@ -102,6 +102,20 @@ export default function ClientRecord({
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [actionsOpen, setActionsOpen] = useState(false)
+
+  // Read ?tab= from URL on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const t = params.get('tab') as Tab | null
+    if (t && TABS.some(tab => tab.key === t)) setTab(t)
+  }, [])
+
+  const switchTab = useCallback((key: Tab) => {
+    setTab(key)
+    const url = new URL(window.location.href)
+    url.searchParams.set('tab', key)
+    window.history.replaceState(null, '', url.toString())
+  }, [])
 
   const clientId = client.id
   const fullName = client.full_name
@@ -225,7 +239,7 @@ export default function ClientRecord({
                   </ActionGroup>
                   <ActionDivider />
                   <ActionGroup label="Client">
-                    <ActionItem label="Add note" onClick={() => { setTab('notes'); setActionsOpen(false) }} />
+                    <ActionItem label="Add note" onClick={() => { switchTab('notes'); setActionsOpen(false) }} />
                     <ActionItem label="Edit client details" />
                   </ActionGroup>
                 </div>
@@ -262,7 +276,7 @@ export default function ClientRecord({
           value={`${pendingCount}`}
           sub={pendingCount > 0
             ? <button
-                onClick={() => setTab('pending_actions')}
+                onClick={() => switchTab('pending_actions')}
                 style={{ fontSize: 11, color: '#a32d2d', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
               >
                 View all →
@@ -278,7 +292,7 @@ export default function ClientRecord({
           {TABS.map(t => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => switchTab(t.key)}
               style={{
                 padding: '9px 16px',
                 fontSize: 12,
