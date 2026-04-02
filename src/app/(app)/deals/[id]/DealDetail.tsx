@@ -33,10 +33,10 @@ interface Deal {
 
 interface Document {
   id: string
-  name: string
+  filename: string
   type: string
-  url: string | null
-  uploaded_at: string
+  storage_url: string | null
+  document_date: string | null
 }
 
 interface Invoice {
@@ -426,12 +426,12 @@ export default function DealDetail({
               <tbody>
                 {documents.map(doc => (
                   <tr key={doc.id}>
-                    <td style={{ fontSize: 12, fontWeight: 500 }}>{doc.name}</td>
+                    <td style={{ fontSize: 12, fontWeight: 500 }}>{doc.filename}</td>
                     <td style={{ fontSize: 11, color: '#888' }}>{doc.type.replace(/_/g, ' ')}</td>
-                    <td style={{ fontSize: 11, color: '#888' }}>{formatDate(doc.uploaded_at)}</td>
+                    <td style={{ fontSize: 11, color: '#888' }}>{doc.document_date ? formatDate(doc.document_date) : '—'}</td>
                     <td>
-                      {doc.url ? (
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                      {doc.storage_url ? (
+                        <a href={doc.storage_url} target="_blank" rel="noopener noreferrer"
                           style={{ fontSize: 11, color: '#185fa5', textDecoration: 'none' }}>
                           View
                         </a>

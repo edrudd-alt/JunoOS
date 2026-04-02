@@ -24,9 +24,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   const { data: documents } = await supabase
     .from('documents')
-    .select('id, name, type, url, uploaded_at')
+    .select('id, filename, type, storage_url, document_date')
     .eq('deal_id', id)
-    .order('uploaded_at', { ascending: false })
+    .order('document_date', { ascending: false })
 
   const { data: invoices } = await supabase
     .from('invoices')
