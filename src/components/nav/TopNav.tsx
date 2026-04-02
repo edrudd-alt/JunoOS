@@ -5,10 +5,11 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const NAV_LINKS = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/clients', label: 'Clients' },
-  { href: '/portfolio', label: 'Portfolio' },
-  { href: '/deals', label: 'Deals' },
+  { href: '/dashboard',   label: 'Dashboard'    },
+  { href: '/clients',     label: 'Clients'      },
+  { href: '/investments', label: 'Investments'  },
+  { href: '/portfolio',   label: 'Portfolio'    },
+  { href: '/deals',       label: 'Deals'        },
   { href: '/documents', label: 'Documents' },
   { href: '/reports', label: 'Reports' },
   { href: '/settings', label: 'Settings' },

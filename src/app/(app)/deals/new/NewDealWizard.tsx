@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -35,6 +35,7 @@ interface Document {
   name: string
   type: string
   signingRequired: boolean
+  bespoke?: boolean
 }
 
 const DEAL_TYPES = [
@@ -47,12 +48,13 @@ const DEAL_TYPES = [
 ]
 
 const DOC_TEMPLATES = [
-  { type: 'application_form',        name: 'Application form',          signingRequired: true  },
-  { type: 'investment_agreement',    name: 'Investment agreement',       signingRequired: true  },
-  { type: 'transaction_statement',   name: 'Transaction statement',      signingRequired: false },
-  { type: 'eis_certificate',         name: 'EIS certificate',            signingRequired: false },
-  { type: 'side_letter',             name: 'Side letter',                signingRequired: true  },
-  { type: 'kyc',                     name: 'KYC form',                   signingRequired: true  },
+  { type: 'application_form',        name: 'Application form',            signingRequired: true  },
+  { type: 'investment_agreement',    name: 'Investment agreement',         signingRequired: true  },
+  { type: 'transaction_statement',   name: 'Transaction statement',        signingRequired: false },
+  { type: 'eis_certificate',         name: 'EIS certificate',              signingRequired: false },
+  { type: 'side_letter',             name: 'Side letter',                  signingRequired: true  },
+  { type: 'kyc',                     name: 'KYC form',                     signingRequired: true  },
+  { type: 'share_subscription',      name: 'Share subscription agreement', signingRequired: true  },
 ]
 
 const inputStyle: React.CSSProperties = {
@@ -86,8 +88,8 @@ function StepBar({ current }: { current: number }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', marginBottom: 28 }}>
       {STEPS.map((label, i) => {
-        const done    = i < current
-        const active  = i === current
+        const done   = i < current
+        const active = i === current
         return (
           <div key={i} style={{ display: 'flex', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -147,26 +149,32 @@ export default function NewDealWizard({
   const [clientSearch,   setClientSearch]   = useState('')
 
   const [checklist, setChecklist] = useState({
-    signed_application:  true,
-    signed_agreement:    true,
-    share_certificate:   true,
-    eis_certificate:     false,
+    signed_application:    true,
+    signed_agreement:      true,
+    share_certificate:     true,
+    eis_certificate:       false,
     transaction_statement: true,
   })
 
   // ── Step 2 state ──
   const [documents, setDocuments] = useState<Document[]>([
-    { id: 'app',  name: 'Application form',    type: 'application_form',     signingRequired: true  },
-    { id: 'agr',  name: 'Investment agreement', type: 'investment_agreement',  signingRequired: true  },
-    { id: 'stmt', name: 'Transaction statement',type: 'transaction_statement', signingRequired: false },
+    { id: 'app',  name: 'Application form',     type: 'application_form',     signingRequired: true  },
+    { id: 'agr',  name: 'Investment agreement',  type: 'investment_agreement',  signingRequired: true  },
+    { id: 'stmt', name: 'Transaction statement', type: 'transaction_statement', signingRequired: false },
   ])
   const [reminderDays, setReminderDays] = useState('3')
+  const [signingOrder, setSigningOrder] = useState<'sequential' | 'parallel'>('parallel')
 
   // ── Step 3 state ──
-  const [showInvoicePrompt, setShowInvoicePrompt] = useState(false)
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailMessage, setEmailMessage] = useState('')
+  const [sentDate,     setSentDate]     = useState<string | null>(null)
+
+  // ── Step 4 invoice state ──
+  const [showInvoiceCard,    setShowInvoiceCard]    = useState(false)
   const [invoiceInvestorIdx, setInvoiceInvestorIdx] = useState(0)
-  const [invoiceFeeRate, setInvoiceFeeRate] = useState('')
-  const [invoicesSaved, setInvoicesSaved] = useState<string[]>([])
+  const [invoiceFeeRate,     setInvoiceFeeRate]     = useState('')
+  const [invoicesSaved,      setInvoicesSaved]      = useState<string[]>([])
 
   // ── Derived ──
   const selectedCompany = companies.find(c => c.id === companyId)
@@ -183,23 +191,21 @@ export default function NewDealWizard({
     !investors.find(i => i.clientId === c.id)
   )
 
+  const isInvestmentDeal = dealType === 'new_investment' || dealType === 'follow_on'
+
   function addInvestor(client: Client) {
     setInvestors(prev => [...prev, {
-      clientId:  client.id,
-      name:      client.full_name,
-      email:     client.email ?? '',
-      feeRate:   client.default_fee_rate,
-      poaHeld:   false,
+      clientId: client.id,
+      name:     client.full_name,
+      email:    client.email ?? '',
+      feeRate:  client.default_fee_rate,
+      poaHeld:  false,
     }])
     setClientSearch('')
   }
 
   function removeInvestor(clientId: string) {
     setInvestors(prev => prev.filter(i => i.clientId !== clientId))
-  }
-
-  function toggleDoc(id: string) {
-    setDocuments(prev => prev.map(d => d.id === id ? { ...d, signingRequired: !d.signingRequired } : d))
   }
 
   function addDocTemplate(tpl: typeof DOC_TEMPLATES[0]) {
@@ -211,155 +217,172 @@ export default function NewDealWizard({
     setDocuments(prev => prev.filter(d => d.id !== id))
   }
 
-  // ── Save deal to DB ──
-  async function saveDeal(): Promise<string | null> {
+  // ── Create deal in DB at end of step 1 ──
+  async function createDeal(): Promise<string | null> {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
 
-    const completionChecklist = {
-      signed_application:    checklist.signed_application,
-      signed_agreement:      checklist.signed_agreement,
-      share_certificate:     checklist.share_certificate,
-      eis_certificate:       checklist.eis_certificate,
-      transaction_statement: checklist.transaction_statement,
-    }
-
-    const totalAmount = investors.reduce((s, i) => {
-      const a = parseFloat(amount)
-      return s + (isNaN(a) ? 0 : a)
-    }, 0) || parseFloat(amount) || null
-
-    const { data: deal, error } = await supabase
+    const { data: deal, error: insertError } = await supabase
       .from('deals')
       .insert({
-        deal_type: dealType,
-        company_id: companyId || null,
-        share_class: shareClass || null,
-        investment_amount: totalAmount,
-        share_price: sharePrice ? parseFloat(sharePrice) : null,
-        shares_calculated: sharesCalc ? parseFloat(sharesCalc) : null,
-        investment_date: investmentDate,
-        eis_qualifying: eisQualifying,
-        status: 'sent',
-        completion_checklist: completionChecklist,
+        deal_type:          dealType,
+        company_id:         companyId || null,
+        share_class:        shareClass || null,
+        investment_amount:  parseFloat(amount) || null,
+        share_price:        sharePrice ? parseFloat(sharePrice) : null,
+        shares_calculated:  sharesCalc ? parseFloat(sharesCalc) : null,
+        investment_date:    investmentDate,
+        eis_qualifying:     eisQualifying,
+        status:             'draft',
+        completion_checklist: {
+          signed_application:    checklist.signed_application,
+          signed_agreement:      checklist.signed_agreement,
+          share_certificate:     checklist.share_certificate,
+          eis_certificate:       checklist.eis_certificate,
+          transaction_statement: checklist.transaction_statement,
+        },
         created_by: user?.id ?? null,
       })
       .select('id')
       .single()
 
-    if (error || !deal) return null
+    if (insertError || !deal) return null
 
-    // Insert deal investors
     if (investors.length > 0) {
       await supabase.from('deal_investors').insert(
         investors.map(inv => ({
-          deal_id: deal.id,
-          client_id: inv.clientId,
-          amount: parseFloat(amount) || null,
-          poa_held: inv.poaHeld,
+          deal_id:        deal.id,
+          client_id:      inv.clientId,
+          amount:         parseFloat(amount) || null,
+          poa_held:       inv.poaHeld,
           signing_status: 'pending',
         }))
       )
     }
 
-    // Add investments as pending
-    if (dealType === 'new_investment' || dealType === 'follow_on') {
-      for (const inv of investors) {
-        await supabase.from('investments').insert({
-          client_id: inv.clientId,
-          company_id: companyId,
-          share_class: shareClass,
-          investment_date: investmentDate,
-          original_share_price: parseFloat(sharePrice) || 0,
-          shares_purchased: parseFloat(sharesCalc ?? '0') || 0,
-          sum_subscribed: parseFloat(amount) || 0,
-          eis_status: eisQualifying,
-          holding_location: 'direct',
-          status: 'pending',
-        })
-      }
-    }
-
-    // Log activity
     await supabase.from('internal_updates').insert({
-      company_id: companyId || null,
-      update_type: 'deal',
-      description: `Deal started: ${DEAL_TYPES.find(t => t.value === dealType)?.label} — ${selectedCompany?.name ?? ''}`,
-      created_by: user?.id ?? null,
+      company_id:   companyId || null,
+      update_type:  'deal',
+      description:  `Deal created: ${DEAL_TYPES.find(t => t.value === dealType)?.label} — ${selectedCompany?.name ?? ''}`,
+      created_by:   user?.id ?? null,
     })
 
     return deal.id
   }
 
-  // ── Save invoices ──
+  // ── Save invoice ──
   async function saveInvoice(inv: DealInvestor, feeRate: number, dId: string) {
     const supabase = createClient()
     const investmentAmount = parseFloat(amount) || 0
-    const feeAmount = investmentAmount * (feeRate / 100)
-
     await supabase.from('invoices').insert({
-      deal_id: dId,
-      client_id: inv.clientId,
-      company_id: companyId || null,
+      deal_id:           dId,
+      client_id:         inv.clientId,
+      company_id:        companyId || null,
       investment_amount: investmentAmount,
-      fee_percentage: feeRate,
-      fee_amount: feeAmount,
-      vat_amount: 0,
-      status: 'draft',
+      fee_percentage:    feeRate,
+      fee_amount:        investmentAmount * (feeRate / 100),
+      vat_amount:        0,
+      status:            'draft',
     })
-
     setInvoicesSaved(prev => [...prev, inv.clientId])
   }
 
   // ── Step handlers ──
   async function handleStep1Next() {
     if (!dealType) return
-    if ((dealType === 'new_investment' || dealType === 'follow_on') && !companyId) {
+    if (isInvestmentDeal && !companyId) {
       setError('Please select a company'); return
     }
     setError('')
+
+    if (dealId) {
+      setStep(1); return
+    }
+
+    setSaving(true)
+    const id = await createDeal()
+    if (!id) { setError('Failed to create deal'); setSaving(false); return }
+    setDealId(id)
+    setSaving(false)
     setStep(1)
   }
 
-  async function handleStep2Next() {
+  function handleStep2Next() {
+    if (!emailSubject && selectedCompany) {
+      setEmailSubject(`${selectedCompany.name} — documents for your review`)
+    }
     setStep(2)
   }
 
   async function handleSend() {
+    if (!dealId) return
     setSaving(true)
     setError('')
-    const id = await saveDeal()
-    if (!id) { setError('Failed to save deal'); setSaving(false); return }
-    setDealId(id)
+    const supabase = createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    await supabase.from('deals').update({ status: 'sent' }).eq('id', dealId)
+
+    if (isInvestmentDeal) {
+      for (const inv of investors) {
+        await supabase.from('investments').insert({
+          client_id:            inv.clientId,
+          company_id:           companyId,
+          share_class:          shareClass,
+          investment_date:      investmentDate,
+          original_share_price: parseFloat(sharePrice) || 0,
+          shares_purchased:     parseFloat(sharesCalc ?? '0') || 0,
+          sum_subscribed:       parseFloat(amount) || 0,
+          eis_status:           eisQualifying,
+          holding_location:     'direct',
+          status:               'pending',
+        })
+      }
+    }
+
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId || null,
+      update_type: 'deal',
+      description: `Documents sent: ${selectedCompany?.name ?? ''} — ${investors.map(i => i.name).join(', ')}`,
+      created_by:  user?.id ?? null,
+    })
+
+    const today = new Date().toISOString().slice(0, 10)
+    setSentDate(today)
     setSaving(false)
-    // Show invoice prompt for first investor if investment deal
-    if ((dealType === 'new_investment' || dealType === 'follow_on') && investors.length > 0) {
+    setStep(3)
+
+    if (isInvestmentDeal && investors.length > 0) {
       setInvoiceInvestorIdx(0)
-      setInvoiceFeeRate(investors[0].feeRate.toString())
-      setShowInvoicePrompt(true)
-    } else {
-      setStep(3)
+      setInvoiceFeeRate(String(investors[0].feeRate || 5))
+      setShowInvoiceCard(true)
     }
   }
 
   async function handleInvoiceConfirm() {
     if (!dealId) return
+    const supabase = createClient()
     await saveInvoice(investors[invoiceInvestorIdx], parseFloat(invoiceFeeRate), dealId)
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId || null,
+      update_type: 'invoice',
+      description: `Invoice generated: ${investors[invoiceInvestorIdx].name} — ${formatCurrency(parseFloat(amount) * (parseFloat(invoiceFeeRate) / 100))}`,
+      created_by:  null,
+    })
     const next = invoiceInvestorIdx + 1
     if (next < investors.length) {
       setInvoiceInvestorIdx(next)
-      setInvoiceFeeRate(investors[next].feeRate.toString())
+      setInvoiceFeeRate(String(investors[next].feeRate || 5))
     } else {
-      setShowInvoicePrompt(false)
-      setStep(3)
+      setShowInvoiceCard(false)
     }
   }
 
-  const isInvestmentDeal = dealType === 'new_investment' || dealType === 'follow_on'
-
   // ── Render ──
+  const wideLayout = step >= 1 && step <= 3
+
   return (
-    <div style={{ maxWidth: 720 }}>
+    <div style={{ maxWidth: wideLayout ? 960 : 720 }}>
       <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
         <Link href="/deals" style={{ color: '#888', textDecoration: 'none' }}>Deals</Link>
         {' › '}New deal
@@ -445,7 +468,6 @@ export default function NewDealWizard({
               Investors for this deal
             </div>
 
-            {/* Search */}
             <div style={{ position: 'relative', marginBottom: 10 }}>
               <input
                 type="text"
@@ -539,14 +561,14 @@ export default function NewDealWizard({
             <div className="card" style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
                 Completion checklist
-                <span style={{ fontSize: 10, fontWeight: 400, color: '#888', marginLeft: 8 }}>Select what's required for this deal</span>
+                <span style={{ fontSize: 10, fontWeight: 400, color: '#888', marginLeft: 8 }}>Select what&apos;s required for this deal</span>
               </div>
               {[
-                { key: 'signed_application',    label: 'Signed application form'  },
-                { key: 'signed_agreement',       label: 'Signed investment agreement' },
-                { key: 'share_certificate',      label: 'Share certificate'        },
-                { key: 'eis_certificate',        label: 'EIS certificate'          },
-                { key: 'transaction_statement',  label: 'Transaction statement'    },
+                { key: 'signed_application',   label: 'Signed application form'     },
+                { key: 'signed_agreement',      label: 'Signed investment agreement' },
+                { key: 'share_certificate',     label: 'Share certificate'           },
+                { key: 'eis_certificate',       label: 'EIS certificate'             },
+                { key: 'transaction_statement', label: 'Transaction statement'       },
               ].map(item => (
                 <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, cursor: 'pointer', fontSize: 12 }}>
                   <input
@@ -563,8 +585,8 @@ export default function NewDealWizard({
           {error && <p style={{ fontSize: 12, color: '#a32d2d', marginBottom: 12 }}>{error}</p>}
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-primary" onClick={handleStep1Next} style={{ padding: '8px 20px' }}>
-              Next: Documents →
+            <button className="btn btn-primary" onClick={handleStep1Next} disabled={saving} style={{ padding: '8px 20px' }}>
+              {saving ? 'Saving…' : 'Next: Documents →'}
             </button>
             <Link href="/deals" className="btn btn-secondary">Cancel</Link>
           </div>
@@ -573,180 +595,249 @@ export default function NewDealWizard({
 
       {/* ── STEP 2: Documents ── */}
       {step === 1 && (
-        <div>
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
-              Documents for this deal
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
+          {/* Left panel */}
+          <div>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+                Documents for this deal
+              </div>
+
+              <table style={{ marginBottom: 14 }}>
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th style={{ width: 80 }}>Type</th>
+                    <th style={{ width: 110 }}>Sig. required</th>
+                    <th style={{ width: 32 }}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {documents.map(doc => (
+                    <tr key={doc.id}>
+                      <td style={{ fontWeight: 500, fontSize: 12 }}>{doc.name}</td>
+                      <td>
+                        <span className={`pill ${doc.bespoke ? 'pill-amber' : 'pill-grey'}`} style={{ fontSize: 10 }}>
+                          {doc.bespoke ? 'Bespoke' : 'Template'}
+                        </span>
+                      </td>
+                      <td>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={doc.signingRequired}
+                            onChange={() => setDocuments(prev => prev.map(d => d.id === doc.id ? { ...d, signingRequired: !d.signingRequired } : d))}
+                          />
+                          {doc.signingRequired ? 'Yes' : 'No'}
+                        </label>
+                      </td>
+                      <td>
+                        <button type="button" onClick={() => removeDoc(doc.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a32d2d', fontSize: 16, lineHeight: 1 }}>
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 6 }}>Add document</div>
+              <select
+                value=""
+                onChange={e => {
+                  const val = e.target.value
+                  if (!val) return
+                  if (val === 'bespoke') {
+                    const name = prompt('Document name:')
+                    if (name) setDocuments(prev => [...prev, { id: `bespoke_${Date.now()}`, name, type: 'bespoke', signingRequired: true, bespoke: true }])
+                  } else {
+                    const tpl = DOC_TEMPLATES.find(t => t.type === val)
+                    if (tpl) addDocTemplate(tpl)
+                  }
+                }}
+                style={{ ...inputStyle, maxWidth: 280, color: '#555' }}
+              >
+                <option value="">Add a document…</option>
+                {DOC_TEMPLATES.filter(t => !documents.find(d => d.type === t.type)).map(tpl => (
+                  <option key={tpl.type} value={tpl.type}>{tpl.name}</option>
+                ))}
+                <option value="bespoke">Upload bespoke document…</option>
+              </select>
             </div>
 
-            <table style={{ marginBottom: 14 }}>
-              <thead>
-                <tr>
-                  <th>Document</th>
-                  <th style={{ width: 120 }}>Type</th>
-                  <th style={{ width: 120 }}>Signature required</th>
-                  <th style={{ width: 40 }}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map(doc => (
-                  <tr key={doc.id}>
-                    <td style={{ fontWeight: 500 }}>{doc.name}</td>
-                    <td><span className="pill pill-grey" style={{ fontSize: 10 }}>{doc.type.replace(/_/g, ' ')}</span></td>
-                    <td>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', fontSize: 12 }}>
-                        <input type="checkbox" checked={doc.signingRequired} onChange={() => toggleDoc(doc.id)} />
-                        {doc.signingRequired ? 'Yes' : 'No'}
-                      </label>
-                    </td>
-                    <td>
-                      <button type="button" onClick={() => removeDoc(doc.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a32d2d', fontSize: 16 }}>
-                        ×
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+                Signature settings
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <Field label="Signing order">
+                  <select value={signingOrder} onChange={e => setSigningOrder(e.target.value as 'sequential' | 'parallel')} style={inputStyle}>
+                    <option value="parallel">Parallel (all at once)</option>
+                    <option value="sequential">Sequential (one by one)</option>
+                  </select>
+                </Field>
+                <Field label="Auto-reminder if not signed">
+                  <select value={reminderDays} onChange={e => setReminderDays(e.target.value)} style={inputStyle}>
+                    <option value="1">After 1 day</option>
+                    <option value="3">After 3 days</option>
+                    <option value="7">After 7 days</option>
+                    <option value="0">No reminder</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
 
-            {/* Add from templates */}
-            <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 6 }}>Add document</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {DOC_TEMPLATES.filter(t => !documents.find(d => d.type === t.type)).map(tpl => (
-                <button
-                  key={tpl.type}
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => addDocTemplate(tpl)}
-                  style={{ fontSize: 11 }}
-                >
-                  + {tpl.name}
-                </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-secondary" onClick={() => setStep(0)}>← Back</button>
+              <button className="btn btn-primary" onClick={handleStep2Next} style={{ padding: '8px 20px' }}>
+                Next: Send →
+              </button>
+            </div>
+          </div>
+
+          {/* Right panel — summary */}
+          <div>
+            <div className="card" style={{ background: '#f9f9f7', fontSize: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</div>
+              <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px', alignItems: 'start' }}>
+                <dt style={{ color: '#888', whiteSpace: 'nowrap' }}>Documents</dt>
+                <dd style={{ margin: 0, fontWeight: 500 }}>{documents.length}</dd>
+                <dt style={{ color: '#888', whiteSpace: 'nowrap' }}>Signing</dt>
+                <dd style={{ margin: 0 }}>{documents.filter(d => d.signingRequired).length} require signature</dd>
+                <dt style={{ color: '#888', whiteSpace: 'nowrap' }}>Order</dt>
+                <dd style={{ margin: 0 }}>{signingOrder === 'sequential' ? 'Sequential' : 'Parallel'}</dd>
+                <dt style={{ color: '#888', whiteSpace: 'nowrap' }}>Reminder</dt>
+                <dd style={{ margin: 0 }}>{reminderDays === '0' ? 'None' : `After ${reminderDays} day${reminderDays === '1' ? '' : 's'}`}</dd>
+              </dl>
+              {investors.length > 0 && selectedCompany && (
+                <>
+                  <div style={{ borderTop: '0.5px solid #e8e7e0', margin: '12px 0 10px' }} />
+                  <div style={{ fontSize: 10, fontWeight: 500, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Naming preview</div>
+                  <div style={{ fontSize: 10, fontFamily: 'monospace', color: '#555', wordBreak: 'break-all', lineHeight: 1.5 }}>
+                    {investmentDate} — {investors[0].name} — {selectedCompany.name} — Application form.pdf
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: Send for signature ── */}
+      {step === 2 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
+          {/* Left panel */}
+          <div>
+            {/* Document list (read-only) */}
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+                Documents
+              </div>
+              {documents.map(doc => (
+                <div key={doc.id} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                  padding: '8px 0', borderBottom: '0.5px solid #f0f0ec',
+                }}>
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 500 }}>{doc.name}</span>
+                    <span className={`pill ${doc.bespoke ? 'pill-amber' : 'pill-grey'}`} style={{ fontSize: 10, marginLeft: 8 }}>
+                      {doc.bespoke ? 'Bespoke' : 'Template'}
+                    </span>
+                    {doc.signingRequired && (
+                      <span className="pill pill-blue" style={{ fontSize: 10, marginLeft: 4 }}>Signature required</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button className="btn btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }}>Preview</button>
+                    <button className="btn btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setStep(1)}>Edit</button>
+                  </div>
+                </div>
               ))}
             </div>
-          </div>
 
-          {/* Naming convention preview */}
-          {investors.length > 0 && selectedCompany && (
-            <div className="card" style={{ marginBottom: 16, background: '#f9f9f7' }}>
-              <div style={{ fontSize: 11, fontWeight: 500, color: '#888', marginBottom: 6 }}>Document naming convention</div>
-              <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#555' }}>
-                {investmentDate} — {investors[0].name} — {selectedCompany.name} — Application Form.pdf
+            {/* Email panel */}
+            <div className="card" style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+                Email to investors
+              </div>
+
+              <Field label="To">
+                <input
+                  type="text"
+                  readOnly
+                  value={investors.map(i => i.email || i.name).join(', ') || '—'}
+                  style={{ ...inputStyle, background: '#f9f9f7', color: '#555' }}
+                />
+              </Field>
+
+              <Field label="Subject">
+                <input
+                  type="text"
+                  value={emailSubject}
+                  onChange={e => setEmailSubject(e.target.value)}
+                  style={inputStyle}
+                />
+              </Field>
+
+              <Field label="Message (optional)">
+                <textarea
+                  value={emailMessage}
+                  onChange={e => setEmailMessage(e.target.value)}
+                  placeholder="Add a personal note to the email…"
+                  rows={4}
+                  style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
+                />
+              </Field>
+            </div>
+
+            {/* Amber warning */}
+            <div style={{
+              background: '#fffbeb', border: '0.5px solid #f0c674',
+              borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+              display: 'flex', gap: 10, alignItems: 'flex-start',
+            }}>
+              <span style={{ fontSize: 16, lineHeight: 1 }}>⚠</span>
+              <div style={{ fontSize: 12, color: '#78500a', lineHeight: 1.5 }}>
+                Once sent, this deal will appear as active. The investment will be added to the portfolio as pending.
               </div>
             </div>
-          )}
 
-          {/* Signature settings */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
-              Signature settings
-            </div>
-            <Field label="Send reminder if not signed after (days)">
-              <input
-                type="number" min="1" max="30"
-                value={reminderDays} onChange={e => setReminderDays(e.target.value)}
-                style={{ ...inputStyle, maxWidth: 100 }}
-              />
-            </Field>
-          </div>
+            {error && <p style={{ fontSize: 12, color: '#a32d2d', marginBottom: 12 }}>{error}</p>}
 
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn btn-secondary" onClick={() => setStep(0)}>← Back</button>
-            <button className="btn btn-primary" onClick={handleStep2Next} style={{ padding: '8px 20px' }}>
-              Next: Review & send →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── STEP 3: Send ── */}
-      {step === 2 && (
-        <div>
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
-              Summary
-            </div>
-            <dl style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '8px 0', fontSize: 12 }}>
-              <dt style={{ color: '#888' }}>Deal type</dt>
-              <dd style={{ margin: 0, fontWeight: 500 }}>{DEAL_TYPES.find(t => t.value === dealType)?.label}</dd>
-              {selectedCompany && <>
-                <dt style={{ color: '#888' }}>Company</dt>
-                <dd style={{ margin: 0 }}>{selectedCompany.name}</dd>
-              </>}
-              {isInvestmentDeal && <>
-                {amount && <><dt style={{ color: '#888' }}>Amount</dt><dd style={{ margin: 0 }}>{formatCurrency(parseFloat(amount))}</dd></>}
-                {sharePrice && <><dt style={{ color: '#888' }}>Share price</dt><dd style={{ margin: 0 }}>£{parseFloat(sharePrice).toFixed(4)}</dd></>}
-                {sharesCalc && <><dt style={{ color: '#888' }}>Shares</dt><dd style={{ margin: 0 }}>{parseInt(sharesCalc).toLocaleString()}</dd></>}
-                <dt style={{ color: '#888' }}>EIS qualifying</dt>
-                <dd style={{ margin: 0 }}>{eisQualifying === 'yes' ? 'Yes' : eisQualifying === 'no' ? 'No' : 'TBC'}</dd>
-              </>}
-              <dt style={{ color: '#888' }}>Investors</dt>
-              <dd style={{ margin: 0 }}>{investors.map(i => i.name).join(', ') || '—'}</dd>
-              <dt style={{ color: '#888' }}>Documents</dt>
-              <dd style={{ margin: 0 }}>{documents.length} document{documents.length !== 1 ? 's' : ''}, {documents.filter(d => d.signingRequired).length} requiring signature</dd>
-            </dl>
-          </div>
-
-          {investors.map(inv => (
-            <div key={inv.clientId} className="card" style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 6 }}>{inv.name}</div>
-              <div style={{ fontSize: 11, color: '#888' }}>
-                Send to: {inv.email || 'No email on file'}
-                {inv.poaHeld && <span className="pill pill-blue" style={{ fontSize: 10, marginLeft: 8 }}>POA held — Juno signs</span>}
-              </div>
-            </div>
-          ))}
-
-          {error && <p style={{ fontSize: 12, color: '#a32d2d', marginBottom: 12 }}>{error}</p>}
-
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <button className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
-            <button
-              className="btn btn-primary"
-              onClick={handleSend}
-              disabled={saving}
-              style={{ padding: '8px 24px' }}
-            >
-              {saving ? 'Saving…' : `Send to ${investors.length || 1} investor${investors.length !== 1 ? 's' : ''} →`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Invoice prompt modal ── */}
-      {showInvoicePrompt && investors[invoiceInvestorIdx] && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
-        }}>
-          <div className="card" style={{ width: 420, padding: '24px 28px' }}>
-            <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 4px' }}>Generate invoice?</h2>
-            <p style={{ fontSize: 12, color: '#888', margin: '0 0 20px' }}>
-              {investors[invoiceInvestorIdx].name} — {selectedCompany?.name}
-            </p>
-            <Field label="Fee rate (%)">
-              <input
-                type="number" step="0.1" min="0" max="100"
-                value={invoiceFeeRate}
-                onChange={e => setInvoiceFeeRate(e.target.value)}
-                style={inputStyle}
-              />
-            </Field>
-            {amount && invoiceFeeRate && (
-              <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
-                Fee: {formatCurrency(parseFloat(amount) * (parseFloat(invoiceFeeRate) / 100))} · VAT: exempt · Due immediately
-              </div>
-            )}
             <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleInvoiceConfirm}>Generate invoice</button>
-              <button className="btn btn-secondary" onClick={() => {
-                const next = invoiceInvestorIdx + 1
-                if (next < investors.length) { setInvoiceInvestorIdx(next); setInvoiceFeeRate(investors[next].feeRate.toString()) }
-                else { setShowInvoicePrompt(false); setStep(3) }
-              }}>
-                Skip
+              <button className="btn btn-secondary" onClick={() => setStep(1)}>← Back</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleSend}
+                disabled={saving}
+                style={{ padding: '8px 24px' }}
+              >
+                {saving ? 'Sending…' : 'Send documents →'}
               </button>
+            </div>
+          </div>
+
+          {/* Right panel */}
+          <div>
+            <div className="card" style={{ background: '#f9f9f7', fontSize: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Summary</div>
+              <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px', alignItems: 'start' }}>
+                <dt style={{ color: '#888' }}>Recipients</dt>
+                <dd style={{ margin: 0 }}>
+                  {investors.length > 0
+                    ? investors.map(i => (
+                        <div key={i.clientId}>{i.name}{i.poaHeld && <span className="pill pill-blue" style={{ fontSize: 9, marginLeft: 4 }}>POA</span>}</div>
+                      ))
+                    : '—'}
+                </dd>
+                <dt style={{ color: '#888' }}>Documents</dt>
+                <dd style={{ margin: 0 }}>{documents.length} ({documents.filter(d => d.signingRequired).length} for signing)</dd>
+                <dt style={{ color: '#888' }}>Order</dt>
+                <dd style={{ margin: 0 }}>{signingOrder === 'sequential' ? 'Sequential' : 'Parallel'}</dd>
+                <dt style={{ color: '#888' }}>Reminder</dt>
+                <dd style={{ margin: 0 }}>{reminderDays === '0' ? 'None' : `After ${reminderDays} day${reminderDays === '1' ? '' : 's'}`}</dd>
+              </dl>
             </div>
           </div>
         </div>
@@ -758,6 +849,26 @@ export default function NewDealWizard({
           dealId={dealId}
           investors={investors}
           documents={documents}
+          sentDate={sentDate}
+          companyId={companyId}
+          companyName={selectedCompany?.name ?? ''}
+          amount={amount}
+          isInvestmentDeal={isInvestmentDeal}
+          showInvoiceCard={showInvoiceCard}
+          invoiceInvestorIdx={invoiceInvestorIdx}
+          invoiceFeeRate={invoiceFeeRate}
+          invoicesSaved={invoicesSaved}
+          onInvoiceRateChange={setInvoiceFeeRate}
+          onInvoiceConfirm={handleInvoiceConfirm}
+          onInvoiceSkip={() => {
+            const next = invoiceInvestorIdx + 1
+            if (next < investors.length) {
+              setInvoiceInvestorIdx(next)
+              setInvoiceFeeRate(String(investors[next].feeRate || 5))
+            } else {
+              setShowInvoiceCard(false)
+            }
+          }}
           onNext={() => setStep(4)}
         />
       )}
@@ -768,6 +879,7 @@ export default function NewDealWizard({
           dealId={dealId}
           investors={investors}
           checklist={checklist}
+          companyId={companyId}
           companyName={selectedCompany?.name ?? ''}
           eisQualifying={eisQualifying}
           onDone={() => router.push(`/deals/${dealId}`)}
@@ -780,28 +892,99 @@ export default function NewDealWizard({
 // ─── Step 4: Track ────────────────────────────────────────────────────────────
 
 function TrackStep({
-  dealId, investors, documents, onNext,
+  dealId, investors, documents, sentDate,
+  companyId, companyName, amount, isInvestmentDeal,
+  showInvoiceCard, invoiceInvestorIdx, invoiceFeeRate, invoicesSaved,
+  onInvoiceRateChange, onInvoiceConfirm, onInvoiceSkip, onNext,
 }: {
   dealId: string
   investors: DealInvestor[]
   documents: Document[]
+  sentDate: string | null
+  companyId: string
+  companyName: string
+  amount: string
+  isInvestmentDeal: boolean
+  showInvoiceCard: boolean
+  invoiceInvestorIdx: number
+  invoiceFeeRate: string
+  invoicesSaved: string[]
+  onInvoiceRateChange: (v: string) => void
+  onInvoiceConfirm: () => void
+  onInvoiceSkip: () => void
   onNext: () => void
 }) {
   const [statuses, setStatuses] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {}
     for (const inv of investors) {
       for (const doc of documents) {
-        init[`${inv.clientId}::${doc.id}`] = 'pending'
+        if (doc.signingRequired) init[`${inv.clientId}::${doc.id}`] = 'pending'
       }
     }
     return init
   })
 
-  const allSigned = Object.values(statuses).every(s => s === 'signed' || s === 'not_required')
+  const signingDocs = documents.filter(d => d.signingRequired)
+  const allSigned = signingDocs.length > 0 && Object.values(statuses).every(s => s === 'signed' || s === 'not_required')
   const anySigned = Object.values(statuses).some(s => s === 'signed')
+
+  const statusPill = (s: string) => {
+    if (s === 'signed')        return <span className="pill pill-green"  style={{ fontSize: 10 }}>Signed</span>
+    if (s === 'reviewed')      return <span className="pill pill-blue"   style={{ fontSize: 10 }}>Reviewed</span>
+    if (s === 'not_required')  return <span className="pill pill-grey"   style={{ fontSize: 10 }}>N/A</span>
+    return                            <span className="pill pill-amber"  style={{ fontSize: 10 }}>Pending</span>
+  }
+
+  const currentInvoiceInvestor = investors[invoiceInvestorIdx]
+  const investmentAmount = parseFloat(amount) || 0
+  const feeAmount = invoiceFeeRate ? investmentAmount * (parseFloat(invoiceFeeRate) / 100) : 0
 
   return (
     <div>
+      {/* Sent confirmation */}
+      <div style={{
+        background: '#f0faf5', border: '0.5px solid #a8dfc5',
+        borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <span style={{ fontSize: 16 }}>✓</span>
+        <div style={{ fontSize: 12, color: '#0f5c38' }}>
+          Documents sent{sentDate ? ` on ${sentDate}` : ''}. Investment added to portfolio as pending.
+        </div>
+      </div>
+
+      {/* Invoice card */}
+      {showInvoiceCard && currentInvoiceInvestor && !invoicesSaved.includes(currentInvoiceInvestor.clientId) && (
+        <div className="card" style={{ marginBottom: 16, border: '0.5px solid #d0d0c8' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 10, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+            Generate invoice — {currentInvoiceInvestor.name}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr auto', gap: 12, alignItems: 'end' }}>
+            <div>
+              <label style={labelStyle}>Fee rate (%)</label>
+              <input
+                type="number" step="0.1" min="0" max="100"
+                value={invoiceFeeRate}
+                onChange={e => onInvoiceRateChange(e.target.value)}
+                style={{ ...{ width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 13, outline: 'none', boxSizing: 'border-box' as const, background: '#fff' } }}
+              />
+            </div>
+            <div style={{ fontSize: 12, color: '#555', paddingBottom: 8 }}>
+              Fee: <strong>{formatCurrency(feeAmount)}</strong>
+              <span style={{ color: '#888', marginLeft: 8 }}>VAT exempt · due immediately</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, paddingBottom: 6 }}>
+              <button className="btn btn-primary" style={{ fontSize: 11 }} onClick={onInvoiceConfirm}>
+                Generate &amp; push to Xero
+              </button>
+              <button className="btn btn-secondary" style={{ fontSize: 11 }} onClick={onInvoiceSkip}>
+                Do this later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Suggested next step */}
       {anySigned && !allSigned && (
         <div style={{
@@ -809,7 +992,7 @@ function TrackStep({
           borderRadius: 8, padding: '12px 16px', marginBottom: 16,
           display: 'flex', alignItems: 'center', gap: 10,
         }}>
-          <span style={{ fontSize: 18 }}>💡</span>
+          <span style={{ fontSize: 16 }}>💡</span>
           <div>
             <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>Suggested next step</div>
             <div style={{ fontSize: 11, color: '#555' }}>An investor has reviewed — consider countersigning now</div>
@@ -818,64 +1001,78 @@ function TrackStep({
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', fontSize: 12, fontWeight: 500 }}>
-          Signature tracking
-        </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Investor</th>
-              {documents.filter(d => d.signingRequired).map(doc => (
-                <th key={doc.id}>{doc.name}</th>
-              ))}
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {investors.map(inv => (
-              <tr key={inv.clientId}>
-                <td style={{ fontWeight: 500 }}>{inv.name}</td>
-                {documents.filter(d => d.signingRequired).map(doc => {
-                  const key = `${inv.clientId}::${doc.id}`
-                  const status = statuses[key] ?? 'pending'
-                  return (
-                    <td key={doc.id}>
+      {/* Signature tracking — per document */}
+      {signingDocs.map(doc => (
+        <div key={doc.id} className="card" style={{ marginBottom: 12, padding: 0, overflow: 'hidden' }}>
+          <div style={{
+            padding: '10px 16px', background: '#f9f9f7',
+            borderBottom: '0.5px solid #e8e7e0',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#0f2744' }}>{doc.name}</span>
+            {sentDate && <span style={{ fontSize: 11, color: '#888' }}>Sent {sentDate}</span>}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Investor</th>
+                <th style={{ width: 100 }}>Method</th>
+                <th style={{ width: 120 }}>Status</th>
+                <th style={{ width: 120 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {investors.map(inv => {
+                const key = `${inv.clientId}::${doc.id}`
+                const status = statuses[key] ?? 'pending'
+                return (
+                  <tr key={inv.clientId}>
+                    <td style={{ fontWeight: 500, fontSize: 12 }}>{inv.name}</td>
+                    <td style={{ fontSize: 11, color: '#888' }}>
+                      {inv.poaHeld ? 'POA — Juno signs' : 'Electronic'}
+                    </td>
+                    <td>
                       <select
                         value={status}
                         onChange={e => setStatuses(prev => ({ ...prev, [key]: e.target.value }))}
                         style={{
                           padding: '3px 6px', border: '0.5px solid #d0d0c8',
-                          borderRadius: 4, fontSize: 11, outline: 'none',
-                          background: '#fff',
+                          borderRadius: 4, fontSize: 11, outline: 'none', background: '#fff',
                         }}
                       >
                         <option value="pending">Pending</option>
-                        <option value="not_reviewed">Not yet reviewed</option>
                         <option value="reviewed">Reviewed</option>
-                        <option value="signed">Signed ✓</option>
+                        <option value="signed">Signed</option>
+                        <option value="not_required">Not required</option>
                       </select>
                     </td>
-                  )
-                })}
-                <td>
-                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }}>
-                    Send reminder
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    <td>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }}>
+                          Send reminder
+                        </button>
+                        {inv.poaHeld && (
+                          <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }}>
+                            Sign now
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ marginTop: 20 }}>
         <button
           className="btn btn-primary"
           onClick={onNext}
           style={{ padding: '8px 20px' }}
         >
-          {allSigned ? 'All signed — proceed to completion →' : 'Continue to completion →'}
+          View completion checklist →
         </button>
       </div>
     </div>
@@ -885,31 +1082,90 @@ function TrackStep({
 // ─── Step 5: Complete ─────────────────────────────────────────────────────────
 
 function CompleteStep({
-  dealId, investors, checklist, companyName, eisQualifying, onDone,
+  dealId, investors, checklist, companyId, companyName, eisQualifying, onDone,
 }: {
   dealId: string
   investors: DealInvestor[]
   checklist: Record<string, boolean>
+  companyId: string
   companyName: string
   eisQualifying: string
   onDone: () => void
 }) {
   const [ticked, setTicked] = useState<Record<string, boolean>>({
-    signed_application:   false,
-    signed_agreement:     false,
-    share_certificate:    false,
-    eis_certificate:      false,
+    signed_application:    false,
+    signed_agreement:      false,
+    share_certificate:     false,
+    eis_certificate:       false,
     transaction_statement: false,
   })
+  const [uploading, setUploading] = useState<string | null>(null)
+  const [completing, setCompleting] = useState(false)
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  const CHECKLIST_LABELS: Record<string, string> = {
+    signed_application:    'Signed application form',
+    signed_agreement:      'Signed investment agreement',
+    share_certificate:     'Share certificate',
+    eis_certificate:       'EIS certificate',
+    transaction_statement: 'Transaction statement',
+  }
+
+  // Include EIS only if qualifying
+  const requiredItems = Object.entries(checklist)
+    .filter(([key, required]) => {
+      if (!required) return false
+      if (key === 'eis_certificate' && eisQualifying === 'no') return false
+      return true
+    })
+
+  const allTicked = requiredItems.every(([key]) => ticked[key])
+
+  async function handleGenerate(key: string) {
+    const supabase = createClient()
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId || null,
+      update_type: 'document',
+      description: `Generated: ${CHECKLIST_LABELS[key]} — ${companyName}`,
+      created_by:  null,
+    })
+    setTicked(prev => ({ ...prev, [key]: true }))
+  }
+
+  async function handleUpload(key: string, file: File) {
+    setUploading(key)
+    const supabase = createClient()
+
+    const companySlug  = companyName.toLowerCase().replace(/\s+/g, '-')
+    const investorName = investors[0]?.name ?? 'unknown'
+    const investorSlug = investorName.toLowerCase().replace(/\s+/g, '-')
+    const path = `${companySlug}/${investorSlug}/${file.name}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('documents')
+      .upload(path, file, { upsert: true })
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(path)
+      await supabase.from('documents').insert({
+        deal_id:       dealId,
+        filename:      file.name,
+        type:          key as 'share_certificate',
+        storage_url:   publicUrl,
+        document_date: new Date().toISOString().slice(0, 10),
+      })
+      setTicked(prev => ({ ...prev, [key]: true }))
+    }
+
+    setUploading(null)
+  }
 
   async function markComplete() {
+    setCompleting(true)
     const supabase = createClient()
-    await supabase
-      .from('deals')
-      .update({ status: 'complete' })
-      .eq('id', dealId)
 
-    // Mark pending investments as active
+    await supabase.from('deals').update({ status: 'complete' }).eq('id', dealId)
+
     for (const inv of investors) {
       await supabase
         .from('investments')
@@ -918,85 +1174,163 @@ function CompleteStep({
         .eq('status', 'pending')
     }
 
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId || null,
+      update_type: 'deal',
+      description: `Deal completed: ${companyName}`,
+      created_by:  null,
+    })
+
+    setCompleting(false)
     onDone()
   }
 
-  const requiredItems = Object.entries(checklist).filter(([, required]) => required)
-  const allTicked = requiredItems.every(([key]) => ticked[key])
-
-  const CHECKLIST_LABELS: Record<string, string> = {
-    signed_application:   'Signed application form',
-    signed_agreement:     'Signed investment agreement',
-    share_certificate:    'Share certificate',
-    eis_certificate:      'EIS certificate',
-    transaction_statement: 'Transaction statement',
-  }
-
   return (
-    <div>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
-          Completion checklist
-        </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, alignItems: 'start' }}>
+      {/* Left: checklist */}
+      <div>
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 6, borderBottom: '0.5px solid #e8e7e0' }}>
+            Completion checklist
+          </div>
 
-        {requiredItems.map(([key]) => {
-          const done = ticked[key]
-          const isEis = key === 'eis_certificate'
-          const isStmt = key === 'transaction_statement'
+          {requiredItems.map(([key]) => {
+            const done  = ticked[key]
+            const isEis = key === 'eis_certificate'
+            const isStmt = key === 'transaction_statement'
+            const canUpload = key === 'share_certificate' || isEis || key === 'signed_application' || key === 'signed_agreement'
 
-          return (
-            <div key={key} style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '10px 0', borderBottom: '0.5px solid #f0f0ec',
-            }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
-                <input
-                  type="checkbox"
-                  checked={done}
-                  onChange={e => setTicked(prev => ({ ...prev, [key]: e.target.checked }))}
-                />
-                <span style={{ fontWeight: done ? 400 : 500, color: done ? '#888' : '#333', textDecoration: done ? 'line-through' : 'none' }}>
-                  {CHECKLIST_LABELS[key]}
-                </span>
-              </label>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {isEis && !done && (
-                  <span style={{ fontSize: 11, color: '#ba7517' }}>Awaiting HMRC (3–6 months)</span>
+            return (
+              <div key={key} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '12px 0', borderBottom: '0.5px solid #f0f0ec',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {/* Status icon */}
+                  <div style={{
+                    width: 20, height: 20, borderRadius: '50%',
+                    background: done ? '#1d9e75' : isEis && !done ? 'transparent' : '#e8e7e0',
+                    border: isEis && !done ? '1.5px dashed #ba7517' : 'none',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    {done && <span style={{ fontSize: 11, color: '#fff', fontWeight: 700 }}>✓</span>}
+                  </div>
+                  <div>
+                    <div style={{
+                      fontSize: 12, fontWeight: done ? 400 : 500,
+                      color: done ? '#888' : '#333',
+                      textDecoration: done ? 'line-through' : 'none',
+                    }}>
+                      {CHECKLIST_LABELS[key]}
+                    </div>
+                    {isEis && !done && (
+                      <div style={{ fontSize: 10, color: '#ba7517', marginTop: 2 }}>Awaiting HMRC (typically 3–6 months)</div>
+                    )}
+                  </div>
+                </div>
+
+                {!done && (
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {done ? (
+                      <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 10px' }}>View</button>
+                    ) : null}
+                    {isStmt && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: 10, padding: '3px 10px' }}
+                        onClick={() => handleGenerate(key)}
+                      >
+                        Generate
+                      </button>
+                    )}
+                    {canUpload && (
+                      <>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: 10, padding: '3px 10px' }}
+                          disabled={uploading === key}
+                          onClick={() => fileInputRefs.current[key]?.click()}
+                        >
+                          {uploading === key ? 'Uploading…' : 'Upload'}
+                        </button>
+                        <input
+                          ref={el => { fileInputRefs.current[key] = el }}
+                          type="file"
+                          style={{ display: 'none' }}
+                          accept=".pdf,.doc,.docx"
+                          onChange={e => {
+                            const file = e.target.files?.[0]
+                            if (file) handleUpload(key, file)
+                          }}
+                        />
+                      </>
+                    )}
+                  </div>
                 )}
-                {isStmt && !done && (
-                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 10px' }}>
-                    Generate
-                  </button>
-                )}
-                {(key === 'share_certificate' || isEis) && !done && (
-                  <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 10px' }}>
-                    Upload
-                  </button>
+
+                {done && (
+                  <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 10px' }}>View</button>
                 )}
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
+
+        {allTicked && (
+          <div style={{
+            background: '#f0faf5', border: '0.5px solid #a8dfc5',
+            borderRadius: 8, padding: '12px 16px', marginBottom: 16,
+            fontSize: 12, color: '#0f5c38',
+          }}>
+            All required items complete. Mark the deal as complete to activate the investment.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            className="btn btn-primary"
+            onClick={markComplete}
+            disabled={!allTicked || completing}
+            style={{ padding: '8px 24px', opacity: allTicked ? 1 : 0.5 }}
+          >
+            {completing ? 'Completing…' : 'Mark deal complete ✓'}
+          </button>
+          <button className="btn btn-secondary" onClick={onDone}>
+            Save &amp; finish later
+          </button>
+        </div>
+        {!allTicked && (
+          <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
+            Complete all required items to mark the deal as complete.
+          </p>
+        )}
       </div>
 
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          className="btn btn-primary"
-          onClick={markComplete}
-          disabled={!allTicked}
-          style={{ padding: '8px 24px', opacity: allTicked ? 1 : 0.5 }}
-        >
-          Mark deal complete ✓
-        </button>
-        <button className="btn btn-secondary" onClick={onDone}>
-          Save & finish later
-        </button>
+      {/* Right: deal summary + OneDrive preview */}
+      <div>
+        <div className="card" style={{ background: '#f9f9f7', fontSize: 12, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Deal summary</div>
+          <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 12px' }}>
+            <dt style={{ color: '#888' }}>Company</dt>
+            <dd style={{ margin: 0, fontWeight: 500 }}>{companyName || '—'}</dd>
+            <dt style={{ color: '#888' }}>Investors</dt>
+            <dd style={{ margin: 0 }}>{investors.map(i => i.name).join(', ') || '—'}</dd>
+            <dt style={{ color: '#888' }}>Status</dt>
+            <dd style={{ margin: 0 }}><span className="pill pill-amber" style={{ fontSize: 10 }}>Completing</span></dd>
+          </dl>
+        </div>
+
+        <div className="card" style={{ background: '#f9f9f7', fontSize: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '0.05em' }}>OneDrive filing</div>
+          <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>Documents will be filed at:</div>
+          {investors.slice(0, 2).map(inv => (
+            <div key={inv.clientId} style={{ fontSize: 10, fontFamily: 'monospace', color: '#555', marginBottom: 4, wordBreak: 'break-all' }}>
+              Deals / {companyName} / {inv.name} /
+            </div>
+          ))}
+        </div>
       </div>
-      {!allTicked && (
-        <p style={{ fontSize: 11, color: '#888', marginTop: 8 }}>
-          Tick all items to mark the deal complete, or save and finish later.
-        </p>
-      )}
     </div>
   )
 }
