@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatPrice } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -414,7 +414,7 @@ export default function SaleDealForm({
                       {/* Avg cost price */}
                       <td style={tdSt}>
                         {row.avgCostPrice > 0
-                          ? <span style={{ fontFamily: 'monospace' }}>{formatCurrency(row.avgCostPrice)}</span>
+                          ? <span style={{ fontFamily: 'monospace' }}>{formatPrice(row.avgCostPrice)}</span>
                           : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 

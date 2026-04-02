@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -355,7 +355,7 @@ export default function DealDetail({
         <SummaryCard label="Share class" value={deal.share_class ?? '—'} />
         <SummaryCard
           label={isSaleDeal ? 'Sale price' : 'Price / share'}
-          value={deal.share_price ? formatCurrency(deal.share_price) : '—'}
+          value={deal.share_price ? formatPrice(deal.share_price) : '—'}
         />
       </div>
 
