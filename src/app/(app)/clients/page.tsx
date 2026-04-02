@@ -69,6 +69,21 @@ export default async function ClientsPage() {
     linkedByLead[lid].push(c)
   }
 
+  // Last activity from internal_updates per client
+  const { data: activityRows } = await supabase
+    .from('internal_updates')
+    .select('entity_id, created_at')
+    .eq('entity_type', 'client')
+    .order('created_at', { ascending: false })
+
+  // Most recent activity per client (rows are already desc so first match wins)
+  const lastActivityByClient: Record<string, string> = {}
+  for (const row of (activityRows ?? []) as Record<string, string>[]) {
+    if (row.entity_id && !lastActivityByClient[row.entity_id]) {
+      lastActivityByClient[row.entity_id] = row.created_at
+    }
+  }
+
   // Serialise Sets to arrays for client component
   const portfolioByClientSerialisable = Object.fromEntries(
     Object.entries(portfolioByClient).map(([id, data]) => [
@@ -87,6 +102,7 @@ export default async function ClientsPage() {
       portfolioByClient={portfolioByClientSerialisable}
       clientsByCompany={clientsByCompanySerialisable}
       companies={companies ?? []}
+      lastActivityByClient={lastActivityByClient}
     />
   )
 }

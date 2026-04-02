@@ -55,7 +55,7 @@ export default async function ClientRecordPage({ params }: Props) {
     ...new Set(
       (investments ?? [])
         .map((i) => (i.companies as unknown as { id: string } | null)?.id)
-        .filter((id): id is string => Boolean(id))
+        .filter((cid): cid is string => Boolean(cid))
     ),
   ]
   const { data: valuations } = companyIds.length > 0
@@ -97,6 +97,47 @@ export default async function ClientRecordPage({ params }: Props) {
     .in('type', ['kyc', 'poa', 'membership_agreement', 'suitability_assessment', 'source_of_funds'])
     .order('document_date', { ascending: false })
 
+  // Pending investments (awaiting deal completion)
+  const { data: pendingInvestments } = await supabase
+    .from('investments')
+    .select('id, share_class, companies(id, name)')
+    .in('client_id', allGroupIds)
+    .eq('status', 'pending')
+
+  // Active deals for this client group
+  const { data: dealInvestorRows } = await supabase
+    .from('deal_investors')
+    .select('deal_id')
+    .in('client_id', allGroupIds)
+  const dealIds = [...new Set((dealInvestorRows ?? []).map(d => (d as Record<string, unknown>).deal_id as string))]
+  const { data: activeDeals } = dealIds.length > 0
+    ? await supabase
+        .from('deals')
+        .select('id, deal_type, status, companies(id, name)')
+        .in('id', dealIds)
+        .neq('status', 'complete')
+    : { data: [] }
+
+  // Follow-up notes (contain chase / reminder language)
+  const { data: followUpNotes } = await supabase
+    .from('client_notes')
+    .select('id, note_text, created_at')
+    .eq('client_id', id)
+    .or('note_text.ilike.%follow up%,note_text.ilike.%call back%,note_text.ilike.%chase%,note_text.ilike.%reminder%')
+    .order('created_at', { ascending: false })
+
+  // Last activity from internal_updates, fallback to date_joined
+  const { data: lastActivityRow } = await supabase
+    .from('internal_updates')
+    .select('created_at')
+    .eq('entity_type', 'client')
+    .eq('entity_id', id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const lastActivity = (lastActivityRow as Record<string, unknown> | null)?.created_at as string | null
+    ?? client.date_joined ?? null
+
   return (
     <ClientRecord
       client={client as unknown as ClientRow}
@@ -109,6 +150,10 @@ export default async function ClientRecordPage({ params }: Props) {
       updateRecipients={(updateRecipients ?? []) as Record<string, unknown>[]}
       notes={(notes ?? []) as Record<string, unknown>[]}
       membershipDocs={(membershipDocs ?? []) as unknown as Parameters<typeof ClientRecord>[0]['membershipDocs']}
+      pendingInvestments={(pendingInvestments ?? []) as Record<string, unknown>[]}
+      activeDeals={(activeDeals ?? []) as Record<string, unknown>[]}
+      followUpNotes={(followUpNotes ?? []) as Record<string, unknown>[]}
+      lastActivity={lastActivity}
     />
   )
 }

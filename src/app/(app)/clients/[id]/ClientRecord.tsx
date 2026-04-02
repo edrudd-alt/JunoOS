@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import OverviewTab from './tabs/OverviewTab'
@@ -8,22 +8,24 @@ import InvestmentsTab from './tabs/InvestmentsTab'
 import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
 import NotesTab from './tabs/NotesTab'
+import PendingActionsTab from './tabs/PendingActionsTab'
 
-type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes'
+type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'pending_actions'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'investments', label: 'Investments' },
-  { key: 'investment_docs', label: 'Investment docs' },
-  { key: 'updates_sent', label: 'Updates sent' },
-  { key: 'notes', label: 'Notes' },
+  { key: 'overview',         label: 'Overview' },
+  { key: 'investments',      label: 'Investments' },
+  { key: 'investment_docs',  label: 'Investment docs' },
+  { key: 'updates_sent',     label: 'Updates sent' },
+  { key: 'notes',            label: 'Notes' },
+  { key: 'pending_actions',  label: 'Pending actions' },
 ]
 
 function KycBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    verified: { label: 'KYC verified', cls: 'pill-green' },
-    renewal_due: { label: 'KYC renewal due', cls: 'pill-amber' },
-    outstanding: { label: 'KYC outstanding', cls: 'pill-red' },
+    verified:    { label: 'KYC verified',     cls: 'pill-green' },
+    renewal_due: { label: 'KYC renewal due',  cls: 'pill-amber' },
+    outstanding: { label: 'KYC outstanding',  cls: 'pill-red'   },
   }
   const { label, cls } = map[status] ?? { label: status, cls: 'pill-grey' }
   return <span className={`pill ${cls}`}>{label}</span>
@@ -87,11 +89,16 @@ interface Props {
   updateRecipients: Record<string, unknown>[]
   notes: Record<string, unknown>[]
   membershipDocs: MembershipDoc[]
+  pendingInvestments: Record<string, unknown>[]
+  activeDeals: Record<string, unknown>[]
+  followUpNotes: Record<string, unknown>[]
+  lastActivity: string | null
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
+  pendingInvestments, activeDeals, followUpNotes, lastActivity,
 }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [actionsOpen, setActionsOpen] = useState(false)
@@ -103,19 +110,45 @@ export default function ClientRecord({
   const groupPortfolio = portfolioRows.reduce<{ totalInvested: number; currentValue: number; gainLoss: number }>(
     (acc, row) => {
       acc.totalInvested += Number(row.total_invested ?? 0)
-      acc.currentValue += Number(row.current_value ?? 0)
-      acc.gainLoss += Number(row.gain_loss ?? 0)
+      acc.currentValue  += Number(row.current_value  ?? 0)
+      acc.gainLoss      += Number(row.gain_loss       ?? 0)
       return acc
     },
     { totalInvested: 0, currentValue: 0, gainLoss: 0 }
   )
 
-  const companySet = new Set(portfolioRows.map(r => r.company_id as string))
+  const companySet    = new Set(portfolioRows.map(r => r.company_id as string))
   const holdingsCount = investments.length
 
-  const { pct } = calcGainLoss(groupPortfolio.totalInvested, groupPortfolio.currentValue)
-  const gainLossAbs = groupPortfolio.gainLoss
-  const initials = getInitials(fullName)
+  const { pct }      = calcGainLoss(groupPortfolio.totalInvested, groupPortfolio.currentValue)
+  const gainLossAbs  = groupPortfolio.gainLoss
+  const initials     = getInitials(fullName)
+
+  // Count pending actions for badge and stat card
+  const pendingCount = useMemo(() => {
+    let count = pendingInvestments.length + activeDeals.length + followUpNotes.length
+    // KYC expiry within 60 days or overdue
+    if (client.kyc_expiry) {
+      const days = Math.floor((new Date(client.kyc_expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+      if (days <= 60) count++
+    }
+    // EIS certificates outstanding
+    const eisCompanyIds = new Set(
+      investments
+        .filter(i => { const e = i.eis_status as string; return e === 'yes' || e === 'tbc' })
+        .map(i => (i.companies as { id: string } | null)?.id)
+        .filter((cid): cid is string => Boolean(cid))
+    )
+    const eisDocCompanyIds = new Set(
+      documents
+        .filter(d => (d.type as string)?.toLowerCase().includes('eis') && d.company_id)
+        .map(d => d.company_id as string)
+    )
+    for (const cid of eisCompanyIds) {
+      if (!eisDocCompanyIds.has(cid)) count++
+    }
+    return count
+  }, [pendingInvestments, activeDeals, followUpNotes, client.kyc_expiry, investments, documents])
 
   return (
     <div>
@@ -159,7 +192,6 @@ export default function ClientRecord({
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            {/* Actions dropdown */}
             <div style={{ position: 'relative' }}>
               <button
                 className="btn btn-secondary"
@@ -227,7 +259,16 @@ export default function ClientRecord({
         />
         <StatCard
           label="Pending actions"
-          value="0"
+          value={`${pendingCount}`}
+          sub={pendingCount > 0
+            ? <button
+                onClick={() => setTab('pending_actions')}
+                style={{ fontSize: 11, color: '#a32d2d', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+              >
+                View all →
+              </button>
+            : <span style={{ color: '#1d9e75', fontSize: 11 }}>All clear</span>
+          }
         />
       </div>
 
@@ -248,9 +289,20 @@ export default function ClientRecord({
                 borderBottom: tab === t.key ? '2px solid #0f2744' : '2px solid transparent',
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
+                display: 'flex', alignItems: 'center', gap: 6,
               }}
             >
               {t.label}
+              {t.key === 'pending_actions' && pendingCount > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: '#a32d2d', color: '#fff',
+                  fontSize: 10, fontWeight: 700, lineHeight: 1,
+                }}>
+                  {pendingCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -264,6 +316,7 @@ export default function ClientRecord({
             linkedEntities={linkedEntities}
             portfolioRows={portfolioRows}
             membershipDocs={membershipDocs}
+            lastActivity={lastActivity}
           />
         )}
         {tab === 'investments' && (
@@ -281,6 +334,17 @@ export default function ClientRecord({
         )}
         {tab === 'notes' && (
           <NotesTab notes={notes} clientId={clientId} />
+        )}
+        {tab === 'pending_actions' && (
+          <PendingActionsTab
+            clientId={clientId}
+            kycExpiry={client.kyc_expiry}
+            pendingInvestments={pendingInvestments as unknown as Parameters<typeof PendingActionsTab>[0]['pendingInvestments']}
+            activeDeals={activeDeals as unknown as Parameters<typeof PendingActionsTab>[0]['activeDeals']}
+            followUpNotes={followUpNotes as unknown as Parameters<typeof PendingActionsTab>[0]['followUpNotes']}
+            investments={investments}
+            documents={documents}
+          />
         )}
       </div>
     </div>

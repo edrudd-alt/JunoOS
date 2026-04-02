@@ -38,9 +38,10 @@ interface Props {
   linkedEntities: ClientRow[]
   portfolioRows: PortfolioRow[]
   membershipDocs: MembershipDoc[]
+  lastActivity: string | null
 }
 
-export default function OverviewTab({ client, linkedEntities, portfolioRows, membershipDocs }: Props) {
+export default function OverviewTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity }: Props) {
   const isLead = !client.lead_investor_id
 
   // Build per-entity portfolio lookup
@@ -72,6 +73,8 @@ export default function OverviewTab({ client, linkedEntities, portfolioRows, mem
             </dd>
             <dt style={{ color: '#888' }}>Date joined</dt>
             <dd style={{ margin: 0 }}>{formatDate(client.date_joined)}</dd>
+            <dt style={{ color: '#888' }}>Last activity</dt>
+            <dd style={{ margin: 0 }}>{lastActivity ? formatDate(lastActivity) : '—'}</dd>
             <dt style={{ color: '#888' }}>Tax status</dt>
             <dd style={{ margin: 0 }}>{taxStatusLabel(client.tax_status)}</dd>
             <dt style={{ color: '#888' }}>Investor ref</dt>

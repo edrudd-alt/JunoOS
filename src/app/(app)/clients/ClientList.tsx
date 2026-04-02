@@ -31,6 +31,7 @@ interface Props {
   portfolioByClient: Record<string, PortfolioData>
   clientsByCompany: Record<string, string[]>
   companies: { id: string; name: string }[]
+  lastActivityByClient: Record<string, string>
 }
 
 type SortKey = 'portfolio_value' | 'name' | 'date_joined' | 'companies'
@@ -68,7 +69,7 @@ function ClientAvatar({ name }: { name: string }) {
   )
 }
 
-export default function ClientList({ leads, linkedByLead, portfolioByClient, clientsByCompany, companies }: Props) {
+export default function ClientList({ leads, linkedByLead, portfolioByClient, clientsByCompany, companies, lastActivityByClient }: Props) {
   const [search, setSearch] = useState('')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [kycFilter, setKycFilter] = useState('all')
@@ -269,7 +270,9 @@ export default function ClientList({ leads, linkedByLead, portfolioByClient, cli
 
                     {/* Last activity */}
                     <td style={{ color: '#888' }}>
-                      {client.date_joined ? `Joined ${formatDate(client.date_joined)}` : '—'}
+                      {lastActivityByClient[client.id]
+                        ? formatDate(lastActivityByClient[client.id])
+                        : client.date_joined ? `Joined ${formatDate(client.date_joined)}` : '—'}
                     </td>
                   </tr>
                 )
