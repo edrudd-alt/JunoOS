@@ -250,8 +250,8 @@ export default function CompanyPage({
       <SharePriceSection
         companyId={company.id}
         valuations={valuations}
+        investments={inv}
         shareClasses={[...shareClasses]}
-        currentPrice={currentValuation?.share_price ?? null}
       />
 
       {/* KPI cards */}
