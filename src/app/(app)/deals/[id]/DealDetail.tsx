@@ -13,7 +13,6 @@ interface DealInvestor {
   amount: number | null
   signing_status: string
   poa_held: boolean
-  fee_rate: number | null
   clients: { id: string; full_name: string; email: string | null } | null
 }
 
@@ -26,7 +25,6 @@ interface Deal {
   share_price: number | null
   share_class: string | null
   completion_checklist: Record<string, boolean> | null
-  notes: string | null
   companies: { id: string; name: string } | null
   deal_investors: DealInvestor[]
 }
@@ -115,7 +113,6 @@ export default function DealDetail({
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     () => deal.completion_checklist ?? {}
   )
-  const [notes, setNotes] = useState(deal.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [completing, setCompleting] = useState(false)
@@ -156,7 +153,6 @@ export default function DealDetail({
     setSaving(true)
     await supabase.from('deals').update({
       completion_checklist: checklist,
-      notes,
     }).eq('id', deal.id)
     setSaving(false)
     setSaved(true)
@@ -177,7 +173,6 @@ export default function DealDetail({
     await supabase.from('deals').update({
       status: 'complete',
       completion_checklist: checklist,
-      notes,
     }).eq('id', deal.id)
     setCompleting(false)
     router.refresh()
@@ -377,31 +372,6 @@ export default function DealDetail({
               )}
             </div>
 
-            {/* Notes */}
-            <div className="card">
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>Notes</div>
-              {deal.status === 'complete' ? (
-                <p style={{ fontSize: 12, color: '#555', margin: 0 }}>{notes || 'No notes'}</p>
-              ) : (
-                <>
-                  <textarea
-                    value={notes}
-                    onChange={e => setNotes(e.target.value)}
-                    rows={4}
-                    placeholder="Add any notes about this deal…"
-                    style={{ ...inputStyle, resize: 'vertical' }}
-                  />
-                  <button
-                    className="btn"
-                    onClick={saveChecklist}
-                    disabled={saving}
-                    style={{ marginTop: 8, fontSize: 12, padding: '6px 14px' }}
-                  >
-                    {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
-                  </button>
-                </>
-              )}
-            </div>
           </div>
         </div>
       )}

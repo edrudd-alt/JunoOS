@@ -6,20 +6,21 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: deal } = await supabase
+  const { data: deal, error: dealError } = await supabase
     .from('deals')
     .select(`
       id, deal_type, status, created_at, investment_amount, share_price, share_class,
-      completion_checklist, notes,
+      completion_checklist,
       companies (id, name, share_classes),
       deal_investors (
-        id, amount, signing_status, poa_held, fee_rate,
+        id, amount, signing_status, poa_held,
         clients (id, full_name, email)
       )
     `)
     .eq('id', id)
     .maybeSingle()
 
+  if (dealError) console.error('DealDetail query error:', dealError)
   if (!deal) notFound()
 
   const { data: documents } = await supabase
