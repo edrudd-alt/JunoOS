@@ -161,18 +161,22 @@ export default function DealDetail({
 
   async function markComplete() {
     setCompleting(true)
-    // Mark all investments active
+    const companyId = deal.companies?.id
+    // Mark pending investments active — filter by client + company since there's no deal_id on investments
     for (const di of investors) {
       if (di.clients?.id) {
-        await supabase.from('investments')
+        let q = supabase.from('investments')
           .update({ status: 'active' })
-          .eq('deal_id', deal.id)
           .eq('client_id', di.clients.id)
+          .eq('status', 'pending')
+        if (companyId) q = q.eq('company_id', companyId)
+        await q
       }
     }
     await supabase.from('deals').update({
       status: 'complete',
       completion_checklist: checklist,
+      updated_at: new Date().toISOString(),
     }).eq('id', deal.id)
     setCompleting(false)
     router.refresh()
