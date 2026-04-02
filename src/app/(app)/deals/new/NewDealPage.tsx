@@ -1,0 +1,190 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import BuyDealForm from './BuyDealForm'
+import SaleDealForm from './SaleDealForm'
+import NewDealWizard from './NewDealWizard'
+
+type DealTypeValue =
+  | 'new_investment' | 'follow_on'
+  | 'full_exit' | 'partial_exit'
+  | 'kyc' | 'side_letter' | 'membership'
+
+interface DealTypeConfig {
+  value: DealTypeValue
+  label: string
+  description: string
+  group: 'buy' | 'sale' | 'other'
+  color: string
+}
+
+const DEAL_TYPES: DealTypeConfig[] = [
+  {
+    value: 'new_investment',
+    label: 'New Investment',
+    description: 'First-time investment in a company',
+    group: 'buy',
+    color: '#1d9e75',
+  },
+  {
+    value: 'follow_on',
+    label: 'Follow-on Investment',
+    description: 'Additional investment in an existing holding',
+    group: 'buy',
+    color: '#1d9e75',
+  },
+  {
+    value: 'full_exit',
+    label: 'Full Exit',
+    description: 'Full sale of all shares in a company',
+    group: 'sale',
+    color: '#a32d2d',
+  },
+  {
+    value: 'partial_exit',
+    label: 'Partial Exit',
+    description: 'Sell a portion of shares in a company',
+    group: 'sale',
+    color: '#e8a820',
+  },
+  {
+    value: 'kyc',
+    label: 'KYC / Onboarding',
+    description: 'Client onboarding documentation',
+    group: 'other',
+    color: '#185fa5',
+  },
+  {
+    value: 'side_letter',
+    label: 'Side Letter',
+    description: 'Supplementary agreement for a client',
+    group: 'other',
+    color: '#185fa5',
+  },
+  {
+    value: 'membership',
+    label: 'Membership',
+    description: 'Membership joining process',
+    group: 'other',
+    color: '#185fa5',
+  },
+]
+
+const GROUP_LABELS: Record<string, string> = {
+  buy:   'Investments',
+  sale:  'Exits',
+  other: 'Other',
+}
+
+interface Props {
+  companies: Record<string, unknown>[]
+  clients: Record<string, unknown>[]
+  investments: Record<string, unknown>[]
+}
+
+export default function NewDealPage({ companies, clients, investments }: Props) {
+  const [selectedType, setSelectedType] = useState<DealTypeValue | null>(null)
+
+  if (selectedType === 'new_investment' || selectedType === 'follow_on') {
+    return (
+      <BuyDealForm
+        dealType={selectedType}
+        companies={companies}
+        clients={clients}
+        investments={investments}
+        onBack={() => setSelectedType(null)}
+      />
+    )
+  }
+
+  if (selectedType === 'full_exit' || selectedType === 'partial_exit') {
+    return (
+      <SaleDealForm
+        dealType={selectedType}
+        companies={companies}
+        clients={clients}
+        investments={investments}
+        onBack={() => setSelectedType(null)}
+      />
+    )
+  }
+
+  if (selectedType === 'kyc' || selectedType === 'side_letter' || selectedType === 'membership') {
+    return (
+      <NewDealWizard
+        companies={companies}
+        clients={clients}
+        initialDealType={selectedType}
+      />
+    )
+  }
+
+  // Deal type selector
+  const groups = ['buy', 'sale', 'other'] as const
+
+  return (
+    <div style={{ maxWidth: 800 }}>
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
+        <Link href="/deals" style={{ color: '#888', textDecoration: 'none' }}>Deals</Link>
+        {' › '}New deal
+      </div>
+      <h1 style={{ fontSize: 17, fontWeight: 500, margin: '0 0 4px' }}>New deal</h1>
+      <p style={{ fontSize: 12, color: '#888', margin: '0 0 28px' }}>Select the type of deal you want to create</p>
+
+      {groups.map(group => {
+        const types = DEAL_TYPES.filter(t => t.group === group)
+        return (
+          <div key={group} style={{ marginBottom: 24 }}>
+            <div style={{
+              fontSize: 10, fontWeight: 600, textTransform: 'uppercase',
+              letterSpacing: '0.06em', color: '#aaa', marginBottom: 10,
+            }}>
+              {GROUP_LABELS[group]}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+              {types.map(dt => (
+                <button
+                  key={dt.value}
+                  onClick={() => setSelectedType(dt.value)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '16px 18px',
+                    background: '#fff',
+                    border: '0.5px solid #e8e7e0',
+                    borderRadius: 8,
+                    cursor: 'pointer',
+                    transition: 'border-color 0.15s, box-shadow 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.borderColor = dt.color
+                    e.currentTarget.style.boxShadow = `0 0 0 2px ${dt.color}22`
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.borderColor = '#e8e7e0'
+                    e.currentTarget.style.boxShadow = 'none'
+                  }}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 6,
+                    background: dt.color + '18',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    marginBottom: 10,
+                  }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: dt.color }} />
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744', marginBottom: 4 }}>
+                    {dt.label}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', lineHeight: 1.4 }}>
+                    {dt.description}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}

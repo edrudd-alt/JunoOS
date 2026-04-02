@@ -1,23 +1,26 @@
 import { createClient } from '@/lib/supabase/server'
-import NewDealWizard from './NewDealWizard'
+import NewDealPage from './NewDealPage'
 
-export default async function NewDealPage() {
+export default async function NewDealServerPage() {
   const supabase = await createClient()
 
-  const { data: companies } = await supabase
-    .from('companies')
-    .select('id, name, share_classes')
-    .order('name')
-
-  const { data: clients } = await supabase
-    .from('clients')
-    .select('id, full_name, email, default_fee_rate, lead_investor_id')
-    .order('full_name')
+  const [
+    { data: companies },
+    { data: clients },
+    { data: investments },
+  ] = await Promise.all([
+    supabase.from('companies').select('id, name, share_classes').order('name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id').order('full_name'),
+    supabase.from('investments')
+      .select('id, client_id, company_id, share_class, shares_purchased, original_share_price, sum_subscribed, eis_status')
+      .eq('status', 'active'),
+  ])
 
   return (
-    <NewDealWizard
+    <NewDealPage
       companies={(companies ?? []) as Record<string, unknown>[]}
       clients={(clients ?? []) as Record<string, unknown>[]}
+      investments={(investments ?? []) as Record<string, unknown>[]}
     />
   )
 }

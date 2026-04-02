@@ -124,9 +124,11 @@ function StepBar({ current }: { current: number }) {
 export default function NewDealWizard({
   companies: companiesRaw,
   clients: clientsRaw,
+  initialDealType,
 }: {
   companies: Record<string, unknown>[]
   clients: Record<string, unknown>[]
+  initialDealType?: string
 }) {
   const companies = companiesRaw as unknown as Company[]
   const clients   = clientsRaw  as unknown as Client[]
@@ -138,7 +140,7 @@ export default function NewDealWizard({
   const [saving, setSaving] = useState(false)
 
   // ── Step 1 state ──
-  const [dealType,       setDealType]       = useState('new_investment')
+  const [dealType,       setDealType]       = useState(initialDealType ?? 'kyc')
   const [companyId,      setCompanyId]      = useState('')
   const [shareClass,     setShareClass]     = useState('')
   const [amount,         setAmount]         = useState('')
