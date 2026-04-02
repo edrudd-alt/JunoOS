@@ -1218,7 +1218,7 @@ function RecordTransactionModal({
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ flex: 1, padding: '9px 0' }}>
-            {saving ? 'Saving…' : modalType === 'transfer' ? 'Record transfer' : `Record ${modalType}`}
+            {saving ? 'Saving…' : modalType === 'buy' ? 'Record purchase' : modalType === 'sell' ? 'Record sale' : 'Record transfer'}
           </button>
           <button className="btn btn-secondary" onClick={onClose} style={{ padding: '9px 16px' }}>Cancel</button>
         </div>
