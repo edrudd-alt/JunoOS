@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import UpdateValuationModal from './UpdateValuationModal'
+import SharePriceSection from './SharePriceSection'
 
 interface Company {
   id: string
@@ -230,7 +231,7 @@ export default function CompanyPage({
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Current share price</div>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>
-            {currentValuation ? `£${currentValuation.share_price.toFixed(4)}` : '—'}
+            {currentValuation ? `£${currentValuation.share_price.toFixed(2)}` : '—'}
           </div>
           {currentValuation && (
             <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
@@ -244,6 +245,14 @@ export default function CompanyPage({
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{shareClasses.size} share class{shareClasses.size !== 1 ? 'es' : ''}</div>
         </div>
       </div>
+
+      {/* Share price chart */}
+      <SharePriceSection
+        companyId={company.id}
+        valuations={valuations}
+        shareClasses={[...shareClasses]}
+        currentPrice={currentValuation?.share_price ?? null}
+      />
 
       {/* KPI cards */}
       {latestKpis.length > 0 && (
