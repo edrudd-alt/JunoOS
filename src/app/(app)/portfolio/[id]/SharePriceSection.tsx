@@ -445,7 +445,7 @@ export default function SharePriceSection({ companyId, valuations, investments, 
 
           {/* Legend */}
           {svgLines.length > 1 && (
-            <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 14, marginBottom: 4, flexWrap: 'wrap' }}>
               {svgLines.map(l => (
                 <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#555' }}>
                   <div style={{ width: 20, height: 2.5, background: l.color, borderRadius: 2 }} />
@@ -454,9 +454,62 @@ export default function SharePriceSection({ companyId, valuations, investments, 
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Price history tab ── */}
+      {priceTab === 'history' && (
+        <div>
+          {historyRows.length === 0 ? (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
+              No price history yet
+            </div>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f9f9f7' }}>
+                  <th style={thSt}>Date</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Price</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Change</th>
+                  <th style={thSt}>Type</th>
+                  <th style={thSt}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyRows.map((row, i) => (
+                  <tr key={i}>
+                    <td style={tdSt}>{formatDate(row.date)}</td>
+                    <td style={{ ...tdSt, textAlign: 'right', fontWeight: 500, fontFamily: 'monospace' }}>
+                      {fmt2(row.price)}
+                    </td>
+                    <td style={{ ...tdSt, textAlign: 'right' }}>
+                      {row.change != null ? (
+                        <span style={{ color: row.change > 0 ? '#1d9e75' : row.change < 0 ? '#a32d2d' : '#888' }}>
+                          {row.change > 0 ? '+' : ''}{fmt2(row.change)}
+                        </span>
+                      ) : <span style={{ color: '#ccc' }}>—</span>}
+                    </td>
+                    <td style={tdSt}>
+                      <span style={{
+                        fontSize: 10, padding: '1px 6px', borderRadius: 3,
+                        background: row.type === 'Investment round' ? '#e8f5f0' : '#f0f4fa',
+                        color:      row.type === 'Investment round' ? '#0a5a3d' : '#1a3a6a',
+                      }}>
+                        {row.type}
+                        {row.shareClass ? ` · ${row.shareClass}` : ''}
+                      </span>
+                    </td>
+                    <td style={{ ...tdSt, color: '#888' }}>
+                      {row.notes ?? <span style={{ color: '#ddd' }}>—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           {/* Update price panel */}
-          <div style={{ borderTop: '0.5px solid #f0f0ec', paddingTop: 14, marginTop: 4 }}>
+          <div style={{ padding: 16, borderTop: '0.5px solid #e8e7e0' }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: '#0f2744', marginBottom: 10 }}>Update share price</div>
             <form onSubmit={handleSavePrice} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
@@ -485,57 +538,6 @@ export default function SharePriceSection({ companyId, valuations, investments, 
             {saveErr && <div style={{ fontSize: 11, color: '#a32d2d', marginTop: 6 }}>{saveErr}</div>}
           </div>
         </div>
-      )}
-
-      {/* ── Price history tab ── */}
-      {priceTab === 'history' && (
-        historyRows.length === 0 ? (
-          <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
-            No price history yet
-          </div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: '#f9f9f7' }}>
-                <th style={thSt}>Date</th>
-                <th style={{ ...thSt, textAlign: 'right' }}>Price</th>
-                <th style={{ ...thSt, textAlign: 'right' }}>Change</th>
-                <th style={thSt}>Type</th>
-                <th style={thSt}>Notes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {historyRows.map((row, i) => (
-                <tr key={i}>
-                  <td style={tdSt}>{formatDate(row.date)}</td>
-                  <td style={{ ...tdSt, textAlign: 'right', fontWeight: 500, fontFamily: 'monospace' }}>
-                    {fmt2(row.price)}
-                  </td>
-                  <td style={{ ...tdSt, textAlign: 'right' }}>
-                    {row.change != null ? (
-                      <span style={{ color: row.change > 0 ? '#1d9e75' : row.change < 0 ? '#a32d2d' : '#888' }}>
-                        {row.change > 0 ? '+' : ''}{fmt2(row.change)}
-                      </span>
-                    ) : <span style={{ color: '#ccc' }}>—</span>}
-                  </td>
-                  <td style={tdSt}>
-                    <span style={{
-                      fontSize: 10, padding: '1px 6px', borderRadius: 3,
-                      background: row.type === 'Investment round' ? '#e8f5f0' : '#f0f4fa',
-                      color:      row.type === 'Investment round' ? '#0a5a3d' : '#1a3a6a',
-                    }}>
-                      {row.type}
-                      {row.shareClass ? ` · ${row.shareClass}` : ''}
-                    </span>
-                  </td>
-                  <td style={{ ...tdSt, color: '#888' }}>
-                    {row.notes ?? <span style={{ color: '#ddd' }}>—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )
       )}
     </div>
   )
