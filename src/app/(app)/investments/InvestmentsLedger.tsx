@@ -352,6 +352,7 @@ export default function InvestmentsLedger({
         <RecordTransactionModal
           companies={companies}
           clients={clients}
+          investments={investments}
           preset={modalPreset}
           onSave={handleSaved}
           onClose={() => setShowModal(false)}
@@ -688,10 +689,11 @@ function PerformanceView({ holdings }: { holdings: CompanyHolding[] }) {
 // ─── Record transaction modal ─────────────────────────────────────────────────
 
 function RecordTransactionModal({
-  companies, clients, preset, onSave, onClose,
+  companies, clients, investments, preset, onSave, onClose,
 }: {
   companies: Company[]
   clients: Client[]
+  investments: RawInvestment[]
   preset: { txType?: 'buy' | 'sell'; companyId?: string } | null
   onSave: (inv: RawInvestment[]) => void
   onClose: () => void
@@ -709,8 +711,8 @@ function RecordTransactionModal({
   // Transfer fields
   const [xferType,    setXferType]    = useState<'commercial' | 'gift'>('commercial')
   const [fromClient,  setFromClient]  = useState('')
+  const [fromLocation, setFromLocation] = useState<'direct' | 'nominee'>('direct')
   const [toClient,    setToClient]    = useState('')
-  const [buyerHeldBy, setBuyerHeldBy] = useState('')
   const [buyerLoc,    setBuyerLoc]    = useState<'direct' | 'nominee'>('direct')
   const [saving,      setSaving]      = useState(false)
   const [err,         setErr]         = useState('')
@@ -724,6 +726,31 @@ function RecordTransactionModal({
     ? (parseFloat(shares) * parseFloat(price)).toFixed(2)
     : null
 
+  // Compute available shares for the selected (client, company, share class, location)
+  const availableShares = useMemo(() => {
+    const clientId = modalType === 'transfer' ? fromClient : heldBy
+    const loc      = modalType === 'transfer' ? fromLocation : location
+    if (!clientId || !companyId || !shareClass) return null
+
+    let sharesIn = 0, sharesOut = 0
+    for (const inv of investments) {
+      if (inv.company_id      !== companyId)  continue
+      if (inv.share_class     !== shareClass)  continue
+      if (inv.client_id       !== clientId)    continue
+      if (inv.holding_location !== loc)        continue
+      const tt = inv.transaction_type ?? 'buy'
+      if (tt === 'buy' || tt === 'transfer_in')   sharesIn  += inv.shares_purchased
+      if (tt === 'sell' || tt === 'transfer_out') sharesOut += inv.shares_purchased
+    }
+    return sharesIn - sharesOut
+  }, [investments, modalType, heldBy, fromClient, fromLocation, location, companyId, shareClass])
+
+  const sharesRequested = shares ? parseInt(shares) : 0
+  const insufficientShares =
+    (modalType === 'sell' || modalType === 'transfer') &&
+    availableShares !== null &&
+    sharesRequested > availableShares
+
   async function handleSave() {
     setErr('')
     if (!companyId)  { setErr('Select a company'); return }
@@ -732,6 +759,14 @@ function RecordTransactionModal({
     if (!price)  { setErr('Enter price per share'); return }
     if (modalType !== 'transfer' && !heldBy)  { setErr('Select who holds the shares'); return }
     if (modalType === 'transfer' && (!fromClient || !toClient)) { setErr('Select both parties'); return }
+
+    // Hard block: cannot sell/transfer more than available
+    if (insufficientShares) {
+      const clientName = clients.find(c => c.id === (modalType === 'transfer' ? fromClient : heldBy))?.full_name ?? 'This investor'
+      const loc = modalType === 'transfer' ? fromLocation : location
+      setErr(`${clientName} only holds ${(availableShares ?? 0).toLocaleString()} shares in ${shareClass} (${loc}). Cannot ${modalType === 'transfer' ? 'transfer' : 'sell'} ${parseInt(shares).toLocaleString()}.`)
+      return
+    }
 
     setSaving(true)
     const supabase = createClient()
@@ -758,7 +793,7 @@ function RecordTransactionModal({
           ...base,
           client_id:                fromClient,
           transaction_type:         'transfer_out',
-          holding_location:         location,
+          holding_location:         fromLocation,
           eis_status:               'tbc',
           transfer_counterparty_id: toClient,
           transfer_type:            xferType,
@@ -913,6 +948,20 @@ function RecordTransactionModal({
           </div>
         )}
 
+        {/* Available shares indicator for sells */}
+        {modalType === 'sell' && availableShares !== null && (
+          <div style={{
+            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
+            background: insufficientShares ? '#fef2f2' : '#f0faf5',
+            border: `0.5px solid ${insufficientShares ? '#fca5a5' : '#a8dfc5'}`,
+            color: insufficientShares ? '#a32d2d' : '#0f5c38',
+          }}>
+            {insufficientShares
+              ? `⚠ Only ${availableShares.toLocaleString()} shares available at this location`
+              : `✓ ${availableShares.toLocaleString()} shares available at this location`}
+          </div>
+        )}
+
         {/* Transfer: from / to / type */}
         {modalType === 'transfer' && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -930,16 +979,16 @@ function RecordTransactionModal({
                 {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
               </select>
             </F>
+            <F label="From location *">
+              <select value={fromLocation} onChange={e => setFromLocation(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
+                <option value="direct">Direct</option>
+                <option value="nominee">Nominee</option>
+              </select>
+            </F>
             <F label="Transferring to *">
               <select value={toClient} onChange={e => setToClient(e.target.value)} style={inputStyle}>
                 <option value="">Select…</option>
                 {clients.filter(c => c.id !== fromClient).map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </select>
-            </F>
-            <F label="Recipient held by">
-              <select value={buyerHeldBy} onChange={e => setBuyerHeldBy(e.target.value)} style={inputStyle}>
-                <option value="">Same as &quot;Transferring to&quot;</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
               </select>
             </F>
             <F label="Recipient location">
@@ -948,6 +997,20 @@ function RecordTransactionModal({
                 <option value="nominee">Nominee</option>
               </select>
             </F>
+          </div>
+        )}
+
+        {/* Available shares indicator for transfers */}
+        {modalType === 'transfer' && availableShares !== null && (
+          <div style={{
+            fontSize: 11, marginBottom: 12, padding: '7px 10px', borderRadius: 5,
+            background: insufficientShares ? '#fef2f2' : '#f0faf5',
+            border: `0.5px solid ${insufficientShares ? '#fca5a5' : '#a8dfc5'}`,
+            color: insufficientShares ? '#a32d2d' : '#0f5c38',
+          }}>
+            {insufficientShares
+              ? `⚠ Only ${availableShares.toLocaleString()} shares available at this location`
+              : `✓ ${availableShares.toLocaleString()} shares available at this location`}
           </div>
         )}
 
