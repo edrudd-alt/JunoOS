@@ -5,13 +5,11 @@
 -- update_type check constraint to include 'invoice' and 'transaction'.
 -- ============================================================
 
--- 1. Add transaction_type enum + new columns to investments
-do $$ begin
-  create type transaction_type_enum as enum ('buy', 'sell', 'transfer_in', 'transfer_out');
-exception when duplicate_object then null; end $$;
-
+-- 1. Add new columns to investments
+--    transaction_type stored as text with a check constraint (avoids enum DDL complexity)
 alter table investments
-  add column if not exists transaction_type transaction_type_enum not null default 'buy',
+  add column if not exists transaction_type text not null default 'buy'
+    check (transaction_type in ('buy', 'sell', 'transfer_in', 'transfer_out')),
   add column if not exists cost_basis        numeric(20,6) null,
   add column if not exists transfer_counterparty_id uuid null
     references clients(id) on delete set null,
@@ -30,7 +28,7 @@ alter table internal_updates
   add constraint internal_updates_update_type_check
   check (update_type in (
     'valuation', 'document', 'deal', 'note',
-    'client', 'report', 'invoice', 'transaction'
+    'client', 'report', 'invoice'
   ));
 
 -- 3. Create the holdings view
