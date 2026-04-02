@@ -726,24 +726,43 @@ function RecordTransactionModal({
     ? (parseFloat(shares) * parseFloat(price)).toFixed(2)
     : null
 
-  // Compute available shares for the selected (client, company, share class, location)
+  // Net holdings per (client_id → holding_location) for the selected company + share class
+  const holdingsMap = useMemo(() => {
+    const map: Record<string, Record<string, number>> = {}
+    if (!companyId || !shareClass) return map
+    for (const inv of investments) {
+      if (inv.company_id  !== companyId)  continue
+      if (inv.share_class !== shareClass) continue
+      const { client_id, holding_location } = inv
+      if (!map[client_id]) map[client_id] = {}
+      if (!map[client_id][holding_location]) map[client_id][holding_location] = 0
+      const tt = inv.transaction_type ?? 'buy'
+      if (tt === 'buy'  || tt === 'transfer_in')  map[client_id][holding_location] += inv.shares_purchased
+      if (tt === 'sell' || tt === 'transfer_out') map[client_id][holding_location] -= inv.shares_purchased
+    }
+    return map
+  }, [investments, companyId, shareClass])
+
+  // Clients that hold any shares in this company + share class
+  const sellableClients = useMemo(
+    () => clients.filter(c => Object.values(holdingsMap[c.id] ?? {}).some(n => n > 0)),
+    [clients, holdingsMap]
+  )
+
+  // Locations where a given client has positive holdings
+  function locationsFor(clientId: string): string[] {
+    return Object.entries(holdingsMap[clientId] ?? {})
+      .filter(([, n]) => n > 0)
+      .map(([loc]) => loc)
+  }
+
+  // Available shares for the exact (client, location) currently selected
   const availableShares = useMemo(() => {
     const clientId = modalType === 'transfer' ? fromClient : heldBy
     const loc      = modalType === 'transfer' ? fromLocation : location
-    if (!clientId || !companyId || !shareClass) return null
-
-    let sharesIn = 0, sharesOut = 0
-    for (const inv of investments) {
-      if (inv.company_id      !== companyId)  continue
-      if (inv.share_class     !== shareClass)  continue
-      if (inv.client_id       !== clientId)    continue
-      if (inv.holding_location !== loc)        continue
-      const tt = inv.transaction_type ?? 'buy'
-      if (tt === 'buy' || tt === 'transfer_in')   sharesIn  += inv.shares_purchased
-      if (tt === 'sell' || tt === 'transfer_out') sharesOut += inv.shares_purchased
-    }
-    return sharesIn - sharesOut
-  }, [investments, modalType, heldBy, fromClient, fromLocation, location, companyId, shareClass])
+    if (!clientId || !loc) return null
+    return holdingsMap[clientId]?.[loc] ?? null
+  }, [holdingsMap, modalType, heldBy, fromClient, fromLocation, location])
 
   const sharesRequested = shares ? parseInt(shares) : 0
   const remainingAfter = availableShares !== null ? availableShares - sharesRequested : null
@@ -936,17 +955,42 @@ function RecordTransactionModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <F label="Held by *">
-                <select value={heldBy} onChange={e => setHeldBy(e.target.value)} style={inputStyle}>
-                  <option value="">Select client / entity…</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                <select
+                  value={heldBy}
+                  onChange={e => { setHeldBy(e.target.value); setLocation('direct') }}
+                  style={inputStyle}
+                  disabled={modalType === 'sell' && !shareClass}
+                >
+                  <option value="">
+                    {modalType === 'sell' && !shareClass
+                      ? 'Select a share class first…'
+                      : 'Select client / entity…'}
+                  </option>
+                  {(modalType === 'sell' ? sellableClients : clients).map(c =>
+                    <option key={c.id} value={c.id}>{c.full_name}</option>
+                  )}
                 </select>
               </F>
             </div>
             <F label="Location *">
-              <select value={location} onChange={e => setLocation(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
-                <option value="direct">Direct</option>
-                <option value="nominee">Nominee</option>
-              </select>
+              {modalType === 'sell' ? (
+                <select
+                  value={location}
+                  onChange={e => setLocation(e.target.value as 'direct' | 'nominee')}
+                  style={inputStyle}
+                  disabled={!heldBy}
+                >
+                  <option value="">{!heldBy ? 'Select investor first…' : 'Select…'}</option>
+                  {locationsFor(heldBy).map(loc => (
+                    <option key={loc} value={loc}>{loc.charAt(0).toUpperCase() + loc.slice(1)}</option>
+                  ))}
+                </select>
+              ) : (
+                <select value={location} onChange={e => setLocation(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
+                  <option value="direct">Direct</option>
+                  <option value="nominee">Nominee</option>
+                </select>
+              )}
             </F>
             {modalType === 'buy' && (
               <F label="EIS qualifying">
@@ -994,15 +1038,27 @@ function RecordTransactionModal({
               </F>
             </div>
             <F label="Transferring from *">
-              <select value={fromClient} onChange={e => setFromClient(e.target.value)} style={inputStyle}>
-                <option value="">Select…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+              <select
+                value={fromClient}
+                onChange={e => { setFromClient(e.target.value); setFromLocation('direct') }}
+                style={inputStyle}
+                disabled={!shareClass}
+              >
+                <option value="">{!shareClass ? 'Select a share class first…' : 'Select…'}</option>
+                {sellableClients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
               </select>
             </F>
             <F label="From location *">
-              <select value={fromLocation} onChange={e => setFromLocation(e.target.value as 'direct' | 'nominee')} style={inputStyle}>
-                <option value="direct">Direct</option>
-                <option value="nominee">Nominee</option>
+              <select
+                value={fromLocation}
+                onChange={e => setFromLocation(e.target.value as 'direct' | 'nominee')}
+                style={inputStyle}
+                disabled={!fromClient}
+              >
+                <option value="">{!fromClient ? 'Select investor first…' : 'Select…'}</option>
+                {locationsFor(fromClient).map(loc => (
+                  <option key={loc} value={loc}>{loc.charAt(0).toUpperCase() + loc.slice(1)}</option>
+                ))}
               </select>
             </F>
             <F label="Transferring to *">
