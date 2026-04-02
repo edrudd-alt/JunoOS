@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -34,31 +34,55 @@ interface ActiveInvestment {
   eis_status: string
 }
 
+interface ExistingDealInvestor {
+  id: string
+  client_id: string
+  amount: number | null
+  poa_held: boolean
+  clients: { id: string; full_name: string; email: string | null } | null
+}
+
+export interface ExistingBuyDeal {
+  id: string
+  deal_type: string
+  company_id: string | null
+  share_class: string | null
+  share_price: number | null
+  investment_date: string | null
+  eis_qualifying: string | null
+  completion_checklist: {
+    investor_data?: Record<string, {
+      shares?: number
+      shareClass?: string
+      eis?: string
+      poaHeld?: boolean
+      feeRate?: number
+    }>
+  } | null
+  deal_investors: ExistingDealInvestor[]
+}
+
 interface InvestorRow {
   uid: string
   clientId: string
   name: string
   email: string
-  // Follow-on: aggregated current holding
   currentShares: number | null
   currentValue: number | null
   currentShareClass: string | null
-  // New investment data
   shares: string
   shareClassOverride: string | null
-  eisOverride: 'yes' | 'no' | 'tbc' | null  // null = auto-derive
+  eisOverride: 'yes' | 'no' | 'tbc' | null
   poaHeld: boolean
   feePct: string
+  dealInvestorId?: string  // set for existing investors in edit mode
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
 
-function deriveEis(
-  dealEis: 'yes' | 'no' | 'tbc',
-  clientTaxStatus: string,
-): 'yes' | 'no' | 'tbc' {
+function deriveEis(dealEis: 'yes' | 'no' | 'tbc', clientTaxStatus: string): 'yes' | 'no' | 'tbc' {
   if (dealEis === 'yes' && ['eis', 'seis', 'both'].includes(clientTaxStatus)) return 'yes'
   if (dealEis === 'no') return 'no'
   return 'tbc'
@@ -72,38 +96,45 @@ export default function BuyDealForm({
   clients: clientsRaw,
   investments: investmentsRaw,
   onBack,
+  backHref,
+  existingDeal,
 }: {
   dealType: 'new_investment' | 'follow_on'
   companies: Record<string, unknown>[]
   clients: Record<string, unknown>[]
   investments: Record<string, unknown>[]
-  onBack: () => void
+  onBack?: () => void
+  backHref?: string
+  existingDeal?: ExistingBuyDeal
 }) {
-  const companies  = companiesRaw  as unknown as Company[]
-  const clients    = clientsRaw    as unknown as Client[]
+  const companies   = companiesRaw   as unknown as Company[]
+  const clients     = clientsRaw     as unknown as Client[]
   const investments = investmentsRaw as unknown as ActiveInvestment[]
-  const router     = useRouter()
-  const supabase   = createClient()
+  const router      = useRouter()
+  const supabase    = createClient()
 
-  // Deal header
-  const [companyId,      setCompanyId]      = useState('')
-  const [shareClass,     setShareClass]     = useState('')
-  const [sharePrice,     setSharePrice]     = useState('')
-  const [investmentDate, setInvestmentDate] = useState(new Date().toISOString().slice(0, 10))
-  const [eisQualifying,  setEisQualifying]  = useState<'yes' | 'no' | 'tbc'>('tbc')
+  const isEditMode = !!existingDeal
+  const isFollowOn = dealType === 'follow_on'
 
-  // Investor rows
+  // Deal header — initialise from existingDeal when editing
+  const [companyId,      setCompanyId]      = useState(existingDeal?.company_id ?? '')
+  const [shareClass,     setShareClass]     = useState(existingDeal?.share_class ?? '')
+  const [sharePrice,     setSharePrice]     = useState(existingDeal?.share_price != null ? String(existingDeal.share_price) : '')
+  const [investmentDate, setInvestmentDate] = useState(existingDeal?.investment_date ?? new Date().toISOString().slice(0, 10))
+  const [eisQualifying,  setEisQualifying]  = useState<'yes' | 'no' | 'tbc'>(
+    (existingDeal?.eis_qualifying as 'yes' | 'no' | 'tbc') ?? 'tbc'
+  )
+
   const [rows,         setRows]         = useState<InvestorRow[]>([])
   const [clientSearch, setClientSearch] = useState('')
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
 
-  const isFollowOn       = dealType === 'follow_on'
-  const selectedCompany  = companies.find(c => c.id === companyId)
-  const shareClasses     = Array.isArray(selectedCompany?.share_classes) ? selectedCompany!.share_classes : []
-  const sharePriceNum    = parseFloat(sharePrice) || 0
+  const selectedCompany = companies.find(c => c.id === companyId)
+  const shareClasses    = Array.isArray(selectedCompany?.share_classes) ? selectedCompany!.share_classes : []
+  const sharePriceNum   = parseFloat(sharePrice) || 0
 
-  // Pre-group investments by company → client
+  // Group investments by company → client
   const holdingsByCompany = useMemo(() => {
     const map = new Map<string, Map<string, { shares: number; cost: number; shareClass: string }>>()
     for (const inv of investments) {
@@ -124,8 +155,42 @@ export default function BuyDealForm({
     return map
   }, [investments])
 
-  // Auto-populate investors for follow-on when company changes
+  // Populate rows from existingDeal (edit mode) — runs once
+  const editInitRef = useRef(false)
   useEffect(() => {
+    if (!isEditMode || editInitRef.current || !existingDeal) return
+    editInitRef.current = true
+    const holdings = holdingsByCompany.get(existingDeal.company_id ?? '')
+    const newRows: InvestorRow[] = existingDeal.deal_investors.map(di => {
+      const clientId = di.client_id
+      const iData    = existingDeal.completion_checklist?.investor_data?.[clientId]
+      const client   = clients.find(c => c.id === clientId)
+      const holding  = holdings?.get(clientId) ?? null
+      const sharesFromData   = iData?.shares ?? 0
+      const sharesFromAmount = (di.amount != null && sharePriceNum > 0)
+        ? Math.round(di.amount / sharePriceNum) : 0
+      return {
+        uid:               uid(),
+        clientId,
+        name:              di.clients?.full_name ?? client?.full_name ?? '',
+        email:             di.clients?.email ?? client?.email ?? '',
+        currentShares:     holding?.shares ?? null,
+        currentValue:      holding?.cost ?? null,
+        currentShareClass: holding?.shareClass ?? null,
+        shares:            String(sharesFromData || sharesFromAmount || ''),
+        shareClassOverride: iData?.shareClass ?? null,
+        eisOverride:       (iData?.eis as 'yes' | 'no' | 'tbc') ?? null,
+        poaHeld:           iData?.poaHeld ?? di.poa_held ?? false,
+        feePct:            String(iData?.feeRate ?? client?.default_fee_rate ?? 2),
+        dealInvestorId:    di.id,
+      }
+    })
+    setRows(newRows)
+  }, [isEditMode, existingDeal, holdingsByCompany, clients, sharePriceNum])
+
+  // Auto-populate investors for follow-on when company changes (create mode only)
+  useEffect(() => {
+    if (isEditMode) return
     if (!isFollowOn || !companyId) {
       if (isFollowOn) setRows([])
       return
@@ -138,42 +203,34 @@ export default function BuyDealForm({
       const client = clients.find(c => c.id === clientId)
       if (!client) continue
       newRows.push({
-        uid:              uid(),
+        uid:               uid(),
         clientId,
-        name:             client.full_name,
-        email:            client.email ?? '',
-        currentShares:    holding.shares,
-        currentValue:     holding.cost,
+        name:              client.full_name,
+        email:             client.email ?? '',
+        currentShares:     holding.shares,
+        currentValue:      holding.cost,
         currentShareClass: holding.shareClass,
-        shares:           '',
+        shares:            '',
         shareClassOverride: null,
-        eisOverride:      null,
-        poaHeld:          false,
-        feePct:           String(client.default_fee_rate || 2),
+        eisOverride:       null,
+        poaHeld:           false,
+        feePct:            String(client.default_fee_rate || 2),
       })
     }
     setRows(newRows)
-  }, [companyId, isFollowOn, holdingsByCompany, clients])
-
-  // When eisQualifying changes, re-derive EIS for non-overridden rows
-  useEffect(() => {
-    setRows(prev => prev.map(row => {
-      if (row.eisOverride !== null) return row
-      return row
-    }))
-  }, [eisQualifying])
+  }, [companyId, isFollowOn, holdingsByCompany, clients, isEditMode])
 
   // Compute derived values for a single row
   const computeRow = useCallback((row: InvestorRow) => {
-    const sharesNum    = parseFloat(row.shares) || 0
-    const cost         = sharesNum * sharePriceNum
-    const feePct       = parseFloat(row.feePct) || 0
-    const feePayable   = cost * feePct / 100
-    const totalCost    = cost + feePayable
-    const client       = clients.find(c => c.id === row.clientId)
-    const autoEis      = deriveEis(eisQualifying, client?.tax_status ?? '')
-    const eisStatus    = row.eisOverride ?? autoEis
-    const sc           = row.shareClassOverride ?? shareClass
+    const sharesNum  = parseFloat(row.shares) || 0
+    const cost       = sharesNum * sharePriceNum
+    const feePct     = parseFloat(row.feePct) || 0
+    const feePayable = cost * feePct / 100
+    const totalCost  = cost + feePayable
+    const client     = clients.find(c => c.id === row.clientId)
+    const autoEis    = deriveEis(eisQualifying, client?.tax_status ?? '')
+    const eisStatus  = row.eisOverride ?? autoEis
+    const sc         = row.shareClassOverride ?? shareClass
     return { sharesNum, cost, feePayable, totalCost, eisStatus, sc, feePct }
   }, [sharePriceNum, eisQualifying, shareClass, clients])
 
@@ -182,10 +239,10 @@ export default function BuyDealForm({
     return rows.reduce((acc, row) => {
       const { sharesNum, cost, feePayable, totalCost } = computeRow(row)
       return {
-        shares:  acc.shares  + sharesNum,
-        cost:    acc.cost    + cost,
-        fees:    acc.fees    + feePayable,
-        total:   acc.total   + totalCost,
+        shares: acc.shares + sharesNum,
+        cost:   acc.cost   + cost,
+        fees:   acc.fees   + feePayable,
+        total:  acc.total  + totalCost,
       }
     }, { shares: 0, cost: 0, fees: 0, total: 0 })
   }, [rows, computeRow])
@@ -201,46 +258,46 @@ export default function BuyDealForm({
   function addInvestor(client: Client) {
     const holding = holdingsByCompany.get(companyId)?.get(client.id) ?? null
     setRows(prev => [...prev, {
-      uid:              uid(),
-      clientId:         client.id,
-      name:             client.full_name,
-      email:            client.email ?? '',
-      currentShares:    holding?.shares ?? null,
-      currentValue:     holding?.cost ?? null,
+      uid:               uid(),
+      clientId:          client.id,
+      name:              client.full_name,
+      email:             client.email ?? '',
+      currentShares:     holding?.shares ?? null,
+      currentValue:      holding?.cost ?? null,
       currentShareClass: holding?.shareClass ?? null,
-      shares:           '',
+      shares:            '',
       shareClassOverride: null,
-      eisOverride:      null,
-      poaHeld:          false,
-      feePct:           String(client.default_fee_rate || 2),
+      eisOverride:       null,
+      poaHeld:           false,
+      feePct:            String(client.default_fee_rate || 2),
     }])
     setClientSearch('')
   }
 
-  // Filtered clients for search (exclude already-added, exclude linked entities)
-  const existingIds      = new Set(rows.map(r => r.clientId))
-  const filteredClients  = clients.filter(c =>
+  const existingIds     = new Set(rows.map(r => r.clientId))
+  const filteredClients = clients.filter(c =>
     !c.lead_investor_id &&
     !existingIds.has(c.id) &&
     c.full_name.toLowerCase().includes(clientSearch.toLowerCase())
   )
 
+  function handleBack() {
+    if (onBack) { onBack(); return }
+    if (backHref) { router.push(backHref); return }
+    router.push('/deals')
+  }
+
   async function handleSave() {
-    if (!companyId)        { setError('Please select a company'); return }
-    if (!sharePrice || sharePriceNum <= 0) { setError('Please enter a valid share price'); return }
-    if (rows.length === 0) { setError('Please add at least one investor'); return }
-    const missingShares = rows.some(r => !(parseFloat(r.shares) > 0))
-    if (missingShares)     { setError('Please enter shares for all investors'); return }
+    if (!companyId)                         { setError('Please select a company'); return }
+    if (!sharePrice || sharePriceNum <= 0)  { setError('Please enter a valid share price'); return }
+    if (rows.length === 0)                  { setError('Please add at least one investor'); return }
+    if (rows.some(r => !(parseFloat(r.shares) > 0))) { setError('Please enter shares for all investors'); return }
 
     setSaving(true)
     setError('')
 
     // Build investor_data for completion_checklist
-    const investorData: Record<string, {
-      name: string; shares: number; shareClass: string; eis: string
-      poaHeld: boolean; feeRate: number; cost: number; feePayable: number; totalCost: number
-      currentShares: number | null
-    }> = {}
+    const investorData: Record<string, unknown> = {}
     for (const row of rows) {
       const { sharesNum, cost, feePayable, totalCost, eisStatus, sc, feePct } = computeRow(row)
       investorData[row.clientId] = {
@@ -252,65 +309,113 @@ export default function BuyDealForm({
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    const { data: deal, error: dealErr } = await supabase
-      .from('deals')
-      .insert({
-        deal_type:         dealType,
-        company_id:        companyId,
-        share_class:       shareClass || null,
-        share_price:       sharePriceNum,
-        investment_amount: totals.cost || null,
-        investment_date:   investmentDate,
-        eis_qualifying:    eisQualifying,
-        status:            'draft',
-        completion_checklist: { investor_data: investorData },
-        created_by:        user?.id ?? null,
-      })
-      .select('id')
-      .single()
-
-    if (dealErr || !deal) {
-      setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
-      setSaving(false)
-      return
-    }
-
-    // Create deal_investors
-    await supabase.from('deal_investors').insert(
-      rows.map(row => ({
-        deal_id:        deal.id,
-        client_id:      row.clientId,
-        amount:         computeRow(row).cost || null,
-        poa_held:       row.poaHeld,
-        signing_status: 'pending',
-      }))
-    )
-
-    // Create pending investments
-    for (const row of rows) {
-      const { sharesNum, eisStatus, sc } = computeRow(row)
-      await supabase.from('investments').insert({
-        client_id:            row.clientId,
-        company_id:           companyId,
-        share_class:          sc || null,
+    if (isEditMode && existingDeal) {
+      // ── Edit mode: update existing deal ──────────────────────────────────────
+      const existingChecklist = existingDeal.completion_checklist ?? {}
+      await supabase.from('deals').update({
+        share_class:          shareClass || null,
+        share_price:          sharePriceNum,
+        investment_amount:    totals.cost || null,
         investment_date:      investmentDate,
-        original_share_price: sharePriceNum,
-        shares_purchased:     sharesNum,
-        sum_subscribed:       sharesNum * sharePriceNum,
-        eis_status:           eisStatus,
-        holding_location:     'direct',
-        status:               'pending',
+        eis_qualifying:       eisQualifying,
+        completion_checklist: { ...existingChecklist, investor_data: investorData },
+        updated_at:           new Date().toISOString(),
+      }).eq('id', existingDeal.id)
+
+      // Update existing deal_investors
+      for (const row of rows.filter(r => r.dealInvestorId)) {
+        await supabase.from('deal_investors').update({
+          amount:   computeRow(row).cost || null,
+          poa_held: row.poaHeld,
+        }).eq('id', row.dealInvestorId!)
+      }
+
+      // Insert new deal_investors + pending investments
+      const newRows = rows.filter(r => !r.dealInvestorId)
+      for (const row of newRows) {
+        const { sharesNum, cost, eisStatus, sc } = computeRow(row)
+        await supabase.from('deal_investors').insert({
+          deal_id:        existingDeal.id,
+          client_id:      row.clientId,
+          amount:         cost || null,
+          poa_held:       row.poaHeld,
+          signing_status: 'pending',
+        })
+        await supabase.from('investments').insert({
+          client_id:            row.clientId,
+          company_id:           companyId,
+          share_class:          sc || null,
+          investment_date:      investmentDate,
+          original_share_price: sharePriceNum,
+          shares_purchased:     sharesNum,
+          sum_subscribed:       sharesNum * sharePriceNum,
+          eis_status:           eisStatus,
+          holding_location:     'direct',
+          status:               'pending',
+        })
+      }
+
+      router.push(`/deals/${existingDeal.id}`)
+    } else {
+      // ── Create mode: insert new deal ─────────────────────────────────────────
+      const { data: deal, error: dealErr } = await supabase
+        .from('deals')
+        .insert({
+          deal_type:            dealType,
+          company_id:           companyId,
+          share_class:          shareClass || null,
+          share_price:          sharePriceNum,
+          investment_amount:    totals.cost || null,
+          investment_date:      investmentDate,
+          eis_qualifying:       eisQualifying,
+          status:               'draft',
+          completion_checklist: { investor_data: investorData },
+          created_by:           user?.id ?? null,
+        })
+        .select('id')
+        .single()
+
+      if (dealErr || !deal) {
+        setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
+        setSaving(false)
+        return
+      }
+
+      await supabase.from('deal_investors').insert(
+        rows.map(row => ({
+          deal_id:        deal.id,
+          client_id:      row.clientId,
+          amount:         computeRow(row).cost || null,
+          poa_held:       row.poaHeld,
+          signing_status: 'pending',
+        }))
+      )
+
+      for (const row of rows) {
+        const { sharesNum, eisStatus, sc } = computeRow(row)
+        await supabase.from('investments').insert({
+          client_id:            row.clientId,
+          company_id:           companyId,
+          share_class:          sc || null,
+          investment_date:      investmentDate,
+          original_share_price: sharePriceNum,
+          shares_purchased:     sharesNum,
+          sum_subscribed:       sharesNum * sharePriceNum,
+          eis_status:           eisStatus,
+          holding_location:     'direct',
+          status:               'pending',
+        })
+      }
+
+      await supabase.from('internal_updates').insert({
+        company_id:  companyId,
+        update_type: 'deal',
+        description: `Deal created: ${isFollowOn ? 'Follow-on investment' : 'New investment'} — ${selectedCompany?.name ?? ''} (${rows.length} investor${rows.length !== 1 ? 's' : ''})`,
+        created_by:  user?.id ?? null,
       })
+
+      router.push(`/deals/${deal.id}`)
     }
-
-    await supabase.from('internal_updates').insert({
-      company_id:  companyId,
-      update_type: 'deal',
-      description: `Deal created: ${isFollowOn ? 'Follow-on investment' : 'New investment'} — ${selectedCompany?.name ?? ''} (${rows.length} investor${rows.length !== 1 ? 's' : ''})`,
-      created_by:  user?.id ?? null,
-    })
-
-    router.push(`/deals/${deal.id}`)
   }
 
   return (
@@ -319,9 +424,15 @@ export default function BuyDealForm({
       <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
         <Link href="/deals" style={{ color: '#888', textDecoration: 'none' }}>Deals</Link>
         {' › '}
-        <button onClick={onBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
-          New deal
-        </button>
+        {isEditMode ? (
+          <button onClick={handleBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
+            {selectedCompany?.name ?? 'Deal'}
+          </button>
+        ) : (
+          <button onClick={handleBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
+            New deal
+          </button>
+        )}
         {' › '}
         {isFollowOn ? 'Follow-on Investment' : 'New Investment'}
       </div>
@@ -331,14 +442,14 @@ export default function BuyDealForm({
           <h1 style={{ fontSize: 17, fontWeight: 500, margin: 0 }}>
             {isFollowOn ? 'Follow-on Investment' : 'New Investment'}
           </h1>
-          {companyId && selectedCompany && (
+          {selectedCompany && (
             <p style={{ fontSize: 12, color: '#888', margin: '2px 0 0' }}>{selectedCompany.name}</p>
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onBack} className="btn btn-secondary">← Back</button>
+          <button onClick={handleBack} className="btn btn-secondary">← Back</button>
           <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : 'Save deal'}
+            {saving ? 'Saving…' : isEditMode ? 'Save changes' : 'Save deal'}
           </button>
         </div>
       </div>
@@ -359,8 +470,9 @@ export default function BuyDealForm({
             <label style={labelSt}>Company *</label>
             <select
               value={companyId}
-              onChange={e => { setCompanyId(e.target.value); setShareClass('') }}
-              style={inputSt}
+              onChange={e => { if (!isEditMode) { setCompanyId(e.target.value); setShareClass('') } }}
+              style={{ ...inputSt, background: isEditMode ? '#f9f9f7' : '#fff', color: isEditMode ? '#555' : undefined }}
+              disabled={isEditMode}
             >
               <option value="">Select company…</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -384,7 +496,7 @@ export default function BuyDealForm({
                 value={sharePrice}
                 onChange={e => setSharePrice(e.target.value)}
                 style={{ ...inputSt, paddingLeft: 24 }}
-                placeholder="0.00"
+                placeholder="0.0000"
               />
             </div>
           </div>
@@ -407,13 +519,16 @@ export default function BuyDealForm({
 
       {/* ── Investor table ── */}
       <div className="card" style={{ padding: 0, overflow: 'visible' }}>
-        {/* Header */}
         <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744' }}>
             Investors
             {rows.length > 0 && <span style={{ fontWeight: 400, color: '#888', marginLeft: 6 }}>({rows.length})</span>}
+            {isEditMode && rows.some(r => !r.dealInvestorId) && (
+              <span style={{ fontSize: 10, color: '#1d9e75', marginLeft: 8, fontWeight: 400 }}>
+                +{rows.filter(r => !r.dealInvestorId).length} new
+              </span>
+            )}
           </div>
-          {/* Search */}
           <div style={{ position: 'relative' }}>
             <input
               type="search"
@@ -451,7 +566,6 @@ export default function BuyDealForm({
           </div>
         </div>
 
-        {/* Empty state */}
         {rows.length === 0 && (
           <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
             {isFollowOn && !companyId
@@ -460,7 +574,6 @@ export default function BuyDealForm({
           </div>
         )}
 
-        {/* Table */}
         {rows.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -482,17 +595,19 @@ export default function BuyDealForm({
               <tbody>
                 {rows.map(row => {
                   const { sharesNum, cost, feePayable, totalCost, eisStatus, sc } = computeRow(row)
-                  const hasError = !parseFloat(row.shares)
+                  const hasError  = !parseFloat(row.shares)
+                  const isExisting = !!row.dealInvestorId
 
                   return (
-                    <tr key={row.uid} style={{ background: hasError ? '#fffaf0' : undefined }}>
-                      {/* Investor */}
+                    <tr key={row.uid} style={{ background: hasError ? '#fffaf0' : isExisting ? undefined : '#f0faf6' }}>
                       <td style={tdSt}>
-                        <div style={{ fontWeight: 500 }}>{row.name}</div>
+                        <div style={{ fontWeight: 500 }}>
+                          {row.name}
+                          {isExisting && <span style={{ fontSize: 10, color: '#aaa', marginLeft: 6 }}>existing</span>}
+                        </div>
                         {row.email && <div style={{ fontSize: 10, color: '#aaa' }}>{row.email}</div>}
                       </td>
 
-                      {/* Current holding (follow-on) */}
                       {isFollowOn && (
                         <td style={tdSt}>
                           {row.currentShares != null ? (
@@ -504,7 +619,6 @@ export default function BuyDealForm({
                         </td>
                       )}
 
-                      {/* Shares input */}
                       <td style={tdSt}>
                         <input
                           type="number" min="0" step="1"
@@ -515,12 +629,10 @@ export default function BuyDealForm({
                         />
                       </td>
 
-                      {/* Cost */}
                       <td style={tdSt}>
                         {cost > 0 ? <span style={{ fontWeight: 500 }}>{formatCurrency(cost)}</span> : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Share class */}
                       <td style={tdSt}>
                         <select
                           value={row.shareClassOverride ?? shareClass}
@@ -535,7 +647,6 @@ export default function BuyDealForm({
                         </select>
                       </td>
 
-                      {/* EIS */}
                       <td style={tdSt}>
                         <select
                           value={row.eisOverride ?? eisStatus}
@@ -548,7 +659,6 @@ export default function BuyDealForm({
                         </select>
                       </td>
 
-                      {/* PoA */}
                       <td style={{ ...tdSt, textAlign: 'center' }}>
                         <input
                           type="checkbox"
@@ -558,7 +668,6 @@ export default function BuyDealForm({
                         />
                       </td>
 
-                      {/* Fee % */}
                       <td style={tdSt}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input
@@ -571,17 +680,14 @@ export default function BuyDealForm({
                         </div>
                       </td>
 
-                      {/* Fee payable */}
                       <td style={tdSt}>
                         {feePayable > 0 ? formatCurrency(feePayable) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Total cost */}
                       <td style={{ ...tdSt, fontWeight: 600 }}>
                         {totalCost > 0 ? formatCurrency(totalCost) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Remove */}
                       <td style={{ ...tdSt, textAlign: 'center' }}>
                         <button
                           onClick={() => removeRow(row.uid)}
@@ -600,7 +706,6 @@ export default function BuyDealForm({
           </div>
         )}
 
-        {/* Aggregate strip */}
         {rows.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderTop: '0.5px solid #e8e7e0', background: '#f9f9f7' }}>
             <AggCell label={`${rows.length} investor${rows.length !== 1 ? 's' : ''}`} />

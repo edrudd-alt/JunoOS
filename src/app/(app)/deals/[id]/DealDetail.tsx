@@ -332,14 +332,25 @@ export default function DealDetail({
           </div>
         </div>
         {deal.status !== 'complete' ? (
-          <button
-            className="btn btn-primary"
-            onClick={markComplete}
-            disabled={completing || !canComplete}
-            title={!canComplete ? 'Complete all checklist items first' : undefined}
-          >
-            {completing ? 'Completing…' : 'Mark complete'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(isBuyDeal || isSaleDeal) && (
+              <Link
+                href={`/deals/${deal.id}/edit`}
+                className="btn btn-secondary"
+                style={{ fontSize: 13 }}
+              >
+                Edit investors
+              </Link>
+            )}
+            <button
+              className="btn btn-primary"
+              onClick={markComplete}
+              disabled={completing || !canComplete}
+              title={!canComplete ? 'Complete all checklist items first' : undefined}
+            >
+              {completing ? 'Completing…' : 'Mark complete'}
+            </button>
+          </div>
         ) : (
           <span className="pill pill-green">✓ Completed</span>
         )}

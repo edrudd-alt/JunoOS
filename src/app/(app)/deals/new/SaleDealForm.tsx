@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
@@ -34,21 +34,48 @@ interface ActiveInvestment {
   eis_status: string
 }
 
+interface ExistingDealInvestor {
+  id: string
+  client_id: string
+  amount: number | null
+  poa_held: boolean
+  clients: { id: string; full_name: string; email: string | null } | null
+}
+
+export interface ExistingSaleDeal {
+  id: string
+  deal_type: string
+  company_id: string | null
+  share_price: number | null
+  investment_date: string | null
+  completion_checklist: {
+    investor_data?: Record<string, {
+      sharesSold?: number
+      totalShares?: number
+      avgCostPrice?: number
+      grossProceeds?: number
+      pnl?: number
+      netProceeds?: number
+      remaining?: number
+      feeRate?: number
+      shareClass?: string
+    }>
+  } | null
+  deal_investors: ExistingDealInvestor[]
+}
+
 interface SaleRow {
   uid: string
   clientId: string
   name: string
   email: string
-  // Current aggregated holding
   totalShares: number
   totalCost: number
   avgCostPrice: number
   shareClass: string
-  // Sale data
-  sharesSold: string  // editable for partial exit
-  poaConfirmed: boolean
-  bankDetailsReceived: boolean
+  sharesSold: string
   feePct: string
+  dealInvestorId?: string
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -63,12 +90,16 @@ export default function SaleDealForm({
   clients: clientsRaw,
   investments: investmentsRaw,
   onBack,
+  backHref,
+  existingDeal,
 }: {
   dealType: 'full_exit' | 'partial_exit'
   companies: Record<string, unknown>[]
   clients: Record<string, unknown>[]
   investments: Record<string, unknown>[]
-  onBack: () => void
+  onBack?: () => void
+  backHref?: string
+  existingDeal?: ExistingSaleDeal
 }) {
   const companies   = companiesRaw   as unknown as Company[]
   const clients     = clientsRaw     as unknown as Client[]
@@ -77,13 +108,13 @@ export default function SaleDealForm({
   const supabase    = createClient()
 
   const isFullExit = dealType === 'full_exit'
+  const isEditMode = !!existingDeal
 
   // Deal header
-  const [companyId,   setCompanyId]   = useState('')
-  const [salePrice,   setSalePrice]   = useState('')
-  const [saleDate,    setSaleDate]    = useState(new Date().toISOString().slice(0, 10))
+  const [companyId, setCompanyId] = useState(existingDeal?.company_id ?? '')
+  const [salePrice, setSalePrice] = useState(existingDeal?.share_price != null ? String(existingDeal.share_price) : '')
+  const [saleDate,  setSaleDate]  = useState(existingDeal?.investment_date ?? new Date().toISOString().slice(0, 10))
 
-  // Rows
   const [rows,   setRows]   = useState<SaleRow[]>([])
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -112,8 +143,40 @@ export default function SaleDealForm({
     return map
   }, [investments])
 
-  // Auto-populate rows when company changes
+  // Populate rows from existingDeal (edit mode) — runs once
+  const editInitRef = useRef(false)
   useEffect(() => {
+    if (!isEditMode || editInitRef.current || !existingDeal) return
+    editInitRef.current = true
+    const holdings = holdingsByCompany.get(existingDeal.company_id ?? '')
+    const newRows: SaleRow[] = existingDeal.deal_investors.map(di => {
+      const clientId = di.client_id
+      const iData    = existingDeal.completion_checklist?.investor_data?.[clientId]
+      const client   = clients.find(c => c.id === clientId)
+      const holding  = holdings?.get(clientId) ?? null
+      const totalShares  = iData?.totalShares ?? holding?.shares ?? 0
+      const totalCost    = holding?.cost ?? 0
+      const avgCostPrice = totalShares > 0 ? totalCost / totalShares : 0
+      return {
+        uid:           uid(),
+        clientId,
+        name:          di.clients?.full_name ?? client?.full_name ?? '',
+        email:         di.clients?.email ?? client?.email ?? '',
+        totalShares,
+        totalCost,
+        avgCostPrice,
+        shareClass:    iData?.shareClass ?? holding?.shareClass ?? '',
+        sharesSold:    String(iData?.sharesSold ?? (isFullExit ? totalShares : '')),
+        feePct:        String(iData?.feeRate ?? client?.default_fee_rate ?? 2),
+        dealInvestorId: di.id,
+      }
+    })
+    setRows(newRows)
+  }, [isEditMode, existingDeal, holdingsByCompany, clients, isFullExit])
+
+  // Auto-populate rows when company changes (create mode only)
+  useEffect(() => {
+    if (isEditMode) return
     if (!companyId) { setRows([]); return }
     const holdings = holdingsByCompany.get(companyId)
     if (!holdings) { setRows([]); return }
@@ -124,47 +187,37 @@ export default function SaleDealForm({
       if (!client) continue
       const avgCostPrice = holding.shares > 0 ? holding.cost / holding.shares : 0
       newRows.push({
-        uid:                 uid(),
+        uid:        uid(),
         clientId,
-        name:                client.full_name,
-        email:               client.email ?? '',
-        totalShares:         holding.shares,
-        totalCost:           holding.cost,
+        name:       client.full_name,
+        email:      client.email ?? '',
+        totalShares: holding.shares,
+        totalCost:   holding.cost,
         avgCostPrice,
-        shareClass:          holding.shareClass,
-        sharesSold:          isFullExit ? String(holding.shares) : '',
-        poaConfirmed:        false,
-        bankDetailsReceived: false,
-        feePct:              String(client.default_fee_rate || 2),
+        shareClass:  holding.shareClass,
+        sharesSold:  isFullExit ? String(holding.shares) : '',
+        feePct:      String(client.default_fee_rate || 2),
       })
     }
     setRows(newRows)
-  }, [companyId, holdingsByCompany, clients, isFullExit])
+  }, [companyId, holdingsByCompany, clients, isFullExit, isEditMode])
 
-  // Compute derived values for a single row
   const computeRow = useCallback((row: SaleRow) => {
-    const sharesSoldNum  = parseFloat(row.sharesSold) || 0
-    const grossProceeds  = sharesSoldNum * salePriceNum
-    const costOfSold     = row.totalShares > 0
-      ? (row.totalCost / row.totalShares) * sharesSoldNum
-      : 0
-    const pnl            = grossProceeds - costOfSold
-    const feePct         = parseFloat(row.feePct) || 0
-    const feePayable     = pnl > 0 ? pnl * feePct / 100 : 0
-    const netProceeds    = grossProceeds - feePayable
-    const remaining      = row.totalShares - sharesSoldNum
-    const remainingPct   = row.totalShares > 0 ? (remaining / row.totalShares) * 100 : 0
-    const oversold       = sharesSoldNum > row.totalShares
-    const lowRemaining   = !isFullExit && remaining > 0 && remainingPct < 5
+    const sharesSoldNum = parseFloat(row.sharesSold) || 0
+    const grossProceeds = sharesSoldNum * salePriceNum
+    const costOfSold    = row.totalShares > 0 ? (row.totalCost / row.totalShares) * sharesSoldNum : 0
+    const pnl           = grossProceeds - costOfSold
+    const feePct        = parseFloat(row.feePct) || 0
+    const feePayable    = pnl > 0 ? pnl * feePct / 100 : 0
+    const netProceeds   = grossProceeds - feePayable
+    const remaining     = row.totalShares - sharesSoldNum
+    const remainingPct  = row.totalShares > 0 ? (remaining / row.totalShares) * 100 : 0
+    const oversold      = sharesSoldNum > row.totalShares
+    const lowRemaining  = !isFullExit && remaining > 0 && remainingPct < 5
 
-    return {
-      sharesSoldNum, grossProceeds, costOfSold,
-      pnl, feePct, feePayable, netProceeds,
-      remaining, remainingPct, oversold, lowRemaining,
-    }
+    return { sharesSoldNum, grossProceeds, costOfSold, pnl, feePct, feePayable, netProceeds, remaining, remainingPct, oversold, lowRemaining }
   }, [salePriceNum, isFullExit])
 
-  // Aggregates
   const totals = useMemo(() => {
     return rows.reduce((acc, row) => {
       const { sharesSoldNum, grossProceeds, pnl, feePayable, netProceeds } = computeRow(row)
@@ -182,91 +235,108 @@ export default function SaleDealForm({
     setRows(prev => prev.map(r => r.uid === rowUid ? { ...r, ...updates } : r))
   }
 
-  // Validation
-  const hasOversold = rows.some(r => computeRow(r).oversold)
-  const hasLowRemaining = rows.some(r => computeRow(r).lowRemaining)
+  const hasOversold      = rows.some(r => computeRow(r).oversold)
+  const hasLowRemaining  = rows.some(r => computeRow(r).lowRemaining)
+
+  function handleBack() {
+    if (onBack) { onBack(); return }
+    if (backHref) { router.push(backHref); return }
+    router.push('/deals')
+  }
 
   async function handleSave() {
-    if (!companyId)                  { setError('Please select a company'); return }
-    if (!salePrice || salePriceNum <= 0) { setError('Please enter a valid sale price'); return }
-    if (rows.length === 0)           { setError('No investors found for this company'); return }
-    const missingShares = rows.some(r => !(parseFloat(r.sharesSold) > 0))
-    if (missingShares)               { setError('Please enter shares sold for all investors'); return }
-    if (hasOversold)                 { setError('One or more investors have more shares sold than currently held'); return }
+    if (!companyId)                          { setError('Please select a company'); return }
+    if (!salePrice || salePriceNum <= 0)     { setError('Please enter a valid sale price'); return }
+    if (rows.length === 0)                   { setError('No investors found for this company'); return }
+    if (rows.some(r => !(parseFloat(r.sharesSold) > 0))) { setError('Please enter shares sold for all investors'); return }
+    if (hasOversold)                         { setError('One or more investors have more shares sold than currently held'); return }
 
     setSaving(true)
     setError('')
 
-    // Build investor_data for completion_checklist
-    const investorData: Record<string, {
-      name: string; totalShares: number; sharesSold: number; remaining: number
-      avgCostPrice: number; grossProceeds: number; pnl: number
-      feeRate: number; feePayable: number; netProceeds: number
-      shareClass: string; poaConfirmed: boolean; bankDetailsReceived: boolean
-    }> = {}
+    const investorData: Record<string, unknown> = {}
     for (const row of rows) {
       const { sharesSoldNum, grossProceeds, pnl, feePct, feePayable, netProceeds, remaining } = computeRow(row)
       investorData[row.clientId] = {
-        name:                row.name,
-        totalShares:         row.totalShares,
-        sharesSold:          sharesSoldNum,
-        remaining,
-        avgCostPrice:        row.avgCostPrice,
-        grossProceeds,
-        pnl,
-        feeRate:             feePct,
-        feePayable,
-        netProceeds,
-        shareClass:          row.shareClass,
-        poaConfirmed:        row.poaConfirmed,
-        bankDetailsReceived: row.bankDetailsReceived,
+        name: row.name, totalShares: row.totalShares, sharesSold: sharesSoldNum, remaining,
+        avgCostPrice: row.avgCostPrice, grossProceeds, pnl, feeRate: feePct,
+        feePayable, netProceeds, shareClass: row.shareClass,
       }
     }
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    const totalGrossProceeds = totals.grossProceeds
+    if (isEditMode && existingDeal) {
+      // ── Edit mode ──────────────────────────────────────────────────────────
+      const existingChecklist = existingDeal.completion_checklist ?? {}
+      await supabase.from('deals').update({
+        share_price:          salePriceNum,
+        investment_amount:    totals.grossProceeds || null,
+        investment_date:      saleDate,
+        completion_checklist: { ...existingChecklist, investor_data: investorData },
+        updated_at:           new Date().toISOString(),
+      }).eq('id', existingDeal.id)
 
-    const { data: deal, error: dealErr } = await supabase
-      .from('deals')
-      .insert({
-        deal_type:         dealType,
-        company_id:        companyId,
-        share_price:       salePriceNum,
-        investment_amount: totalGrossProceeds || null,
-        investment_date:   saleDate,
-        status:            'draft',
-        completion_checklist: { investor_data: investorData },
-        created_by:        user?.id ?? null,
+      for (const row of rows.filter(r => r.dealInvestorId)) {
+        await supabase.from('deal_investors').update({
+          amount: computeRow(row).grossProceeds || null,
+        }).eq('id', row.dealInvestorId!)
+      }
+
+      const newRows = rows.filter(r => !r.dealInvestorId)
+      for (const row of newRows) {
+        await supabase.from('deal_investors').insert({
+          deal_id:        existingDeal.id,
+          client_id:      row.clientId,
+          amount:         computeRow(row).grossProceeds || null,
+          poa_held:       false,
+          signing_status: 'pending',
+        })
+      }
+
+      router.push(`/deals/${existingDeal.id}`)
+    } else {
+      // ── Create mode ────────────────────────────────────────────────────────
+      const { data: deal, error: dealErr } = await supabase
+        .from('deals')
+        .insert({
+          deal_type:            dealType,
+          company_id:           companyId,
+          share_price:          salePriceNum,
+          investment_amount:    totals.grossProceeds || null,
+          investment_date:      saleDate,
+          status:               'draft',
+          completion_checklist: { investor_data: investorData },
+          created_by:           user?.id ?? null,
+        })
+        .select('id')
+        .single()
+
+      if (dealErr || !deal) {
+        setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
+        setSaving(false)
+        return
+      }
+
+      await supabase.from('deal_investors').insert(
+        rows.map(row => ({
+          deal_id:        deal.id,
+          client_id:      row.clientId,
+          amount:         computeRow(row).grossProceeds || null,
+          poa_held:       false,
+          signing_status: 'pending',
+        }))
+      )
+
+      await supabase.from('internal_updates').insert({
+        company_id:  companyId,
+        update_type: 'deal',
+        description: `Deal created: ${isFullExit ? 'Full exit' : 'Partial exit'} — ${selectedCompany?.name ?? ''} (${rows.length} investor${rows.length !== 1 ? 's' : ''})`,
+        created_by:  user?.id ?? null,
       })
-      .select('id')
-      .single()
 
-    if (dealErr || !deal) {
-      setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
-      setSaving(false)
-      return
+      router.push(`/deals/${deal.id}`)
     }
-
-    // Create deal_investors
-    await supabase.from('deal_investors').insert(
-      rows.map(row => ({
-        deal_id:        deal.id,
-        client_id:      row.clientId,
-        amount:         computeRow(row).grossProceeds || null,
-        poa_held:       row.poaConfirmed,
-        signing_status: 'pending',
-      }))
-    )
-
-    await supabase.from('internal_updates').insert({
-      company_id:  companyId,
-      update_type: 'deal',
-      description: `Deal created: ${isFullExit ? 'Full exit' : 'Partial exit'} — ${selectedCompany?.name ?? ''} (${rows.length} investor${rows.length !== 1 ? 's' : ''})`,
-      created_by:  user?.id ?? null,
-    })
-
-    router.push(`/deals/${deal.id}`)
   }
 
   return (
@@ -275,8 +345,8 @@ export default function SaleDealForm({
       <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
         <Link href="/deals" style={{ color: '#888', textDecoration: 'none' }}>Deals</Link>
         {' › '}
-        <button onClick={onBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
-          New deal
+        <button onClick={handleBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
+          {isEditMode ? (selectedCompany?.name ?? 'Deal') : 'New deal'}
         </button>
         {' › '}
         {isFullExit ? 'Full Exit' : 'Partial Exit'}
@@ -292,9 +362,9 @@ export default function SaleDealForm({
           )}
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onBack} className="btn btn-secondary">← Back</button>
+          <button onClick={handleBack} className="btn btn-secondary">← Back</button>
           <button onClick={handleSave} className="btn btn-primary" disabled={saving || hasOversold}>
-            {saving ? 'Saving…' : 'Save deal'}
+            {saving ? 'Saving…' : isEditMode ? 'Save changes' : 'Save deal'}
           </button>
         </div>
       </div>
@@ -321,8 +391,9 @@ export default function SaleDealForm({
             <label style={labelSt}>Company *</label>
             <select
               value={companyId}
-              onChange={e => setCompanyId(e.target.value)}
-              style={inputSt}
+              onChange={e => { if (!isEditMode) setCompanyId(e.target.value) }}
+              style={{ ...inputSt, background: isEditMode ? '#f9f9f7' : '#fff', color: isEditMode ? '#555' : undefined }}
+              disabled={isEditMode}
             >
               <option value="">Select company…</option>
               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -338,7 +409,7 @@ export default function SaleDealForm({
                 value={salePrice}
                 onChange={e => setSalePrice(e.target.value)}
                 style={{ ...inputSt, paddingLeft: 24 }}
-                placeholder="0.00"
+                placeholder="0.0000"
               />
             </div>
           </div>
@@ -362,14 +433,12 @@ export default function SaleDealForm({
           )}
         </div>
 
-        {/* Empty state */}
         {!companyId && (
           <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
             Select a company above to auto-populate current investors
           </div>
         )}
 
-        {/* Table */}
         {rows.length > 0 && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -389,36 +458,28 @@ export default function SaleDealForm({
               </thead>
               <tbody>
                 {rows.map(row => {
-                  const {
-                    sharesSoldNum, grossProceeds, pnl, feePayable, netProceeds,
-                    remaining, oversold, lowRemaining,
-                  } = computeRow(row)
-
+                  const { sharesSoldNum, grossProceeds, pnl, feePayable, netProceeds, remaining, oversold, lowRemaining } = computeRow(row)
                   const rowBg = oversold ? '#fef2f2' : lowRemaining ? '#fffbeb' : undefined
 
                   return (
                     <tr key={row.uid} style={{ background: rowBg }}>
-                      {/* Investor */}
                       <td style={tdSt}>
                         <div style={{ fontWeight: 500 }}>{row.name}</div>
                         {row.email && <div style={{ fontSize: 10, color: '#aaa' }}>{row.email}</div>}
                       </td>
 
-                      {/* Current holding */}
                       <td style={tdSt}>
                         <div style={{ fontWeight: 500 }}>{row.totalShares.toLocaleString()}</div>
                         {row.shareClass && <div style={{ fontSize: 10, color: '#888' }}>{row.shareClass}</div>}
                         <div style={{ fontSize: 10, color: '#aaa' }}>{formatCurrency(row.totalCost)}</div>
                       </td>
 
-                      {/* Avg cost price */}
                       <td style={tdSt}>
                         {row.avgCostPrice > 0
                           ? <span style={{ fontFamily: 'monospace' }}>{formatPrice(row.avgCostPrice)}</span>
                           : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Shares sold */}
                       <td style={tdSt}>
                         {isFullExit ? (
                           <span style={{ fontWeight: 500 }}>{row.totalShares.toLocaleString()}</span>
@@ -435,31 +496,23 @@ export default function SaleDealForm({
                             max={row.totalShares}
                           />
                         )}
-                        {oversold && (
-                          <div style={{ fontSize: 10, color: '#a32d2d', marginTop: 2 }}>Exceeds holding</div>
-                        )}
+                        {oversold && <div style={{ fontSize: 10, color: '#a32d2d', marginTop: 2 }}>Exceeds holding</div>}
                       </td>
 
-                      {/* Gross proceeds */}
                       <td style={tdSt}>
                         {grossProceeds > 0
                           ? <span style={{ fontWeight: 500 }}>{formatCurrency(grossProceeds)}</span>
                           : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* P&L */}
                       <td style={tdSt}>
                         {sharesSoldNum > 0 ? (
-                          <span style={{
-                            fontWeight: 500,
-                            color: pnl > 0 ? '#1d9e75' : pnl < 0 ? '#a32d2d' : '#555',
-                          }}>
+                          <span style={{ fontWeight: 500, color: pnl > 0 ? '#1d9e75' : pnl < 0 ? '#a32d2d' : '#555' }}>
                             {pnl >= 0 ? '+' : ''}{formatCurrency(pnl)}
                           </span>
                         ) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Fee % */}
                       <td style={tdSt}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input
@@ -475,17 +528,14 @@ export default function SaleDealForm({
                         )}
                       </td>
 
-                      {/* Fee payable */}
                       <td style={tdSt}>
                         {feePayable > 0 ? formatCurrency(feePayable) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Net proceeds */}
                       <td style={{ ...tdSt, fontWeight: 600 }}>
                         {netProceeds > 0 ? formatCurrency(netProceeds) : <span style={{ color: '#ccc' }}>—</span>}
                       </td>
 
-                      {/* Remaining (partial only) */}
                       {!isFullExit && (
                         <td style={tdSt}>
                           {sharesSoldNum > 0 && !oversold ? (
@@ -504,18 +554,13 @@ export default function SaleDealForm({
           </div>
         )}
 
-        {/* Aggregate strip */}
         {rows.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', borderTop: '0.5px solid #e8e7e0', background: '#f9f9f7' }}>
             <AggCell label={`${rows.length} investor${rows.length !== 1 ? 's' : ''}`} />
-            <AggCell label="Shares sold" value={totals.shares > 0 ? totals.shares.toLocaleString() : undefined} />
+            <AggCell label="Shares sold"    value={totals.shares        > 0 ? totals.shares.toLocaleString()          : undefined} />
             <AggCell label="Gross proceeds" value={totals.grossProceeds > 0 ? formatCurrency(totals.grossProceeds) : undefined} />
-            <AggCell label="Total fees" value={totals.fees > 0 ? formatCurrency(totals.fees) : undefined} />
-            <AggCell
-              label="Net proceeds"
-              value={totals.netProceeds > 0 ? formatCurrency(totals.netProceeds) : undefined}
-              highlight
-            />
+            <AggCell label="Total fees"     value={totals.fees          > 0 ? formatCurrency(totals.fees)          : undefined} />
+            <AggCell label="Net proceeds"   value={totals.netProceeds   > 0 ? formatCurrency(totals.netProceeds)   : undefined} highlight />
           </div>
         )}
       </div>
