@@ -1000,6 +1000,20 @@ function RecordTransactionModal({
           )}
         </F>
 
+        {/* Share class */}
+        <F label="Share class *">
+          <select
+            value={shareClass}
+            onChange={e => { setShareClass(e.target.value); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
+            style={inputStyle}
+            disabled={!companyId}
+          >
+            <option value="">Select…</option>
+            {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
+            <option value="Ordinary">Ordinary</option>
+          </select>
+        </F>
+
         {/* Held by / Transferring from */}
         <F label={modalType === 'transfer' ? 'Transferring from *' : 'Held by *'}>
           <select
@@ -1015,20 +1029,6 @@ function RecordTransactionModal({
               {!companyId ? 'Select a company first…' : 'Select…'}
             </option>
             {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </select>
-        </F>
-
-        {/* Share class */}
-        <F label="Share class *">
-          <select
-            value={shareClass}
-            onChange={e => { setShareClass(e.target.value); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
-            style={inputStyle}
-            disabled={!companyId}
-          >
-            <option value="">Select…</option>
-            {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
-            <option value="Ordinary">Ordinary</option>
           </select>
         </F>
 
