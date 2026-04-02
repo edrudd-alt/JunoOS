@@ -3,7 +3,15 @@
 import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency } from '@/lib/utils'
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+
+function fmtAmt(n: number) {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency', currency: 'GBP',
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  }).format(n)
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -407,15 +415,15 @@ function HoldingsView({
                       <span style={{ fontWeight: 500 }}>{h.companyName}</span>
                     </div>
                   </td>
-                  <td style={td}>{formatCurrency(h.totalCost)}</td>
+                  <td style={td}>{fmtAmt(h.totalCost)}</td>
                   <td style={td}>{h.remainingShares.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                   <td style={td}>{h.soldShares > 0 ? h.soldShares.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
-                  <td style={td}>{h.currentPrice > 0 ? formatCurrency(h.currentValue) : '—'}</td>
+                  <td style={td}>{h.currentPrice > 0 ? fmtAmt(h.currentValue) : '—'}</td>
                   <td style={{ ...td, color: h.unrealisedPL >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                    {h.currentPrice > 0 ? (h.unrealisedPL >= 0 ? '+' : '') + formatCurrency(h.unrealisedPL) : '—'}
+                    {h.currentPrice > 0 ? (h.unrealisedPL >= 0 ? '+' : '') + fmtAmt(h.unrealisedPL) : '—'}
                   </td>
                   <td style={{ ...td, color: h.realisedPL >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                    {h.soldShares > 0 ? (h.realisedPL >= 0 ? '+' : '') + formatCurrency(h.realisedPL) : '—'}
+                    {h.soldShares > 0 ? (h.realisedPL >= 0 ? '+' : '') + fmtAmt(h.realisedPL) : '—'}
                   </td>
                   <td style={{ ...td, fontWeight: 500 }}>{moicFmt(h.totalCost, h.currentValue + h.rows.reduce((s, r) => s + r.proceeds, 0))}</td>
                   <td style={td}>
@@ -436,15 +444,15 @@ function HoldingsView({
                       <div style={{ fontWeight: 500, color: '#333' }}>{r.shareClass}</div>
                       <div style={{ color: '#888', marginTop: 1 }}>{r.clientName} · {r.holdingLocation}</div>
                     </td>
-                    <td style={{ ...td, fontSize: 11 }}>{formatCurrency(r.totalCost)}</td>
+                    <td style={{ ...td, fontSize: 11 }}>{fmtAmt(r.totalCost)}</td>
                     <td style={{ ...td, fontSize: 11 }}>{r.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     <td style={{ ...td, fontSize: 11 }}>{r.sharesOut > 0 ? r.sharesOut.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}</td>
-                    <td style={{ ...td, fontSize: 11 }}>{h.currentPrice > 0 ? formatCurrency(r.currentValue) : '—'}</td>
+                    <td style={{ ...td, fontSize: 11 }}>{h.currentPrice > 0 ? fmtAmt(r.currentValue) : '—'}</td>
                     <td style={{ ...td, fontSize: 11, color: r.unrealisedPL >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                      {h.currentPrice > 0 ? (r.unrealisedPL >= 0 ? '+' : '') + formatCurrency(r.unrealisedPL) : '—'}
+                      {h.currentPrice > 0 ? (r.unrealisedPL >= 0 ? '+' : '') + fmtAmt(r.unrealisedPL) : '—'}
                     </td>
                     <td style={{ ...td, fontSize: 11, color: r.realisedPL >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                      {r.sharesOut > 0 ? (r.realisedPL >= 0 ? '+' : '') + formatCurrency(r.realisedPL) : '—'}
+                      {r.sharesOut > 0 ? (r.realisedPL >= 0 ? '+' : '') + fmtAmt(r.realisedPL) : '—'}
                     </td>
                     <td style={{ ...td, fontSize: 11 }}>{moicFmt(r.totalCost, r.currentValue + r.proceeds)}</td>
                     <td style={td}></td>
@@ -517,7 +525,7 @@ function LedgerView({ investments, clientById }: { investments: RawInvestment[];
                 <td style={{ ...td, color: '#888' }}>{inv.share_class}</td>
                 <td style={tdR}>{inv.shares_purchased.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                 <td style={tdR}>£{inv.original_share_price.toFixed(4)}</td>
-                <td style={{ ...tdR, fontWeight: 500 }}>{formatCurrency(inv.sum_subscribed)}</td>
+                <td style={{ ...tdR, fontWeight: 500 }}>{fmtAmt(inv.sum_subscribed)}</td>
                 <td style={{ ...td, fontSize: 11, color: '#555' }}>
                   {clientById[inv.client_id] ?? '—'}
                   {inv.holding_entity && <div style={{ color: '#aaa', fontSize: 10 }}>{inv.holding_entity}</div>}
@@ -587,12 +595,12 @@ function PerformanceView({ holdings }: { holdings: CompanyHolding[] }) {
                 return (
                   <tr key={h.companyId}>
                     <td style={tdL}>{h.companyName}</td>
-                    <td style={td}>{formatCurrency(costOfRemaining)}</td>
+                    <td style={td}>{fmtAmt(costOfRemaining)}</td>
                     <td style={td}>{h.remainingShares.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
                     <td style={td}>{h.currentPrice > 0 ? `£${h.currentPrice.toFixed(4)}` : '—'}</td>
-                    <td style={td}>{h.currentPrice > 0 ? formatCurrency(h.currentValue) : '—'}</td>
+                    <td style={td}>{h.currentPrice > 0 ? fmtAmt(h.currentValue) : '—'}</td>
                     <td style={{ ...td, color: h.unrealisedPL >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                      {h.currentPrice > 0 ? (h.unrealisedPL >= 0 ? '+' : '') + formatCurrency(h.unrealisedPL) : '—'}
+                      {h.currentPrice > 0 ? (h.unrealisedPL >= 0 ? '+' : '') + fmtAmt(h.unrealisedPL) : '—'}
                     </td>
                     <td style={{ ...td, color: retPct >= 0 ? '#1d9e75' : '#a32d2d' }}>
                       {h.currentPrice > 0 ? pct(retPct) : '—'}
@@ -637,11 +645,11 @@ function PerformanceView({ holdings }: { holdings: CompanyHolding[] }) {
                 return (
                   <tr key={h.companyId}>
                     <td style={tdL}>{h.companyName}</td>
-                    <td style={td}>{formatCurrency(costOfSold)}</td>
+                    <td style={td}>{fmtAmt(costOfSold)}</td>
                     <td style={td}>{h.soldShares.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                    <td style={td}>{formatCurrency(proceeds)}</td>
+                    <td style={td}>{fmtAmt(proceeds)}</td>
                     <td style={{ ...td, color: pl >= 0 ? '#1d9e75' : '#a32d2d' }}>
-                      {(pl >= 0 ? '+' : '') + formatCurrency(pl)}
+                      {(pl >= 0 ? '+' : '') + fmtAmt(pl)}
                     </td>
                     <td style={{ ...td, color: retPct >= 0 ? '#1d9e75' : '#a32d2d' }}>{pct(retPct)}</td>
                     <td style={{ ...td, fontWeight: 500 }}>{moicFmt(costOfSold, proceeds)}</td>
@@ -661,9 +669,9 @@ function PerformanceView({ holdings }: { holdings: CompanyHolding[] }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {[
-            { label: 'Total invested',       value: formatCurrency(totalInvested) },
-            { label: 'Current value + proceeds', value: formatCurrency(totalCurrentValue + totalProceeds) },
-            { label: 'Total return',          value: (totalReturn >= 0 ? '+' : '') + formatCurrency(totalReturn), colour: totalReturn >= 0 ? '#1d9e75' : '#a32d2d' },
+            { label: 'Total invested',       value: fmtAmt(totalInvested) },
+            { label: 'Current value + proceeds', value: fmtAmt(totalCurrentValue + totalProceeds) },
+            { label: 'Total return',          value: (totalReturn >= 0 ? '+' : '') + fmtAmt(totalReturn), colour: totalReturn >= 0 ? '#1d9e75' : '#a32d2d' },
             { label: 'Blended MOIC',          value: moicFmt(totalInvested, totalCurrentValue + totalProceeds) },
           ].map(({ label, value, colour }) => (
             <div key={label}>
@@ -872,7 +880,7 @@ function RecordTransactionModal({
         {/* Auto-calculated amount */}
         {amount && (
           <div style={{ fontSize: 12, color: '#555', marginBottom: 14, padding: '8px 10px', background: '#f9f9f7', borderRadius: 5 }}>
-            Amount: <strong>{formatCurrency(parseFloat(amount))}</strong>
+            Amount: <strong>{fmtAmt(parseFloat(amount))}</strong>
           </div>
         )}
 
