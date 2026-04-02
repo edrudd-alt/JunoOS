@@ -70,12 +70,13 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f9f9f7' }}>
-                  <th style={{ ...thStyle, width: '22%' }}>Company</th>
-                  <th style={{ ...thStyle, width: '18%' }}>Type</th>
-                  <th style={{ ...thStyle, width: '24%' }}>Investor</th>
-                  <th style={{ ...thStyle, width: '14%' }}>Amount</th>
-                  <th style={{ ...thStyle, width: '12%' }}>Status</th>
-                  <th style={{ ...thStyle, width: '10%' }}>Started</th>
+                  <th style={{ ...thStyle, width: '20%' }}>Company</th>
+                  <th style={{ ...thStyle, width: '16%' }}>Type</th>
+                  <th style={{ ...thStyle, width: '22%' }}>Investor</th>
+                  <th style={{ ...thStyle, width: '12%' }}>Amount</th>
+                  <th style={{ ...thStyle, width: '11%' }}>Status</th>
+                  <th style={{ ...thStyle, width: '9%' }}>Started</th>
+                  <th style={{ ...thStyle, width: '10%' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -104,12 +105,13 @@ export default function DealsList({ deals }: { deals: Record<string, unknown>[] 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f9f9f7' }}>
-                  <th style={{ ...thStyle, width: '22%' }}>Company</th>
-                  <th style={{ ...thStyle, width: '18%' }}>Type</th>
-                  <th style={{ ...thStyle, width: '24%' }}>Investor</th>
-                  <th style={{ ...thStyle, width: '14%' }}>Amount</th>
-                  <th style={{ ...thStyle, width: '12%' }}>Status</th>
-                  <th style={{ ...thStyle, width: '10%' }}>Completed</th>
+                  <th style={{ ...thStyle, width: '20%' }}>Company</th>
+                  <th style={{ ...thStyle, width: '16%' }}>Type</th>
+                  <th style={{ ...thStyle, width: '22%' }}>Investor</th>
+                  <th style={{ ...thStyle, width: '12%' }}>Amount</th>
+                  <th style={{ ...thStyle, width: '11%' }}>Status</th>
+                  <th style={{ ...thStyle, width: '9%' }}>Completed</th>
+                  <th style={{ ...thStyle, width: '10%' }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -170,6 +172,23 @@ function DealRow({ deal, dateLabel }: { deal: Deal; dateLabel: 'started' | 'comp
       </td>
       <td style={{ padding: '10px 12px', fontSize: 12, color: '#888', borderBottom: '0.5px solid #f0f0ec' }}>
         {formatDate(dateValue)}
+      </td>
+      <td style={{ padding: '10px 12px', borderBottom: '0.5px solid #f0f0ec', textAlign: 'right' }}
+          onClick={e => e.stopPropagation()}>
+        <Link
+          href={`/deals/${deal.id}`}
+          style={{
+            fontSize: 11, fontWeight: 500,
+            padding: '4px 10px',
+            background: deal.status === 'complete' ? '#f5f5f2' : '#0f2744',
+            color: deal.status === 'complete' ? '#555' : '#fff',
+            borderRadius: 5,
+            textDecoration: 'none',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {deal.status === 'complete' ? 'View' : 'Continue →'}
+        </Link>
       </td>
     </tr>
   )
