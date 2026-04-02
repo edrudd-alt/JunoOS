@@ -1000,34 +1000,33 @@ function RecordTransactionModal({
           )}
         </F>
 
-        {/* Share class + Date side by side */}
+        {/* Share class */}
+        <F label="Share class *">
+          <select
+            value={shareClass}
+            onChange={e => { setShareClass(e.target.value); setHeldBy(''); setFromClient(''); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
+            style={inputStyle}
+            disabled={!companyId}
+          >
+            <option value="">Select…</option>
+            {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
+            <option value="Ordinary">Ordinary</option>
+          </select>
+        </F>
+
+        {/* Price + Date side by side */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <F label="Share class *">
-            <select
-              value={shareClass}
-              onChange={e => { setShareClass(e.target.value); setHeldBy(''); setFromClient(''); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
-              style={inputStyle}
-              disabled={!companyId}
-            >
-              <option value="">Select…</option>
-              {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
-              <option value="Ordinary">Ordinary</option>
-            </select>
+          <F label="Price per share (£) *">
+            <input
+              type="number" min="0" step="0.0001"
+              value={price} onChange={e => setPrice(e.target.value)}
+              placeholder="1.0000" style={inputStyle}
+            />
           </F>
           <F label="Date *">
             <input type="date" value={txDate} onChange={e => setTxDate(e.target.value)} style={inputStyle} />
           </F>
         </div>
-
-        {/* Price per share */}
-        <F label="Price per share (£) *">
-          <input
-            type="number" min="0" step="0.0001"
-            value={price} onChange={e => setPrice(e.target.value)}
-            placeholder="1.0000"
-            style={{ ...inputStyle, width: '50%' }}
-          />
-        </F>
 
         {/* Held by / Transferring from */}
         <F label={modalType === 'transfer' ? 'Transferring from *' : 'Held by *'}>
@@ -1069,6 +1068,8 @@ function RecordTransactionModal({
                     <th style={thCell}>Location</th>
                     {modalType !== 'buy' && <th style={thCellR}>Available</th>}
                     <th style={thCellR}>Shares</th>
+                    {modalType !== 'buy' && <th style={thCellR}>Remaining</th>}
+                    {modalType !== 'buy' && <th style={thCellR}>Proceeds</th>}
                     <th style={thCell}>EIS qualifying</th>
                     {modalType === 'buy' && <th style={{ ...thCell, width: 24 }}></th>}
                   </tr>
@@ -1121,6 +1122,21 @@ function RecordTransactionModal({
                           </div>
                         )}
                       </td>
+                      {modalType !== 'buy' && (() => {
+                        const sharesEntered = parseInt(row.shares) || 0
+                        const remaining = row.available !== undefined ? row.available - sharesEntered : null
+                        const proceeds = sharesEntered > 0 ? sharesEntered * priceNum : null
+                        return (
+                          <>
+                            <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec', textAlign: 'right', fontSize: 12, color: remaining !== null && remaining < 0 ? '#a32d2d' : '#555' }}>
+                              {sharesEntered > 0 && remaining !== null ? remaining.toLocaleString() : '—'}
+                            </td>
+                            <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec', textAlign: 'right', fontSize: 12, fontWeight: 500, color: '#0f2744' }}>
+                              {proceeds !== null ? fmtAmt(proceeds) : '—'}
+                            </td>
+                          </>
+                        )
+                      })()}
                       <td style={{ padding: '6px 8px', borderBottom: '0.5px solid #f0f0ec' }}>
                         <select
                           value={row.eis}
