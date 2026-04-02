@@ -1216,11 +1216,11 @@ function RecordTransactionModal({
 
         {err && <p style={{ fontSize: 12, color: '#a32d2d', margin: '0 0 12px' }}>{err}</p>}
 
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ flex: 1, padding: '9px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12, padding: '7px 16px' }}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: 12, padding: '7px 16px' }}>
             {saving ? 'Saving…' : modalType === 'buy' ? 'Record purchase' : modalType === 'sell' ? 'Record sale' : 'Record transfer'}
           </button>
-          <button className="btn btn-secondary" onClick={onClose} style={{ padding: '9px 16px' }}>Cancel</button>
         </div>
       </div>
     </div>
