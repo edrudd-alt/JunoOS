@@ -3,7 +3,8 @@ import { notFound } from 'next/navigation'
 import BuyDealForm, { type ExistingBuyDeal } from '../../new/BuyDealForm'
 import SaleDealForm, { type ExistingSaleDeal } from '../../new/SaleDealForm'
 
-export default async function EditDealPage({ params }: { params: { id: string } }) {
+export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const supabase = await createClient()
 
   const [
@@ -20,7 +21,7 @@ export default async function EditDealPage({ params }: { params: { id: string } 
         deal_investors (id, client_id, amount, poa_held, signing_status,
           clients (id, full_name, email))
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .maybeSingle(),
     supabase.from('companies').select('id, name, share_classes').order('name'),
     supabase.from('clients')
@@ -40,7 +41,7 @@ export default async function EditDealPage({ params }: { params: { id: string } 
     )
   }
 
-  const backHref = `/deals/${params.id}`
+  const backHref = `/deals/${id}`
 
   if (deal.deal_type === 'new_investment' || deal.deal_type === 'follow_on') {
     return (
