@@ -17,7 +17,6 @@ export default async function InvestmentsPage() {
         original_share_price, shares_purchased, sum_subscribed,
         eis_status, holding_entity, holding_location, status,
         transaction_type, cost_basis, transfer_counterparty_id, transfer_type, notes,
-        clients!client_id (id, full_name),
         companies (id, name)
       `)
       .order('investment_date', { ascending: false }),

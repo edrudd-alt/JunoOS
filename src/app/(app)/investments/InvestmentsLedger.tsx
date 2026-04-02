@@ -27,7 +27,6 @@ interface RawInvestment {
   transfer_counterparty_id: string | null
   transfer_type: string | null
   notes: string | null
-  clients: { id: string; full_name: string } | null
   companies: { id: string; name: string } | null
 }
 
@@ -198,7 +197,7 @@ export default function InvestmentsLedger({
       if (!byCompany[compId][rowKey]) {
         byCompany[compId][rowKey] = {
           clientId:      inv.client_id,
-          clientName:    inv.clients?.full_name ?? clientById[inv.client_id] ?? '—',
+          clientName:    clientById[inv.client_id] ?? '—',
           shareClass:    inv.share_class,
           holdingLocation: inv.holding_location,
           holdingEntity: inv.holding_entity,
@@ -520,7 +519,7 @@ function LedgerView({ investments, clientById }: { investments: RawInvestment[];
                 <td style={tdR}>£{inv.original_share_price.toFixed(4)}</td>
                 <td style={{ ...tdR, fontWeight: 500 }}>{formatCurrency(inv.sum_subscribed)}</td>
                 <td style={{ ...td, fontSize: 11, color: '#555' }}>
-                  {inv.clients?.full_name ?? clientById[inv.client_id] ?? '—'}
+                  {clientById[inv.client_id] ?? '—'}
                   {inv.holding_entity && <div style={{ color: '#aaa', fontSize: 10 }}>{inv.holding_entity}</div>}
                 </td>
                 <td style={td}>
@@ -785,7 +784,6 @@ function RecordTransactionModal({
         original_share_price, shares_purchased, sum_subscribed,
         eis_status, holding_entity, holding_location, status,
         transaction_type, cost_basis, transfer_counterparty_id, transfer_type, notes,
-        clients!client_id (id, full_name),
         companies (id, name)
       `)
 
