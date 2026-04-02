@@ -1216,9 +1216,25 @@ function RecordTransactionModal({
 
         {err && <p style={{ fontSize: 12, color: '#a32d2d', margin: '0 0 12px' }}>{err}</p>}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12, padding: '7px 16px' }}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: 12, padding: '7px 16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+          <button
+            onClick={onClose}
+            style={{
+              padding: '7px 16px', fontSize: 12, fontWeight: 500, cursor: 'pointer',
+              background: '#fff', color: '#333', border: '0.5px solid #d0d0c8', borderRadius: 5,
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            style={{
+              padding: '7px 16px', fontSize: 12, fontWeight: 500, cursor: saving ? 'default' : 'pointer',
+              background: '#0f2744', color: '#fff', border: 'none', borderRadius: 5,
+              opacity: saving ? 0.6 : 1,
+            }}
+          >
             {saving ? 'Saving…' : modalType === 'buy' ? 'Record purchase' : modalType === 'sell' ? 'Record sale' : 'Record transfer'}
           </button>
         </div>
