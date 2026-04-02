@@ -1,3 +1,5 @@
+'use client'
+
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
 import type { ClientRow } from '../ClientRecord'
@@ -33,15 +35,28 @@ interface PortfolioRow {
   gain_loss: number
 }
 
+interface InvestmentRow {
+  id: string
+  share_class: string
+  investment_date: string
+  original_share_price: number
+  shares_purchased: number
+  sum_subscribed: number
+  fund_type?: string
+  companies: { id: string; name: string } | null
+}
+
 interface Props {
   client: ClientRow
   linkedEntities: ClientRow[]
   portfolioRows: PortfolioRow[]
   membershipDocs: MembershipDoc[]
   lastActivity: string | null
+  investments?: Record<string, unknown>[]
 }
 
-export default function OverviewTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity }: Props) {
+export default function OverviewTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity, investments: investmentsRaw }: Props) {
+  const investments = (investmentsRaw ?? []) as unknown as InvestmentRow[]
   const isLead = !client.lead_investor_id
 
   // Build per-entity portfolio lookup
@@ -79,6 +94,10 @@ export default function OverviewTab({ client, linkedEntities, portfolioRows, mem
             <dd style={{ margin: 0 }}>{taxStatusLabel(client.tax_status)}</dd>
             <dt style={{ color: '#888' }}>Investor ref</dt>
             <dd style={{ margin: 0 }}>{client.investor_reference || '—'}</dd>
+            <dt style={{ color: '#888' }}>Fund type</dt>
+            <dd style={{ margin: 0 }}>
+              <FundTypeDisplay fundType={client.fund_type ?? 'syndicate'} activeFundType={client.active_fund_type ?? null} />
+            </dd>
           </dl>
 
           {/* Membership documents */}
@@ -110,6 +129,10 @@ export default function OverviewTab({ client, linkedEntities, portfolioRows, mem
             </div>
           )}
         </div>
+        {/* Accrued management fee — Multi Manager clients only */}
+        {(client.fund_type === 'multi_manager' || client.fund_type === 'both') && (
+          <AccruedFeeCard investments={investments} />
+        )}
       </div>
 
       {/* RIGHT */}
@@ -224,4 +247,79 @@ function LinkedEntityRow({
 
 function taxStatusLabel(s: string) {
   return { eis: 'EIS', seis: 'SEIS', both: 'EIS & SEIS', neither: 'No EIS/SEIS' }[s] ?? s
+}
+
+function FundTypeDisplay({ fundType, activeFundType }: { fundType: string; activeFundType: string | null }) {
+  const labels: Record<string, string> = {
+    syndicate: 'Syndicate', multi_manager: 'Multi Manager', both: 'Both',
+  }
+  if (fundType === 'both' && activeFundType) {
+    return <span>{labels[fundType]} <span style={{ color: '#888' }}>(active: {labels[activeFundType] ?? activeFundType})</span></span>
+  }
+  return <span>{labels[fundType] ?? fundType}</span>
+}
+
+function AccruedFeeCard({ investments }: { investments: InvestmentRow[] }) {
+  const today = new Date()
+
+  // Only include MM investments with sum_subscribed > 0
+  const mmInvs = investments.filter(i =>
+    (i.fund_type === 'multi_manager' || !i.fund_type) &&
+    i.sum_subscribed > 0 &&
+    i.shares_purchased > 0
+  )
+
+  if (mmInvs.length === 0) return null
+
+  const rows = mmInvs.map(inv => {
+    const invDate    = new Date(inv.investment_date + 'T00:00:00')
+    const yearsHeld  = Math.max(0, (today.getTime() - invDate.getTime()) / (1000 * 60 * 60 * 24 * 365))
+    const feePct     = Math.min(yearsHeld * 2, 10)
+    const feeAmount  = (feePct / 100) * inv.sum_subscribed
+    const companyName = (inv.companies as { name: string } | null)?.name ?? '—'
+    return { inv, companyName, yearsHeld, feePct, feeAmount }
+  })
+
+  const totalFee = rows.reduce((s, r) => s + r.feeAmount, 0)
+
+  const thSt: React.CSSProperties = { fontSize: 10, fontWeight: 500, color: '#888', textAlign: 'left', padding: '6px 12px', borderBottom: '0.5px solid #e8e7e0' }
+  const tdSt: React.CSSProperties = { fontSize: 11, padding: '7px 12px', borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle' }
+  const tdR:  React.CSSProperties = { ...tdSt, textAlign: 'right' }
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 12, fontWeight: 500 }}>Accrued management fee (indicative)</div>
+        <span style={{ fontSize: 10, color: '#888' }}>Indicative only — confirmed at exit</span>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ background: '#f9f9f7' }}>
+            <th style={thSt}>Company</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Investment date</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Original cost</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Years held</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Fee %</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Accrued fee</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ inv, companyName, yearsHeld, feePct, feeAmount }) => (
+            <tr key={inv.id}>
+              <td style={tdSt}>{companyName}</td>
+              <td style={tdR}>{formatDate(inv.investment_date)}</td>
+              <td style={tdR}>{formatCurrency(inv.sum_subscribed)}</td>
+              <td style={tdR}>{yearsHeld.toFixed(1)}y</td>
+              <td style={tdR}>{feePct.toFixed(1)}%</td>
+              <td style={{ ...tdR, fontWeight: 500 }}>{formatCurrency(feeAmount)}</td>
+            </tr>
+          ))}
+          <tr style={{ background: '#f9f9f7', fontWeight: 600 }}>
+            <td style={{ ...tdSt, fontWeight: 600 }} colSpan={5}>Total accrued</td>
+            <td style={{ ...tdR, fontWeight: 600 }}>{formatCurrency(totalFee)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  )
 }

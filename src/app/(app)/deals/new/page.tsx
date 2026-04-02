@@ -10,7 +10,7 @@ export default async function NewDealServerPage() {
     { data: investments },
   ] = await Promise.all([
     supabase.from('companies').select('id, name, share_classes').order('name'),
-    supabase.from('clients').select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id').order('full_name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id, fund_type, active_fund_type').order('full_name'),
     supabase.from('investments')
       .select('id, client_id, company_id, share_class, shares_purchased, original_share_price, sum_subscribed, eis_status')
       .eq('status', 'active'),

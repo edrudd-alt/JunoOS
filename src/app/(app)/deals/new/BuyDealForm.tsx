@@ -21,6 +21,8 @@ interface Client {
   default_fee_rate: number
   tax_status: string
   lead_investor_id: string | null
+  fund_type: string
+  active_fund_type: string | null
 }
 
 interface ActiveInvestment {
@@ -57,6 +59,7 @@ export interface ExistingBuyDeal {
       eis?: string
       poaHeld?: boolean
       feeRate?: number
+      fundType?: string
     }>
   } | null
   deal_investors: ExistingDealInvestor[]
@@ -75,6 +78,7 @@ interface InvestorRow {
   eisOverride: 'yes' | 'no' | 'tbc' | null
   poaHeld: boolean
   feePct: string
+  fundType: 'syndicate' | 'multi_manager'
   dealInvestorId?: string  // set for existing investors in edit mode
 }
 
@@ -129,6 +133,8 @@ export default function BuyDealForm({
   const [clientSearch, setClientSearch] = useState('')
   const [saving,       setSaving]       = useState(false)
   const [error,        setError]        = useState('')
+  // Fund type prompt for 'both' clients
+  const [fundTypePrompt, setFundTypePrompt] = useState<{ client: Client; resolve: (ft: 'syndicate' | 'multi_manager') => void } | null>(null)
 
   const selectedCompany = companies.find(c => c.id === companyId)
   const shareClasses    = Array.isArray(selectedCompany?.share_classes) ? selectedCompany!.share_classes : []
@@ -182,6 +188,8 @@ export default function BuyDealForm({
         eisOverride:       (iData?.eis as 'yes' | 'no' | 'tbc') ?? null,
         poaHeld:           iData?.poaHeld ?? di.poa_held ?? false,
         feePct:            String(iData?.feeRate ?? client?.default_fee_rate ?? 2),
+        fundType:          ((iData?.fundType as string) === 'multi_manager' || client?.fund_type === 'multi_manager')
+                             ? 'multi_manager' : 'syndicate',
         dealInvestorId:    di.id,
       }
     })
@@ -215,6 +223,8 @@ export default function BuyDealForm({
         eisOverride:       null,
         poaHeld:           false,
         feePct:            String(client.default_fee_rate || 2),
+        fundType:          (client.fund_type === 'multi_manager' || client.active_fund_type === 'multi_manager')
+                             ? 'multi_manager' : 'syndicate',
       })
     }
     setRows(newRows)
@@ -255,7 +265,7 @@ export default function BuyDealForm({
     setRows(prev => prev.filter(r => r.uid !== rowUid))
   }
 
-  function addInvestor(client: Client) {
+  function doAddInvestor(client: Client, fundType: 'syndicate' | 'multi_manager') {
     const holding = holdingsByCompany.get(companyId)?.get(client.id) ?? null
     setRows(prev => [...prev, {
       uid:               uid(),
@@ -270,8 +280,25 @@ export default function BuyDealForm({
       eisOverride:       null,
       poaHeld:           false,
       feePct:            String(client.default_fee_rate || 2),
+      fundType,
     }])
     setClientSearch('')
+  }
+
+  function addInvestor(client: Client) {
+    const ft = client.fund_type as string
+    if (ft === 'both') {
+      setFundTypePrompt({
+        client,
+        resolve: (chosen) => {
+          setFundTypePrompt(null)
+          doAddInvestor(client, chosen)
+        },
+      })
+    } else {
+      const resolvedFt = ft === 'multi_manager' ? 'multi_manager' : 'syndicate'
+      doAddInvestor(client, resolvedFt)
+    }
   }
 
   const existingIds     = new Set(rows.map(r => r.clientId))
@@ -303,7 +330,7 @@ export default function BuyDealForm({
       investorData[row.clientId] = {
         name: row.name, shares: sharesNum, shareClass: sc, eis: eisStatus,
         poaHeld: row.poaHeld, feeRate: feePct, cost, feePayable, totalCost,
-        currentShares: row.currentShares,
+        currentShares: row.currentShares, fundType: row.fundType,
       }
     }
 
@@ -352,6 +379,7 @@ export default function BuyDealForm({
           eis_status:           eisStatus,
           holding_location:     'direct',
           status:               'pending',
+          fund_type:            row.fundType ?? 'syndicate',
         })
       }
 
@@ -404,6 +432,7 @@ export default function BuyDealForm({
           eis_status:           eisStatus,
           holding_location:     'direct',
           status:               'pending',
+          fund_type:            row.fundType ?? 'syndicate',
         })
       }
 
@@ -715,6 +744,46 @@ export default function BuyDealForm({
           </div>
         )}
       </div>
+
+      {/* Fund type prompt modal for 'both' clients */}
+      {fundTypePrompt && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div className="card" style={{ width: 340, padding: 24 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Select fund type</div>
+            <div style={{ fontSize: 12, color: '#555', marginBottom: 20 }}>
+              <strong>{fundTypePrompt.client.full_name}</strong> is invested in both Syndicate and Multi Manager.
+              Which fund type does this investment belong to?
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                onClick={() => fundTypePrompt.resolve('syndicate')}
+                className="btn btn-secondary"
+                style={{ textAlign: 'left', padding: '10px 14px' }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 12 }}>Syndicate</div>
+                <div style={{ fontSize: 11, color: '#888' }}>Standard deal — no deferred management fee</div>
+              </button>
+              <button
+                onClick={() => fundTypePrompt.resolve('multi_manager')}
+                className="btn btn-secondary"
+                style={{ textAlign: 'left', padding: '10px 14px', borderColor: '#e0952a' }}
+              >
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#b97000' }}>Multi Manager</div>
+                <div style={{ fontSize: 11, color: '#888' }}>Deferred management fee (2% p.a., max 10%) applies at exit</div>
+              </button>
+            </div>
+            <button
+              onClick={() => setFundTypePrompt(null)}
+              style={{ marginTop: 14, fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

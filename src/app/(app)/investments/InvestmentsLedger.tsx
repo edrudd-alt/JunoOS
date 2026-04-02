@@ -35,6 +35,7 @@ interface RawInvestment {
   transfer_counterparty_id: string | null
   transfer_type: string | null
   notes: string | null
+  fund_type: string
   companies: { id: string; name: string } | null
 }
 
@@ -50,6 +51,7 @@ interface Client {
   email: string | null
   lead_investor_id: string | null
   entity_type: string
+  fund_type: string
 }
 
 interface Valuation {
@@ -808,6 +810,42 @@ function RecordTransactionModal({
     setLocationRows(rows => rows.filter(r => r.id !== id))
   }
 
+  // Deferred MM management fee (sell mode only)
+  const deferredFeeInfo = useMemo(() => {
+    if (modalType !== 'sell' || !companyId || !heldBy) return null
+    const today = new Date()
+    const mmInvs = investments.filter(inv =>
+      inv.company_id === companyId &&
+      inv.client_id === heldBy &&
+      inv.fund_type === 'multi_manager' &&
+      (inv.transaction_type === 'buy' || inv.transaction_type === 'transfer_in')
+    )
+    if (mmInvs.length === 0) return null
+    const totalMMCost   = mmInvs.reduce((s, i) => s + i.sum_subscribed, 0)
+    const totalMMShares = mmInvs.reduce((s, i) => s + i.shares_purchased, 0)
+    const earliest      = mmInvs.reduce((d, i) => i.investment_date < d ? i.investment_date : d, mmInvs[0].investment_date)
+    const yearsHeld     = Math.max(0, (today.getTime() - new Date(earliest + 'T00:00:00').getTime()) / (1000 * 60 * 60 * 24 * 365))
+    const feePct        = Math.min(yearsHeld * 2, 10)
+    const totalSharesSelling = locationRows.reduce((s, r) => s + (parseInt(r.shares) || 0), 0)
+    const costPerShare  = totalMMShares > 0 ? totalMMCost / totalMMShares : 0
+    const costOfSharesSold = totalSharesSelling * costPerShare
+    const feeAmount     = (feePct / 100) * costOfSharesSold
+    return { feePct, feeAmount, yearsHeld, costOfSharesSold }
+  }, [modalType, companyId, heldBy, investments, locationRows])
+
+  // Transfer fund-type mismatch warning
+  const transferFundTypeMismatch = useMemo(() => {
+    if (modalType !== 'transfer' || !fromClient || !toClient) return null
+    const from = clients.find(c => c.id === fromClient)
+    const to   = clients.find(c => c.id === toClient)
+    if (!from || !to) return null
+    const fromFt = from.fund_type
+    const toFt   = to.fund_type
+    const label = (ft: string) => ft === 'multi_manager' ? 'Multi Manager' : ft === 'both' ? 'Both' : 'Syndicate'
+    if (fromFt !== toFt) return { fromLabel: label(fromFt), toLabel: label(toFt) }
+    return null
+  }, [modalType, fromClient, toClient, clients])
+
   // Per-row errors (oversell) and warnings (de minimis)
   const rowErrors = useMemo(() => {
     if (modalType === 'buy') return {} as Record<string, string>
@@ -982,6 +1020,40 @@ function RecordTransactionModal({
         {modalType === 'transfer' && xferType === 'gift' && (
           <div style={{ background: '#fffbeb', border: '0.5px solid #f0c674', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78500a' }}>
             Gift transfer: recipient inherits the donor&apos;s cost basis for P&amp;L purposes.
+          </div>
+        )}
+
+        {/* Deferred MM management fee (sell only) */}
+        {deferredFeeInfo && (
+          <div style={{ background: '#fff8ed', border: '0.5px solid #e0952a', borderRadius: 6, padding: '10px 14px', marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#b97000', marginBottom: 4 }}>
+              Multi Manager deferred management fee
+            </div>
+            <div style={{ fontSize: 11, color: '#78500a' }}>
+              {deferredFeeInfo.yearsHeld.toFixed(1)} years held &rarr; {deferredFeeInfo.feePct.toFixed(1)}% fee rate (2% p.a., capped at 10%)
+            </div>
+            {deferredFeeInfo.costOfSharesSold > 0 && (
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#b97000', marginTop: 4 }}>
+                Estimated deferred fee: {fmtAmt(deferredFeeInfo.feeAmount)}
+                <span style={{ fontSize: 10, fontWeight: 400, color: '#78500a', marginLeft: 6 }}>
+                  (indicative — confirmed at exit)
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Transfer fund-type mismatch warning */}
+        {transferFundTypeMismatch && (
+          <div style={{ background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 6, padding: '10px 14px', marginBottom: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#a32d2d', marginBottom: 2 }}>
+              Fund type mismatch
+            </div>
+            <div style={{ fontSize: 11, color: '#7f1d1d' }}>
+              Transferring from a <strong>{transferFundTypeMismatch.fromLabel}</strong> investor to a{' '}
+              <strong>{transferFundTypeMismatch.toLabel}</strong> investor. The transferred shares will retain the
+              original investment&apos;s fund type in the ledger.
+            </div>
           </div>
         )}
 

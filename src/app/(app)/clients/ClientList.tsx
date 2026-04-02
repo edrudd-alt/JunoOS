@@ -16,6 +16,7 @@ type Client = {
   tax_status: string
   date_joined: string | null
   lead_investor_id: string | null
+  fund_type: string
 }
 
 type PortfolioData = {
@@ -239,12 +240,15 @@ export default function ClientList({ leads, linkedByLead, portfolioByClient, cli
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <ClientAvatar name={client.full_name} />
                         <div>
-                          <Link
-                            href={`/clients/${client.id}`}
-                            style={{ fontWeight: 500, color: '#0f2744', textDecoration: 'none', fontSize: 13 }}
-                          >
-                            {client.full_name}
-                          </Link>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <Link
+                              href={`/clients/${client.id}`}
+                              style={{ fontWeight: 500, color: '#0f2744', textDecoration: 'none', fontSize: 13 }}
+                            >
+                              {client.full_name}
+                            </Link>
+                            <FundTypePill code={client.fund_type ?? 'syndicate'} />
+                          </div>
                           <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
                             {linked.length > 0 ? `Lead · ${linked.length} ${linked.length === 1 ? 'entity' : 'entities'}` : 'Individual'}
                           </div>
@@ -323,6 +327,20 @@ export default function ClientList({ leads, linkedByLead, portfolioByClient, cli
         </div>
       )}
     </div>
+  )
+}
+
+function FundTypePill({ code }: { code: string }) {
+  const isMM   = code === 'multi_manager'
+  const isBoth = code === 'both'
+  return (
+    <span style={{
+      fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600,
+      background: isMM ? '#fff3e0' : isBoth ? '#f0f0ec' : '#e8f5f0',
+      color:      isMM ? '#e0952a' : isBoth ? '#555'    : '#1d9e75',
+    }}>
+      {isMM ? 'MM' : isBoth ? 'Both' : 'S'}
+    </span>
   )
 }
 

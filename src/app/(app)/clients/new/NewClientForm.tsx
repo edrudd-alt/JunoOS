@@ -70,6 +70,7 @@ export default function NewClientForm({ leads }: Props) {
     holding_location: 'direct',
     lead_investor_id: '',
     notes: '',
+    fund_type: 'syndicate',
   })
 
   function set(key: string, value: string) {
@@ -102,6 +103,7 @@ export default function NewClientForm({ leads }: Props) {
       holding_location: form.holding_location,
       lead_investor_id: isLinked && form.lead_investor_id ? form.lead_investor_id : null,
       notes: form.notes.trim() || null,
+      fund_type: 'syndicate',
     }
 
     const { data, error: dbError } = await supabase
@@ -206,6 +208,14 @@ export default function NewClientForm({ leads }: Props) {
                 <option value="nominee">Nominee</option>
                 <option value="both">Direct & Nominee</option>
               </select>
+            </Field>
+            <Field label="Fund type">
+              <select value={form.fund_type} disabled style={{ ...inputStyle, background: '#f5f5f2', color: '#888' }}>
+                <option value="syndicate">Syndicate</option>
+              </select>
+              <div style={{ fontSize: 10, color: '#888', marginTop: 4 }}>
+                Multi Manager is closed to new clients. All new clients are onboarded as Syndicate.
+              </div>
             </Field>
           </Section>
         </div>

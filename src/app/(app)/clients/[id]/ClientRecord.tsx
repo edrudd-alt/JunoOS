@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import OverviewTab from './tabs/OverviewTab'
 import InvestmentsTab from './tabs/InvestmentsTab'
@@ -60,6 +62,8 @@ export interface ClientRow {
   reporting_entity_defaults: string[]
   report_delivery_method: string
   notes: string | null
+  fund_type: string
+  active_fund_type: string | null
 }
 
 interface PortfolioRow {
@@ -100,8 +104,12 @@ export default function ClientRecord({
   valuations, documents, updateRecipients, notes, membershipDocs,
   pendingInvestments, activeDeals, followUpNotes, lastActivity,
 }: Props) {
+  const router = useRouter()
+  const supabase = createClient()
+
   const [tab, setTab] = useState<Tab>('overview')
   const [actionsOpen, setActionsOpen] = useState(false)
+  const [showFundTypeModal, setShowFundTypeModal] = useState(false)
 
   // Read ?tab= from URL on mount
   useEffect(() => {
@@ -240,7 +248,7 @@ export default function ClientRecord({
                   <ActionDivider />
                   <ActionGroup label="Client">
                     <ActionItem label="Add note" onClick={() => { switchTab('notes'); setActionsOpen(false) }} />
-                    <ActionItem label="Edit client details" />
+                    <ActionItem label="Edit fund type" onClick={() => { setShowFundTypeModal(true); setActionsOpen(false) }} />
                   </ActionGroup>
                 </div>
               )}
@@ -331,6 +339,7 @@ export default function ClientRecord({
             portfolioRows={portfolioRows}
             membershipDocs={membershipDocs}
             lastActivity={lastActivity}
+            investments={investments}
           />
         )}
         {tab === 'investments' && (
@@ -360,6 +369,88 @@ export default function ClientRecord({
             documents={documents}
           />
         )}
+      </div>
+
+      {/* Edit fund type modal */}
+      {showFundTypeModal && (
+        <EditFundTypeModal
+          clientId={client.id}
+          currentFundType={client.fund_type ?? 'syndicate'}
+          currentActiveFundType={client.active_fund_type ?? null}
+          onClose={() => setShowFundTypeModal(false)}
+          onSaved={() => { setShowFundTypeModal(false); router.refresh() }}
+        />
+      )}
+    </div>
+  )
+}
+
+function EditFundTypeModal({
+  clientId, currentFundType, currentActiveFundType, onClose, onSaved,
+}: {
+  clientId: string
+  currentFundType: string
+  currentActiveFundType: string | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const supabase = createClient()
+  const [fundType,       setFundType]       = useState(currentFundType)
+  const [activeFundType, setActiveFundType] = useState(currentActiveFundType ?? 'syndicate')
+  const [saving,         setSaving]         = useState(false)
+  const [err,            setErr]            = useState('')
+
+  const inputSt: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: '#fff' }
+  const labelSt: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#555', marginBottom: 4 }
+
+  async function handleSave() {
+    setSaving(true); setErr('')
+    const { error } = await supabase.from('clients').update({
+      fund_type: fundType,
+      active_fund_type: fundType === 'both' ? activeFundType : null,
+    }).eq('id', clientId)
+    setSaving(false)
+    if (error) { setErr(error.message); return }
+    onSaved()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="card" style={{ width: 400, padding: '24px 28px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Edit fund type</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#aaa' }}>×</button>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <label style={labelSt}>Fund type</label>
+          <select value={fundType} onChange={e => setFundType(e.target.value)} style={inputSt}>
+            <option value="syndicate">Syndicate</option>
+            <option value="multi_manager">Multi Manager</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+        {fundType === 'both' && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelSt}>Currently active fund type</label>
+            <select value={activeFundType} onChange={e => setActiveFundType(e.target.value)} style={inputSt}>
+              <option value="syndicate">Syndicate</option>
+              <option value="multi_manager">Multi Manager</option>
+            </select>
+          </div>
+        )}
+        {fundType === 'multi_manager' && (
+          <div style={{ background: '#fffbeb', border: '0.5px solid #f0c674', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78500a' }}>
+            Multi Manager is closed to new clients. Only assign this to existing Multi Manager investors.
+          </div>
+        )}
+        {err && <div style={{ fontSize: 11, color: '#a32d2d', marginBottom: 10 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: 12 }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
+        </div>
       </div>
     </div>
   )

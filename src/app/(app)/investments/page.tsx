@@ -17,7 +17,7 @@ export default async function InvestmentsPage() {
         original_share_price, shares_purchased, sum_subscribed,
         eis_status, holding_entity, holding_location, status,
         transaction_type, cost_basis, transfer_counterparty_id, transfer_type, notes,
-        companies (id, name)
+        fund_type, companies (id, name)
       `)
       .order('investment_date', { ascending: false }),
     supabase
@@ -26,7 +26,7 @@ export default async function InvestmentsPage() {
       .order('name'),
     supabase
       .from('clients')
-      .select('id, full_name, email, lead_investor_id, entity_type')
+      .select('id, full_name, email, lead_investor_id, entity_type, fund_type')
       .order('full_name'),
     supabase
       .from('valuations')

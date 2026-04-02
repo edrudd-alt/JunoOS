@@ -9,7 +9,7 @@ export default async function ClientsPage() {
     .from('clients')
     .select(`
       id, full_name, investor_reference, email, kyc_status, kyc_expiry,
-      entity_type, tax_status, date_joined, lead_investor_id
+      entity_type, tax_status, date_joined, lead_investor_id, fund_type
     `)
     .order('full_name')
 
