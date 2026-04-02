@@ -11,7 +11,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .select(`
       id, deal_type, status, created_at, investment_amount, share_price, share_class,
       completion_checklist,
-      companies (id, name, share_classes),
+      companies (id, name),
       deal_investors (
         id, amount, signing_status, poa_held,
         clients (id, full_name, email)
@@ -20,7 +20,13 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     .eq('id', id)
     .maybeSingle()
 
-  if (dealError) console.error('DealDetail query error:', dealError)
+  if (dealError) {
+    console.error('DealDetail query error:', JSON.stringify(dealError))
+    return <div style={{ padding: 32, color: '#a32d2d', fontFamily: 'monospace', fontSize: 12 }}>
+      <strong>Deal failed to load.</strong><br />
+      {JSON.stringify(dealError)}
+    </div>
+  }
   if (!deal) notFound()
 
   const { data: documents } = await supabase
