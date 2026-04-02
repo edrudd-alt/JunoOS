@@ -10,8 +10,6 @@ const NAV_LINKS = [
   { href: '/investments', label: 'Investments'  },
   { href: '/portfolio',   label: 'Portfolio'    },
   { href: '/deals',       label: 'Deals'        },
-  { href: '/documents', label: 'Documents' },
-  { href: '/reports', label: 'Reports' },
   { href: '/settings', label: 'Settings' },
 ]
 
