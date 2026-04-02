@@ -1000,11 +1000,29 @@ function RecordTransactionModal({
           )}
         </F>
 
+        {/* Held by / Transferring from */}
+        <F label={modalType === 'transfer' ? 'Transferring from *' : 'Held by *'}>
+          <select
+            value={activeClient}
+            onChange={e => {
+              if (modalType === 'transfer') setFromClient(e.target.value)
+              else setHeldBy(e.target.value)
+            }}
+            style={inputStyle}
+            disabled={!companyId}
+          >
+            <option value="">
+              {!companyId ? 'Select a company first…' : 'Select…'}
+            </option>
+            {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+          </select>
+        </F>
+
         {/* Share class */}
         <F label="Share class *">
           <select
             value={shareClass}
-            onChange={e => { setShareClass(e.target.value); setHeldBy(''); setFromClient(''); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
+            onChange={e => { setShareClass(e.target.value); setLocationRows(modalType === 'buy' ? [{ id: uid(), location: '', shares: '', eis: 'tbc' }] : []) }}
             style={inputStyle}
             disabled={!companyId}
           >
@@ -1027,26 +1045,6 @@ function RecordTransactionModal({
             <input type="date" value={txDate} onChange={e => setTxDate(e.target.value)} style={inputStyle} />
           </F>
         </div>
-
-        {/* Held by / Transferring from */}
-        <F label={modalType === 'transfer' ? 'Transferring from *' : 'Held by *'}>
-          <select
-            value={activeClient}
-            onChange={e => {
-              if (modalType === 'transfer') setFromClient(e.target.value)
-              else setHeldBy(e.target.value)
-            }}
-            style={inputStyle}
-            disabled={!companyId || (modalType !== 'buy' && !shareClass)}
-          >
-            <option value="">
-              {!companyId ? 'Select a company first…'
-                : modalType !== 'buy' && !shareClass ? 'Select a share class first…'
-                : 'Select…'}
-            </option>
-            {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </select>
-        </F>
 
         {/* Location table */}
         {(modalType === 'buy' || activeClient) && (
