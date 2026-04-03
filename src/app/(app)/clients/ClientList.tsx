@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { UserPlus } from 'lucide-react'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import type { KycStatus } from '@/lib/supabase/types'
 
@@ -223,8 +224,12 @@ export default function ClientList({ leads, linkedByLead, portfolioByClient, cli
           <tbody>
             {paginated.length === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '32px 0', color: '#888' }}>
-                  No clients found
+                <td colSpan={5} style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
+                    <UserPlus size={24} strokeWidth={1.5} />
+                    <span style={{ fontSize: 13 }}>No clients yet</span>
+                    <Link href="/clients/new" className="btn btn-primary" style={{ fontSize: 12, marginTop: 4 }}>Add your first client</Link>
+                  </div>
                 </td>
               </tr>
             ) : (

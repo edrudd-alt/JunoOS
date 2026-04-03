@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
+import { Breadcrumb } from '@/components/Breadcrumb'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 import UpdateValuationModal from './UpdateValuationModal'
 import SharePriceSection from './SharePriceSection'
@@ -174,12 +175,7 @@ export default function CompanyPage({
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-        <Link href="/portfolio" style={{ color: '#888', textDecoration: 'none' }}>Portfolio</Link>
-        {' › '}
-        <span>{company.name}</span>
-      </div>
+      <Breadcrumb items={[{ label: 'Portfolio', href: '/portfolio' }, { label: company.name }]} />
 
       {/* Header */}
       <div className="card" style={{ marginBottom: 16 }}>

@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
@@ -263,11 +264,7 @@ export default function DealDetail({
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>
-            <Link href="/deals" style={{ color: '#aaa', textDecoration: 'none' }}>Deals</Link>
-            {' / '}
-            {deal.companies?.name ?? 'No company'}
-          </div>
+          <Breadcrumb items={[{ label: 'Deals', href: '/deals' }, { label: deal.companies?.name ?? 'No company' }]} />
           <h1 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>
             {DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type}
             {deal.companies && (

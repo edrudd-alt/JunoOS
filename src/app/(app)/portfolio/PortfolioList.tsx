@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { Building2 } from 'lucide-react'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
 
 type SortKey = 'valuation' | 'change' | 'investors' | 'name' | 'last_updated'
@@ -163,8 +164,11 @@ export default function PortfolioList({ companies, portfolioByCompany, valuation
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={7} style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-                  No companies yet — add your first portfolio company to get started
+                <td colSpan={7} style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
+                    <Building2 size={24} strokeWidth={1.5} />
+                    <span style={{ fontSize: 13 }}>No companies yet — add your first portfolio company to get started</span>
+                  </div>
                 </td>
               </tr>
             ) : (

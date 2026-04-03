@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
@@ -146,12 +147,7 @@ export default function ClientRecord({
 
   return (
     <div>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-        <Link href="/clients" style={{ color: '#888', textDecoration: 'none' }}>Clients</Link>
-        {' › '}
-        <span>{fullName}</span>
-      </div>
+      <Breadcrumb items={[{ label: 'Clients', href: '/clients' }, { label: fullName }]} />
 
       {/* Header card */}
       <div className="card" style={{ marginBottom: 16 }}>

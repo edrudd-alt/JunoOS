@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { Breadcrumb } from '@/components/Breadcrumb'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice } from '@/lib/utils'
 import type { Client, Company, Investment, DealInvestor } from '@/types'
@@ -311,16 +311,11 @@ export default function SaleDealForm({
 
   return (
     <div style={{ maxWidth: 1200 }}>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-        <Link href="/deals" style={{ color: '#888', textDecoration: 'none' }}>Deals</Link>
-        {' › '}
-        <button onClick={handleBack} style={{ color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontSize: 11 }}>
-          {isEditMode ? (selectedCompany?.name ?? 'Deal') : 'New deal'}
-        </button>
-        {' › '}
-        {isFullExit ? 'Full Exit' : 'Partial Exit'}
-      </div>
+      <Breadcrumb items={[
+        { label: 'Deals', href: '/deals' },
+        { label: isEditMode ? (selectedCompany?.name ?? 'Deal') : 'New deal', onClick: handleBack },
+        { label: isFullExit ? 'Full Exit' : 'Partial Exit' },
+      ]} />
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>

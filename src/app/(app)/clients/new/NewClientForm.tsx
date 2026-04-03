@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Breadcrumb } from '@/components/Breadcrumb'
 import { createClient } from '@/lib/supabase/client'
 
 interface Lead {
@@ -130,11 +131,7 @@ export default function NewClientForm({ leads }: Props) {
 
   return (
     <div style={{ maxWidth: 680 }}>
-      {/* Breadcrumb */}
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-        <Link href="/clients" style={{ color: '#888', textDecoration: 'none' }}>Clients</Link>
-        {' › '}New client
-      </div>
+      <Breadcrumb items={[{ label: 'Clients', href: '/clients' }, { label: 'New client' }]} />
 
       <h1 style={{ fontSize: 17, fontWeight: 500, marginBottom: 24 }}>Add client</h1>
 

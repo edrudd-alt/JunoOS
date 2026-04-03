@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { MessageSquare } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -91,8 +92,12 @@ export default function NotesTab({ notes, clientId }: Props) {
 
       {/* Notes list */}
       {typedNotes.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '40px 0', color: '#888' }}>
-          No notes yet
+        <div className="card" style={{ textAlign: 'center', padding: '40px 0' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
+            <MessageSquare size={24} strokeWidth={1.5} />
+            <span style={{ fontSize: 13 }}>No notes yet</span>
+            <span style={{ fontSize: 12, color: '#aaa' }}>Add notes to track correspondence and key information</span>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

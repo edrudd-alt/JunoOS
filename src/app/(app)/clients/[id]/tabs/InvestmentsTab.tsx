@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
+import { TrendingUp } from 'lucide-react'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
 
 interface Investment {
@@ -139,8 +140,13 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
           <tbody>
             {byCompany.size === 0 ? (
               <tr>
-                <td colSpan={5} style={{ textAlign: 'center', padding: '32px 0', color: '#888' }}>
-                  No investments
+                <td colSpan={5} style={{ textAlign: 'center', padding: '40px 0' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
+                    <TrendingUp size={24} strokeWidth={1.5} />
+                    <span style={{ fontSize: 13 }}>No investments yet</span>
+                    <span style={{ fontSize: 12, color: '#aaa' }}>Investments will appear here when deals are completed</span>
+                    <Link href="/deals/new" className="btn btn-secondary" style={{ fontSize: 12, marginTop: 4 }}>Start a deal</Link>
+                  </div>
                 </td>
               </tr>
             ) : (
