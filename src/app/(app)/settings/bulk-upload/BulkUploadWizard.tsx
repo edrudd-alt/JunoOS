@@ -74,7 +74,7 @@ const FIELD_DEFS: Record<DataType, FieldDef[]> = {
     { key: 'investment_date',  label: 'Investment date',   required: true, transform: 'Normalise date format' },
     { key: 'share_class',      label: 'Share class',       required: false },
     { key: 'eis_status',       label: 'EIS status',        required: false, hint: 'EIS, SEIS, or blank' },
-    { key: 'nominee_held',     label: 'Nominee held',      required: false, hint: 'Y/N', transform: 'Y/N → boolean' },
+    { key: 'nominee_held',     label: 'Nominee held',      required: false, hint: 'Y/N' },
   ],
   valuations: [
     { key: 'company_name',    label: 'Company name',   required: true, hint: 'Must match existing company' },
@@ -897,16 +897,19 @@ export default function BulkUploadWizard() {
             const { data: company } = await supabase.from('companies').select('id').ilike('name', row.company_name).maybeSingle()
             const { data: client }  = await supabase.from('clients').select('id').ilike('full_name', row.client_name).maybeSingle()
             if (company && client) {
+              const sharesPurchased = Number(row.shares_purchased)
+              const sumSubscribed   = Number(row.sum_subscribed)
               await supabase.from('investments').insert({
-                client_id: client.id,
-                company_id: company.id,
-                shares_purchased: Number(row.shares_purchased),
-                sum_subscribed: Number(row.sum_subscribed),
-                investment_date: row.investment_date || null,
-                share_class: row.share_class || null,
-                eis_status: row.eis_status || null,
-                nominee_held: row.nominee_held === 'true',
-                status: 'active',
+                client_id:            client.id,
+                company_id:           company.id,
+                shares_purchased:     sharesPurchased,
+                sum_subscribed:       sumSubscribed,
+                original_share_price: sharesPurchased > 0 ? sumSubscribed / sharesPurchased : 0,
+                investment_date:      row.investment_date || null,
+                share_class:          row.share_class || null,
+                eis_status:           row.eis_status || null,
+                holding_location:     row.nominee_held === 'true' ? 'nominee' : 'direct',
+                status:               'active',
               })
             } else {
               errors.push(`Row ${result.rowIndex}: ${!company ? `Company "${row.company_name}" not found` : `Client "${row.client_name}" not found`}`)

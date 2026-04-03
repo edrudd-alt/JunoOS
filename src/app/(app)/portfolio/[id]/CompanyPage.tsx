@@ -356,10 +356,12 @@ export default function CompanyPage({
                             <td style={{ padding: '6px 0 6px 22px', color: '#555' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                                 <span>{formatDate(r.investment_date)}</span>
-                                {r.eis_status === 'qualifying' ? (
+                                {r.eis_status === 'yes' ? (
                                   <span className="pill pill-green" style={{ fontSize: 9 }}>EIS</span>
-                                ) : r.eis_status !== 'not_applicable' ? (
-                                  <span className="pill" style={{ fontSize: 9, background: '#f0f0f0', color: '#888' }}>Non-EIS</span>
+                                ) : r.eis_status === 'no' ? (
+                                  <span className="pill pill-grey" style={{ fontSize: 9 }}>Non-EIS</span>
+                                ) : r.eis_status === 'tbc' ? (
+                                  <span className="pill pill-amber" style={{ fontSize: 9 }}>EIS TBC</span>
                                 ) : null}
                                 {r.holding_location === 'nominee' && (
                                   <span className="pill" style={{ fontSize: 9, background: '#f0e6ff', color: '#7c3aed' }}>Nominee</span>

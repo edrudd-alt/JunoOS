@@ -38,7 +38,6 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
       clients (id, full_name, lead_investor_id)
     `)
     .eq('company_id', id)
-    .eq('status', 'active')
     .order('investment_date', { ascending: false })
 
   // KPIs for this company

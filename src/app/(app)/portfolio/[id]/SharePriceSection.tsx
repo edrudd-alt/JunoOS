@@ -168,8 +168,25 @@ export default function SharePriceSection({ companyId, valuations, investments, 
 
   const start = getRangeStart(range)
 
-  // Build one series per share class, then pick which to render
+  // Build one series per share class, then pick which to render.
+  // Fallback: if no share classes exist but valuations do, render a single "Valuation" series.
   const allSeries = useMemo(() => {
+    if (classes.length === 0 && valuations.length > 0) {
+      const manualPts = [...valuations]
+        .reverse()
+        .map(v => ({ date: new Date(v.valuation_date + 'T00:00:00'), price: v.share_price }))
+      const today = new Date(); today.setHours(23, 59, 59, 0)
+      const pts = [...manualPts]
+      const last = pts[pts.length - 1]
+      if (last && last.date.getTime() < today.getTime()) pts.push({ date: today, price: last.price })
+      const start_ = start ? pts.filter(p => p.date >= start) : pts
+      const windowed = start && start_.length === 0 && pts.length > 0
+        ? [{ date: start, price: pts[pts.length - 1].price }]
+        : start && pts.some(p => p.date < start)
+          ? [{ date: start, price: pts.filter(p => p.date < start).at(-1)!.price }, ...start_]
+          : start_
+      return [{ label: 'Valuation', color: CLASS_COLORS[0], pts: windowed.length > 0 ? windowed : pts }]
+    }
     return classes.map((cls, i) => ({
       label: cls,
       color: CLASS_COLORS[i % CLASS_COLORS.length],
