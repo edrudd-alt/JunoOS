@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import type { Client, Company, Valuation } from '@/types'
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 
@@ -39,26 +40,7 @@ interface RawInvestment {
   companies: { id: string; name: string } | null
 }
 
-interface Company {
-  id: string
-  name: string
-  share_classes: { name: string; type: string }[] | null
-}
-
-interface Client {
-  id: string
-  full_name: string
-  email: string | null
-  lead_investor_id: string | null
-  entity_type: string
-  fund_type: string
-}
-
-interface Valuation {
-  company_id: string
-  share_price: number
-  valuation_date: string
-}
+// Client, Company, Valuation imported from @/types.
 
 interface HoldingRow {
   clientId: string

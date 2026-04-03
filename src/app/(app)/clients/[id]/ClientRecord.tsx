@@ -5,12 +5,18 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
+import type { Client, PortfolioRow, Document } from '@/types'
 import OverviewTab from './tabs/OverviewTab'
 import InvestmentsTab from './tabs/InvestmentsTab'
 import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
 import NotesTab from './tabs/NotesTab'
 import PendingActionsTab from './tabs/PendingActionsTab'
+
+// Re-export as ClientRow so existing imports from this file keep working.
+export type { ClientRow } from '@/types'
+// Local alias used throughout this component.
+type ClientRow = Client
 
 type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'pending_actions'
 
@@ -40,48 +46,6 @@ function TaxBadge({ status }: { status: string }) {
   return <span className="pill pill-blue">{map[status] ?? status}</span>
 }
 
-export interface ClientRow {
-  id: string
-  full_name: string
-  investor_reference: string | null
-  email: string | null
-  phone: string | null
-  address_line1: string | null
-  address_line2: string | null
-  city: string | null
-  postcode: string | null
-  date_joined: string | null
-  tax_status: string
-  kyc_status: string
-  kyc_expiry: string | null
-  default_fee_rate: number
-  report_delivery_email: string | null
-  lead_investor_id: string | null
-  entity_type: string
-  holding_location: string
-  reporting_entity_defaults: string[]
-  report_delivery_method: string
-  notes: string | null
-  fund_type: string
-  active_fund_type: string | null
-}
-
-interface PortfolioRow {
-  client_id: string
-  company_id: string
-  total_invested: number
-  current_value: number
-  gain_loss: number
-}
-
-interface MembershipDoc {
-  id: string
-  type: string
-  filename: string
-  storage_url: string | null
-  document_date: string | null
-}
-
 interface Props {
   client: ClientRow
   lead: ClientRow | null
@@ -92,7 +56,7 @@ interface Props {
   documents: Record<string, unknown>[]
   updateRecipients: Record<string, unknown>[]
   notes: Record<string, unknown>[]
-  membershipDocs: MembershipDoc[]
+  membershipDocs: Document[]
   pendingInvestments: Record<string, unknown>[]
   activeDeals: Record<string, unknown>[]
   followUpNotes: Record<string, unknown>[]

@@ -5,44 +5,12 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
+import type { Client, Company, Investment, DealInvestor } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Company {
-  id: string
-  name: string
-  share_classes: { name: string; type?: string }[] | null
-}
-
-interface Client {
-  id: string
-  full_name: string
-  email: string | null
-  default_fee_rate: number
-  tax_status: string
-  lead_investor_id: string | null
-  fund_type: string
-  active_fund_type: string | null
-}
-
-interface ActiveInvestment {
-  id: string
-  client_id: string
-  company_id: string
-  share_class: string
-  shares_purchased: number
-  original_share_price: number
-  sum_subscribed: number
-  eis_status: string
-}
-
-interface ExistingDealInvestor {
-  id: string
-  client_id: string
-  amount: number | null
-  poa_held: boolean
-  clients: { id: string; full_name: string; email: string | null } | null
-}
+// Client, Company, Investment, DealInvestor imported from @/types.
+// ActiveInvestment is a subset of Investment — use Investment directly.
 
 export interface ExistingBuyDeal {
   id: string
@@ -62,7 +30,7 @@ export interface ExistingBuyDeal {
       fundType?: string
     }>
   } | null
-  deal_investors: ExistingDealInvestor[]
+  deal_investors: DealInvestor[]
 }
 
 interface InvestorRow {
@@ -113,7 +81,7 @@ export default function BuyDealForm({
 }) {
   const companies   = companiesRaw   as unknown as Company[]
   const clients     = clientsRaw     as unknown as Client[]
-  const investments = investmentsRaw as unknown as ActiveInvestment[]
+  const investments = investmentsRaw as unknown as Investment[]
   const router      = useRouter()
   const supabase    = createClient()
 

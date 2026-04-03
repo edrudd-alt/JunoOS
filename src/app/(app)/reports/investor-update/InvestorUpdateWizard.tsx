@@ -5,34 +5,11 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate, formatPercent } from '@/lib/utils'
+import type { Company, Investment, PortfolioRow } from '@/types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Company {
-  id: string
-  name: string
-}
-
-interface InvestmentRow {
-  client_id: string
-  company_id: string
-  shares_purchased: number
-  sum_subscribed: number
-  investment_date: string
-  eis_status: string | null
-  share_class: string | null
-  clients: { id: string; full_name: string; email: string | null } | null
-}
-
-interface PortfolioRow {
-  client_id: string
-  company_id: string
-  company_name: string
-  total_shares: number
-  total_invested: number
-  current_value: number
-  gain_loss: number
-}
+// Company, Investment (replaces Investment), PortfolioRow imported from @/types.
 
 interface TeamMember {
   id: string
@@ -64,7 +41,7 @@ export default function InvestorUpdateWizard({
   teamMembers: Record<string, unknown>[]
 }) {
   const companies   = companiesRaw as unknown as Company[]
-  const investments = investmentsRaw as unknown as InvestmentRow[]
+  const investments = investmentsRaw as unknown as Investment[]
   const portfolio   = portfolioRaw as unknown as PortfolioRow[]
   const teamMembers = teamMembersRaw as unknown as TeamMember[]
 
@@ -121,7 +98,7 @@ function TypeSelector({
   onSelect,
 }: {
   companies: Company[]
-  investments: InvestmentRow[]
+  investments: Investment[]
   onSelect: (t: UpdateType) => void
 }) {
   // Count companies with active investors
@@ -227,7 +204,7 @@ function DataTableWizard({
   onBack,
 }: {
   companies: Company[]
-  investments: InvestmentRow[]
+  investments: Investment[]
   portfolio: PortfolioRow[]
   onBack: () => void
 }) {
@@ -244,7 +221,7 @@ function DataTableWizard({
   const selectedCompany = companies.find(c => c.id === companyId)
 
   const companyInvestors = useMemo(() => {
-    const seen = new Map<string, InvestmentRow['clients']>()
+    const seen = new Map<string, Investment['clients']>()
     for (const inv of investments) {
       if (inv.company_id === companyId && inv.clients && !seen.has(inv.client_id)) {
         seen.set(inv.client_id, inv.clients)
@@ -426,7 +403,7 @@ function TableWithBulletsWizard({
   onBack,
 }: {
   companies: Company[]
-  investments: InvestmentRow[]
+  investments: Investment[]
   portfolio: PortfolioRow[]
   onBack: () => void
 }) {
@@ -445,7 +422,7 @@ function TableWithBulletsWizard({
   const selectedCompany = companies.find(c => c.id === companyId)
 
   const companyInvestors = useMemo(() => {
-    const seen = new Map<string, InvestmentRow['clients']>()
+    const seen = new Map<string, Investment['clients']>()
     for (const inv of investments) {
       if (inv.company_id === companyId && inv.clients && !seen.has(inv.client_id)) {
         seen.set(inv.client_id, inv.clients)
@@ -696,7 +673,7 @@ function LongFormWizard({
   onBack,
 }: {
   companies: Company[]
-  investments: InvestmentRow[]
+  investments: Investment[]
   portfolio: PortfolioRow[]
   teamMembers: TeamMember[]
   onBack: () => void
@@ -731,7 +708,7 @@ function LongFormWizard({
   const selectedCompany = companies.find(c => c.id === companyId)
 
   const companyInvestors = useMemo(() => {
-    const seen = new Map<string, InvestmentRow['clients']>()
+    const seen = new Map<string, Investment['clients']>()
     for (const inv of investments) {
       if (inv.company_id === companyId && inv.clients && !seen.has(inv.client_id)) {
         seen.set(inv.client_id, inv.clients)
@@ -1145,7 +1122,7 @@ function InvestorStatementPreview({
 }: {
   investorName: string
   companyName: string
-  investments: InvestmentRow[]
+  investments: Investment[]
   portRow: PortfolioRow | undefined
   totalPortfolioValue: number
 }) {
