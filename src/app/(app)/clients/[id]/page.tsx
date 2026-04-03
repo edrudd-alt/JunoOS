@@ -56,7 +56,7 @@ export default async function ClientRecordPage({ params }: Props) {
       .select(`
         id, share_class, investment_date, original_share_price,
         shares_purchased, sum_subscribed, eis_status, holding_entity,
-        holding_location, status, company_id
+        holding_location, status, company_id, transaction_type
       `)
       .in('client_id', allGroupIds)
       .order('investment_date', { ascending: false }),
