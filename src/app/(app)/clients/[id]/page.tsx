@@ -50,15 +50,15 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('*')
       .in('client_id', allGroupIds),
 
-    // Investments — no join, no status filter (show full picture on client record)
+    // Investments — this client only, no status filter
     supabase
       .from('investments')
       .select(`
         id, share_class, investment_date, original_share_price,
         shares_purchased, sum_subscribed, eis_status, holding_entity,
-        holding_location, status, company_id, transaction_type
+        holding_location, status, company_id, transaction_type, fund_type
       `)
-      .in('client_id', allGroupIds)
+      .eq('client_id', id)
       .order('investment_date', { ascending: false }),
 
     // Documents — no join
@@ -82,12 +82,12 @@ export default async function ClientRecordPage({ params }: Props) {
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
 
-    // Membership documents
+    // Membership documents — include company_id for EIS cert checks
     supabase
       .from('documents')
-      .select('id, type, filename, storage_url, document_date')
+      .select('id, type, filename, storage_url, document_date, company_id')
       .eq('client_id', id)
-      .in('type', ['kyc', 'poa', 'membership_agreement', 'suitability_assessment', 'source_of_funds'])
+      .in('type', ['kyc', 'poa', 'membership_agreement', 'suitability_assessment', 'source_of_funds', 'eis_certificate'])
       .order('document_date', { ascending: false }),
 
     // Pending investments — no join
@@ -97,11 +97,11 @@ export default async function ClientRecordPage({ params }: Props) {
       .in('client_id', allGroupIds)
       .eq('status', 'pending'),
 
-    // Deal investors → deal IDs only (active deals fetched below)
+    // Deal investors → deal IDs for this client only
     supabase
       .from('deal_investors')
       .select('deal_id')
-      .in('client_id', allGroupIds),
+      .eq('client_id', id),
 
     // Follow-up notes
     supabase
@@ -127,7 +127,7 @@ export default async function ClientRecordPage({ params }: Props) {
   const { data: rawActiveDeals } = dealIds.length > 0
     ? await supabase
         .from('deals')
-        .select('id, deal_type, status, company_id')
+        .select('id, deal_type, status, company_id, created_at')
         .in('id', dealIds)
         .neq('status', 'complete')
     : { data: [] as { id: string; deal_type: string; status: string; company_id: string | null }[] }
@@ -142,11 +142,14 @@ export default async function ClientRecordPage({ params }: Props) {
   const updateIds  = [...new Set((updateRecipients ?? []).map(r => (r as Record<string, unknown>).investor_update_id as string).filter(Boolean))]
   const creatorIds = [...new Set((notes ?? []).map(n => (n as Record<string, unknown>).created_by as string).filter(Boolean))]
 
+  const activeDealIds = (rawActiveDeals ?? []).map(d => d.id)
+
   const [
     { data: companiesData },
     { data: investorUpdatesData },
     { data: teamMembersData },
     { data: valuations },
+    { data: allDealInvestorRows },
   ] = await Promise.all([
     allCids.length > 0
       ? supabase.from('companies').select('id, name, sector, stage').in('id', allCids)
@@ -160,12 +163,22 @@ export default async function ClientRecordPage({ params }: Props) {
     investmentCids.length > 0
       ? supabase.from('company_current_valuations').select('company_id, share_price, valuation_date').in('company_id', investmentCids)
       : { data: [] as { company_id: string; share_price: number; valuation_date: string }[] },
+    activeDealIds.length > 0
+      ? supabase.from('deal_investors').select('deal_id').in('deal_id', activeDealIds)
+      : { data: [] as { deal_id: string }[] },
   ])
 
   // Merge secondary data into results
   const companyMap    = new Map((companiesData ?? []).map(c => [c.id, c]))
   const updateMap     = new Map((investorUpdatesData ?? []).map(u => [u.id, u]))
   const teamMemberMap = new Map((teamMembersData ?? []).map(t => [t.id, t]))
+
+  // Investor count per deal
+  const investorCountByDeal: Record<string, number> = {}
+  for (const di of allDealInvestorRows ?? []) {
+    const did = (di as Record<string, unknown>).deal_id as string
+    investorCountByDeal[did] = (investorCountByDeal[did] ?? 0) + 1
+  }
 
   const investments = (rawInvestments ?? []).map(i => ({
     ...i,
@@ -195,6 +208,7 @@ export default async function ClientRecordPage({ params }: Props) {
   const activeDeals = (rawActiveDeals ?? []).map(d => ({
     ...d,
     companies: d.company_id ? (companyMap.get(d.company_id) ?? null) : null,
+    investor_count: investorCountByDeal[d.id] ?? 0,
   }))
 
   const lastActivity = (lastActivityRow as Record<string, unknown> | null)?.created_at as string | null

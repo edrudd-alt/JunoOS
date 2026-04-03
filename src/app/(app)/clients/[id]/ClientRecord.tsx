@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatPercent, formatDate, getInitials, calcGainLoss } from '@/lib/utils'
+import { getInitials } from '@/lib/utils'
 import type { Client, PortfolioRow, Document } from '@/types'
 import OverviewTab from './tabs/OverviewTab'
+import DetailsTab from './tabs/DetailsTab'
 import InvestmentsTab from './tabs/InvestmentsTab'
 import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
@@ -19,15 +20,15 @@ export type { ClientRow } from '@/types'
 // Local alias used throughout this component.
 type ClientRow = Client
 
-type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'pending_actions'
+type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'details' | 'pending_actions'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview',         label: 'Overview' },
-  { key: 'investments',      label: 'Investments' },
-  { key: 'investment_docs',  label: 'Investment docs' },
-  { key: 'updates_sent',     label: 'Updates sent' },
-  { key: 'notes',            label: 'Notes' },
-  { key: 'pending_actions',  label: 'Pending actions' },
+  { key: 'overview',        label: 'Overview' },
+  { key: 'investments',     label: 'Investments' },
+  { key: 'investment_docs', label: 'Investment docs' },
+  { key: 'updates_sent',    label: 'Updates sent' },
+  { key: 'notes',           label: 'Notes' },
+  { key: 'details',         label: 'Details' },
 ]
 
 function KycBadge({ status }: { status: string }) {
@@ -100,50 +101,7 @@ export default function ClientRecord({
 
   const clientId = client.id
   const fullName = client.full_name
-
-  // Aggregate portfolio across all entities in group
-  const groupPortfolio = portfolioRows.reduce<{ totalInvested: number; currentValue: number; gainLoss: number }>(
-    (acc, row) => {
-      acc.totalInvested += Number(row.total_invested ?? 0)
-      acc.currentValue  += Number(row.current_value  ?? 0)
-      acc.gainLoss      += Number(row.gain_loss       ?? 0)
-      return acc
-    },
-    { totalInvested: 0, currentValue: 0, gainLoss: 0 }
-  )
-
-  const companySet    = new Set(portfolioRows.map(r => r.company_id as string))
-  const holdingsCount = investments.length
-
-  const { pct }      = calcGainLoss(groupPortfolio.totalInvested, groupPortfolio.currentValue)
-  const gainLossAbs  = groupPortfolio.gainLoss
-  const initials     = getInitials(fullName)
-
-  // Count pending actions for badge and stat card
-  const pendingCount = useMemo(() => {
-    let count = pendingInvestments.length + activeDeals.length + followUpNotes.length
-    // KYC expiry within 60 days or overdue
-    if (client.kyc_expiry) {
-      const days = Math.floor((new Date(client.kyc_expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-      if (days <= 60) count++
-    }
-    // EIS certificates outstanding
-    const eisCompanyIds = new Set(
-      investments
-        .filter(i => { const e = i.eis_status as string; return e === 'yes' || e === 'tbc' })
-        .map(i => (i.companies as { id: string } | null)?.id)
-        .filter((cid): cid is string => Boolean(cid))
-    )
-    const eisDocCompanyIds = new Set(
-      documents
-        .filter(d => (d.type as string)?.toLowerCase().includes('eis') && d.company_id)
-        .map(d => d.company_id as string)
-    )
-    for (const cid of eisCompanyIds) {
-      if (!eisDocCompanyIds.has(cid)) count++
-    }
-    return count
-  }, [pendingInvestments, activeDeals, followUpNotes, client.kyc_expiry, investments, documents])
+  const initials = getInitials(fullName)
 
   return (
     <div>
@@ -228,41 +186,6 @@ export default function ClientRecord({
         </div>
       </div>
 
-      {/* Headline stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-        <StatCard
-          label="Total invested"
-          value={formatCurrency(groupPortfolio.totalInvested)}
-        />
-        <StatCard
-          label="Current valuation"
-          value={formatCurrency(groupPortfolio.currentValue)}
-          sub={
-            <span className={gainLossAbs >= 0 ? 'text-positive' : 'text-negative'}>
-              {gainLossAbs >= 0 ? '+' : ''}{formatCurrency(gainLossAbs)} ({formatPercent(pct)})
-            </span>
-          }
-        />
-        <StatCard
-          label="Companies invested"
-          value={`${companySet.size}`}
-          sub={<span style={{ color: '#888' }}>{holdingsCount} holding{holdingsCount !== 1 ? 's' : ''}</span>}
-        />
-        <StatCard
-          label="Pending actions"
-          value={`${pendingCount}`}
-          sub={pendingCount > 0
-            ? <button
-                onClick={() => switchTab('pending_actions')}
-                style={{ fontSize: 11, color: '#a32d2d', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-              >
-                View all →
-              </button>
-            : <span style={{ color: '#1d9e75', fontSize: 11 }}>All clear</span>
-          }
-        />
-      </div>
-
       {/* Tabs */}
       <div style={{ borderBottom: '0.5px solid #e8e7e0', marginBottom: 0 }}>
         <div style={{ display: 'flex', gap: 0 }}>
@@ -284,16 +207,6 @@ export default function ClientRecord({
               }}
             >
               {t.label}
-              {t.key === 'pending_actions' && pendingCount > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: 18, height: 18, borderRadius: '50%',
-                  background: '#a32d2d', color: '#fff',
-                  fontSize: 10, fontWeight: 700, lineHeight: 1,
-                }}>
-                  {pendingCount}
-                </span>
-              )}
             </button>
           ))}
         </div>
@@ -304,11 +217,11 @@ export default function ClientRecord({
         {tab === 'overview' && (
           <OverviewTab
             client={client}
-            linkedEntities={linkedEntities}
-            portfolioRows={portfolioRows}
-            membershipDocs={membershipDocs}
-            lastActivity={lastActivity}
             investments={investments}
+            valuations={valuations}
+            pendingDeals={activeDeals}
+            membershipDocs={membershipDocs as unknown as { id: string; type: string; company_id: string | null }[]}
+            onSwitchToInvestments={() => switchTab('investments')}
           />
         )}
         {tab === 'investments' && (
@@ -316,6 +229,16 @@ export default function ClientRecord({
             investments={investments}
             valuations={valuations}
             linkedEntities={linkedEntities}
+          />
+        )}
+        {tab === 'details' && (
+          <DetailsTab
+            client={client}
+            linkedEntities={linkedEntities}
+            portfolioRows={portfolioRows}
+            membershipDocs={membershipDocs}
+            lastActivity={lastActivity}
+            investments={investments}
           />
         )}
         {tab === 'investment_docs' && (
@@ -434,18 +357,6 @@ function EditFundTypeModal({
           <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
         </div>
       </div>
-    </div>
-  )
-}
-
-function StatCard({ label, value, sub }: { label: string; value: string; sub?: React.ReactNode }) {
-  return (
-    <div className="card">
-      <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{value}</div>
-      {sub && <div style={{ fontSize: 11, marginTop: 3 }}>{sub}</div>}
     </div>
   )
 }

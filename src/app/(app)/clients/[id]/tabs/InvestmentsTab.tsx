@@ -15,6 +15,7 @@ interface Investment {
   eis_status: string
   holding_entity: string | null
   holding_location: string
+  fund_type: string | null
   status: string
   transaction_type?: string
   companies: { id: string; name: string; sector: string | null; stage: string | null } | null
@@ -59,11 +60,18 @@ function isSellTx(tx: Investment) {
 }
 
 export default function InvestmentsTab({ investments, valuations }: Props) {
+  const [accountFilter, setAccountFilter] = useState('all')
   const [heldByFilter, setHeldByFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
   const [eisFilter, setEisFilter] = useState('all')
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set())
   const [showExitHistory, setShowExitHistory] = useState(false)
+  const [docsToast, setDocsToast] = useState(false)
+
+  function showDocToast() {
+    setDocsToast(true)
+    setTimeout(() => setDocsToast(false), 2500)
+  }
 
   const inv = investments as unknown as Investment[]
   const vals = valuations as unknown as Valuation[]
@@ -85,6 +93,25 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
     }
     return opts
   }, [inv])
+
+  const accountOptions = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const i of inv) {
+      if (!isBuyTx(i)) continue
+      const ft  = i.fund_type ?? 'syndicate'
+      const loc = i.holding_location
+      const ent = i.holding_entity
+      const key = `${ft}||${loc}||${ent ?? ''}`
+      if (map.has(key)) continue
+      const ftLabel  = ft === 'multi_manager' ? 'Multi Manager' : 'Syndicate'
+      const locLabel = loc === 'nominee' ? 'Nominee' : 'Direct'
+      const label    = ent ? `${ftLabel} — ${locLabel} — ${ent}` : `${ftLabel} — ${locLabel}`
+      map.set(key, label)
+    }
+    return map
+  }, [inv])
+
+  const showAccountFilter = accountOptions.size >= 2
 
   // Compute net position per company from ALL transactions (unfiltered)
   const netByCompany = useMemo(() => {
@@ -131,6 +158,12 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
   const filteredBuyRows = useMemo(() => {
     return inv.filter(i => {
       if (!isBuyTx(i)) return false
+      if (accountFilter !== 'all') {
+        const [ft, loc, ent] = accountFilter.split('||')
+        if ((i.fund_type ?? 'syndicate') !== ft) return false
+        if (i.holding_location !== loc) return false
+        if (ent !== '' && i.holding_entity !== ent) return false
+      }
       if (heldByFilter !== 'all' && i.holding_entity !== heldByFilter) return false
       if (locationFilter === 'direct' && i.holding_location !== 'direct') return false
       if (locationFilter === 'nominee' && i.holding_location !== 'nominee') return false
@@ -138,7 +171,7 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
       if (eisFilter === 'non_eis' && i.eis_status === 'yes') return false
       return true
     })
-  }, [inv, heldByFilter, locationFilter, eisFilter])
+  }, [inv, accountFilter, heldByFilter, locationFilter, eisFilter])
 
   // Group filtered buy rows by company — only show companies with net remaining > 0
   const holdingsByCompany = useMemo(() => {
@@ -177,6 +210,14 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
     <div>
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {showAccountFilter && (
+          <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)} style={filterStyle}>
+            <option value="all">All accounts</option>
+            {Array.from(accountOptions.entries()).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+        )}
         <select value={heldByFilter} onChange={e => setHeldByFilter(e.target.value)} style={filterStyle}>
           {entityOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -291,7 +332,17 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
                             : '—'
                           }
                         </td>
-                        <td style={{ padding: '8px 12px', fontSize: 11 }}>{tx.share_class}</td>
+                        <td style={{ padding: '8px 12px', fontSize: 11 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span>{tx.share_class}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); showDocToast() }}
+                              style={{ fontSize: 10, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                            >
+                              Docs →
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     )
                   }) : []),
@@ -301,6 +352,17 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
           </tbody>
         </table>
       </div>
+
+      {docsToast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 500,
+          padding: '10px 20px', borderRadius: 6, zIndex: 2000,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
+        }}>
+          Documents coming soon
+        </div>
+      )}
 
       {/* Exit history toggle */}
       {sellRows.length > 0 && (
