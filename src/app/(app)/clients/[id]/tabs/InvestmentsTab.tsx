@@ -197,18 +197,17 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
         <table>
           <thead>
             <tr>
-              <th style={{ ...thL, width: '26%' }}>Company</th>
-              <th style={{ ...thL, width: '10%' }}>Status</th>
-              <th style={{ ...thR, width: '16%' }}>Cost</th>
-              <th style={{ ...thR, width: '16%' }}>Current value</th>
-              <th style={{ ...thR, width: '18%' }}>Unrealised P&L</th>
+              <th style={{ ...thL, width: '30%' }}>Company</th>
+              <th style={{ ...thR, width: '18%' }}>Cost</th>
+              <th style={{ ...thR, width: '18%' }}>Current value</th>
+              <th style={{ ...thR, width: '20%' }}>Unrealised P&L</th>
               <th style={{ ...thL, width: '14%' }}>Share class</th>
             </tr>
           </thead>
           <tbody>
             {holdingsByCompany.size === 0 ? (
               <tr>
-                <td colSpan={6} style={{ textAlign: 'center', padding: '40px 0' }}>
+                <td colSpan={5} style={{ textAlign: 'center', padding: '40px 0' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, color: '#888' }}>
                     <TrendingUp size={24} strokeWidth={1.5} />
                     <span style={{ fontSize: 13 }}>No active holdings</span>
@@ -247,10 +246,8 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
                         {company?.sector && (
                           <span style={{ fontSize: 10, color: '#888' }}>{company.sector}</span>
                         )}
+                        {isPartial && <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>}
                       </div>
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      {isPartial && <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right' }}>{formatCurrency(costOfRem)}</td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 500 }}>
@@ -284,7 +281,6 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
                             <div style={{ color: '#888', fontSize: 10, marginTop: 2 }}>Held by: {tx.holding_entity}</div>
                           )}
                         </td>
-                        <td style={{ padding: '8px 12px', fontSize: 11 }}></td>
                         <td style={{ padding: '8px 12px', fontSize: 11, textAlign: 'right' }}>{formatCurrency(tx.sum_subscribed)}</td>
                         <td style={{ padding: '8px 12px', fontSize: 11, textAlign: 'right', fontWeight: 500 }}>
                           {currentPrice != null ? formatCurrency(txCurrentValue) : '—'}
