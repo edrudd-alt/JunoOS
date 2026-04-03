@@ -33,7 +33,7 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
     .select(`
       id, share_class, investment_date, original_share_price,
       shares_purchased, sum_subscribed, eis_status,
-      holding_entity, holding_location, status, client_id
+      holding_entity, holding_location, status, client_id, transaction_type
     `)
     .eq('company_id', id)
     .order('investment_date', { ascending: false })

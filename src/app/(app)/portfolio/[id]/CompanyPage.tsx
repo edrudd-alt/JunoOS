@@ -38,6 +38,7 @@ interface Investment {
   holding_location: string
   status: string
   client_id: string
+  transaction_type?: string
   clients: { id: string; full_name: string; lead_investor_id: string | null } | null
 }
 
@@ -103,12 +104,23 @@ interface NewsItem {
   source: string | null
 }
 
+function isBuyTx(tx: Investment) {
+  const t = tx.transaction_type ?? 'buy'
+  return t === 'buy' || t === 'transfer_in'
+}
+
+function isSellTx(tx: Investment) {
+  const t = tx.transaction_type ?? 'buy'
+  return t === 'sell' || t === 'transfer_out'
+}
+
 export default function CompanyPage({
   company, valuations, currentValuation, investments,
   kpiData, internalUpdates, news, initialAction,
 }: Props) {
   const [showValuationModal, setShowValuationModal] = useState(initialAction === 'update_valuation')
-  const [investorsCollapsed, setInvestorsCollapsed] = useState(false)
+  const [currentInvestorsCollapsed, setCurrentInvestorsCollapsed] = useState(false)
+  const [exitHistoryCollapsed, setExitHistoryCollapsed] = useState(true)
   const [expandedInvestors, setExpandedInvestors] = useState<Set<string>>(new Set())
 
   const toggleInvestor = useCallback((clientId: string) => {
@@ -124,30 +136,72 @@ export default function CompanyPage({
   const updates = internalUpdates as unknown as InternalUpdate[]
   const newsItems = news as unknown as NewsItem[]
 
-  // Aggregate investment totals
   const currentPrice = currentValuation?.share_price ?? 0
-  const totalInvested = inv.reduce((s, i) => s + i.sum_subscribed, 0)
-  const currentValue = inv.reduce((s, i) => s + i.shares_purchased * (currentPrice || i.original_share_price), 0)
+
+  // Net position per client
+  const netByClient = useMemo(() => {
+    const map = new Map<string, {
+      client: Investment['clients']
+      sharesIn: number
+      sharesOut: number
+      remaining: number
+      totalCost: number
+      totalProceeds: number
+      costOfRemaining: number
+      buyRows: Investment[]
+    }>()
+
+    for (const i of inv) {
+      const cid = i.client_id
+      if (!map.has(cid)) {
+        map.set(cid, {
+          client: i.clients,
+          sharesIn: 0, sharesOut: 0, remaining: 0,
+          totalCost: 0, totalProceeds: 0, costOfRemaining: 0,
+          buyRows: [],
+        })
+      }
+      const pos = map.get(cid)!
+      if (isBuyTx(i)) {
+        pos.sharesIn  += i.shares_purchased
+        pos.totalCost += i.sum_subscribed
+        pos.buyRows.push(i)
+      } else if (isSellTx(i)) {
+        pos.sharesOut     += i.shares_purchased
+        pos.totalProceeds += i.sum_subscribed
+      }
+    }
+
+    for (const pos of map.values()) {
+      pos.remaining = pos.sharesIn - pos.sharesOut
+      const avgCost = pos.sharesIn > 0 ? pos.totalCost / pos.sharesIn : 0
+      pos.costOfRemaining = avgCost * Math.max(pos.remaining, 0)
+    }
+
+    return map
+  }, [inv])
+
+  // Current investors (remaining > 0), sorted by name
+  const currentInvestors = useMemo(() => {
+    return [...netByClient.values()]
+      .filter(p => p.remaining > 0)
+      .sort((a, b) => (a.client?.full_name ?? '').localeCompare(b.client?.full_name ?? ''))
+  }, [netByClient])
+
+  // All sell transactions, newest first
+  const sellRows = useMemo(() => {
+    return inv
+      .filter(isSellTx)
+      .sort((a, b) => b.investment_date.localeCompare(a.investment_date))
+  }, [inv])
+
+  // Stats — remaining shares only
+  const totalInvested  = currentInvestors.reduce((s, p) => s + p.costOfRemaining, 0)
+  const currentValue   = currentInvestors.reduce((s, p) => s + p.remaining * currentPrice, 0)
   const { change, pct } = calcGainLoss(totalInvested, currentValue)
 
-  // Unique investors
-  const investorSet = new Set(inv.map(i => i.client_id))
-  const shareClasses = new Set(inv.map(i => i.share_class))
-
-  // Group investments by investor
-  const byInvestor = useMemo(() => {
-    const map = new Map<string, { client: Investment['clients']; rows: Investment[] }>()
-    for (const row of inv) {
-      const cid = row.client_id
-      if (!map.has(cid)) map.set(cid, { client: row.clients, rows: [] })
-      map.get(cid)!.rows.push(row)
-    }
-    return [...map.values()].sort((a, b) => {
-      const nameA = a.client?.full_name ?? ''
-      const nameB = b.client?.full_name ?? ''
-      return nameA.localeCompare(nameB)
-    })
-  }, [inv])
+  // Share classes (from all buy rows)
+  const shareClasses = new Set(inv.filter(isBuyTx).map(i => i.share_class))
 
   // KPI summary — latest value per KPI (top 4)
   const latestKpis = useMemo(() => {
@@ -162,7 +216,6 @@ export default function CompanyPage({
     return result
   }, [kpiData])
 
-  // Previous period value per KPI for QoQ change
   const prevKpiValues = useMemo(() => {
     const counts: Record<string, number> = {}
     const result: Record<string, number> = {}
@@ -172,6 +225,12 @@ export default function CompanyPage({
     }
     return result
   }, [kpiData])
+
+  const thStyle: React.CSSProperties = {
+    textAlign: 'left', fontWeight: 500, color: '#aaa',
+    fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6,
+  }
+  const thR: React.CSSProperties = { ...thStyle, textAlign: 'right' }
 
   return (
     <div>
@@ -188,12 +247,11 @@ export default function CompanyPage({
                 {company.sector && <span style={{ fontSize: 11, color: '#888' }}>{company.sector}</span>}
                 <StagePill stage={company.stage} />
                 {company.eis_eligible && <span className="pill pill-green" style={{ fontSize: 10 }}>EIS eligible</span>}
-                <span style={{ fontSize: 11, color: '#888' }}>{investorSet.size} investor{investorSet.size !== 1 ? 's' : ''}</span>
+                <span style={{ fontSize: 11, color: '#888' }}>{currentInvestors.length} investor{currentInvestors.length !== 1 ? 's' : ''}</span>
               </div>
             </div>
           </div>
 
-          {/* Action buttons */}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button
               className="btn btn-secondary"
@@ -212,18 +270,21 @@ export default function CompanyPage({
         </div>
       </div>
 
-      {/* Stats row */}
+      {/* Stats row — current holdings only */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Total invested</div>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{formatCurrency(totalInvested)}</div>
+          <div style={{ fontSize: 11, color: '#aaa', marginTop: 3 }}>Cost of current holdings</div>
         </div>
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Current valuation</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{formatCurrency(currentValue)}</div>
-          <div style={{ fontSize: 11, marginTop: 3 }} className={change >= 0 ? 'text-positive' : 'text-negative'}>
-            {change >= 0 ? '+' : ''}{formatCurrency(change)} ({formatPercent(pct)})
-          </div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{currentPrice > 0 ? formatCurrency(currentValue) : '—'}</div>
+          {currentPrice > 0 && (
+            <div style={{ fontSize: 11, marginTop: 3 }} className={change >= 0 ? 'text-positive' : 'text-negative'}>
+              {change >= 0 ? '+' : ''}{formatCurrency(change)} ({formatPercent(pct)})
+            </div>
+          )}
         </div>
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Current share price</div>
@@ -238,7 +299,7 @@ export default function CompanyPage({
         </div>
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Investors</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{investorSet.size}</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{currentInvestors.length}</div>
           <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>{shareClasses.size} share class{shareClasses.size !== 1 ? 'es' : ''}</div>
         </div>
       </div>
@@ -285,42 +346,45 @@ export default function CompanyPage({
         </div>
       )}
 
-      {/* Investors section */}
-      <div className="card" style={{ marginBottom: 16 }}>
+      {/* Current Investors */}
+      <div className="card" style={{ marginBottom: 12 }}>
         <button
-          onClick={() => setInvestorsCollapsed(c => !c)}
+          onClick={() => setCurrentInvestorsCollapsed(c => !c)}
           style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
         >
           <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>
-            Investors ({byInvestor.length})
+            Current Investors ({currentInvestors.length})
           </div>
-          <span className={`expand-arrow${investorsCollapsed ? '' : ' open'}`} />
+          <span className={`expand-arrow${currentInvestorsCollapsed ? '' : ' open'}`} />
         </button>
 
-        {!investorsCollapsed && (
+        {!currentInvestorsCollapsed && (
           <div style={{ marginTop: 14 }}>
-            {byInvestor.length === 0 ? (
-              <div style={{ fontSize: 12, color: '#aaa', textAlign: 'center', padding: '12px 0' }}>No investors</div>
+            {currentInvestors.length === 0 ? (
+              <div style={{ fontSize: 12, color: '#aaa', textAlign: 'center', padding: '12px 0' }}>No current investors</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
-                    <th style={{ textAlign: 'left', fontWeight: 500, color: '#aaa', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6 }}>Investor</th>
-                    <th style={{ textAlign: 'right', fontWeight: 500, color: '#aaa', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6 }}>Invested</th>
-                    <th style={{ textAlign: 'right', fontWeight: 500, color: '#aaa', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6 }}>Current value</th>
-                    <th style={{ textAlign: 'right', fontWeight: 500, color: '#aaa', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6 }}>Change</th>
-                    <th style={{ textAlign: 'left', fontWeight: 500, color: '#aaa', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', paddingBottom: 6, paddingLeft: 8 }}>Share class</th>
+                    <th style={thStyle}>Investor</th>
+                    <th style={thR}>Shares Held</th>
+                    <th style={thR}>Total Invested</th>
+                    <th style={thR}>Current Value</th>
+                    <th style={thR}>Unrealised P&L</th>
+                    <th style={{ ...thStyle, paddingLeft: 8 }}>Share class</th>
+                    <th style={{ ...thStyle, paddingLeft: 8 }}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {byInvestor.map(({ client, rows }) => {
-                    const cid = client?.id ?? rows[0].client_id
-                    const name = client?.full_name ?? 'Unknown'
-                    const invTotal = rows.reduce((s, r) => s + r.sum_subscribed, 0)
-                    const invCurrent = rows.reduce((s, r) => s + r.shares_purchased * (currentPrice || r.original_share_price), 0)
-                    const { change: iChange, pct: iPct } = calcGainLoss(invTotal, invCurrent)
+                  {currentInvestors.map(pos => {
+                    const cid      = pos.client?.id ?? ''
+                    const name     = pos.client?.full_name ?? 'Unknown'
+                    const curVal   = pos.remaining * currentPrice
+                    const unrlPL   = currentPrice > 0 ? curVal - pos.costOfRemaining : null
+                    const { pct: uPct } = calcGainLoss(pos.costOfRemaining, curVal)
                     const isExpanded = expandedInvestors.has(cid)
-                    const classes = [...new Set(rows.map(r => r.share_class))].join(', ')
+                    const classes  = [...new Set(pos.buyRows.map(r => r.share_class))].join(', ')
+                    const isPartial = pos.sharesOut > 0
 
                     return (
                       <>
@@ -338,20 +402,30 @@ export default function CompanyPage({
                             >
                               {name}
                             </Link>
-                            {client?.lead_investor_id && (
+                            {pos.client?.lead_investor_id && (
                               <span className="pill" style={{ fontSize: 9, background: '#f0e6ff', color: '#7c3aed' }}>Nominee</span>
                             )}
                           </td>
-                          <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>{formatCurrency(invTotal)}</td>
-                          <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>{formatCurrency(invCurrent)}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>
+                            {pos.remaining.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </td>
+                          <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>{formatCurrency(pos.costOfRemaining)}</td>
+                          <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>
+                            {currentPrice > 0 ? formatCurrency(curVal) : '—'}
+                          </td>
                           <td style={{ textAlign: 'right', padding: '8px 0' }}>
-                            <span className={iChange >= 0 ? 'text-positive' : 'text-negative'} style={{ fontSize: 11 }}>
-                              {iChange >= 0 ? '+' : ''}{formatCurrency(iChange)} ({formatPercent(iPct)})
-                            </span>
+                            {unrlPL != null ? (
+                              <span className={unrlPL >= 0 ? 'text-positive' : 'text-negative'} style={{ fontSize: 11 }}>
+                                {unrlPL >= 0 ? '+' : ''}{formatCurrency(unrlPL)} ({formatPercent(uPct)})
+                              </span>
+                            ) : '—'}
                           </td>
                           <td style={{ paddingLeft: 8, color: '#555' }}>{classes}</td>
+                          <td style={{ paddingLeft: 8 }}>
+                            {isPartial && <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>}
+                          </td>
                         </tr>
-                        {isExpanded && rows.map(r => (
+                        {isExpanded && pos.buyRows.map(r => (
                           <tr key={r.id} style={{ background: '#fafbfc', borderBottom: '1px solid #f0f0f0' }}>
                             <td style={{ padding: '6px 0 6px 22px', color: '#555' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -368,21 +442,26 @@ export default function CompanyPage({
                                 )}
                               </div>
                             </td>
+                            <td style={{ textAlign: 'right', padding: '6px 0', color: '#555' }}>
+                              {r.shares_purchased.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            </td>
                             <td style={{ textAlign: 'right', padding: '6px 0', color: '#555' }}>{formatCurrency(r.sum_subscribed)}</td>
                             <td style={{ textAlign: 'right', padding: '6px 0', color: '#555' }}>
-                              {formatCurrency(r.shares_purchased * (currentPrice || r.original_share_price))}
+                              {currentPrice > 0 ? formatCurrency(r.shares_purchased * currentPrice) : '—'}
                             </td>
                             <td style={{ textAlign: 'right', padding: '6px 0' }}>
-                              {(() => {
-                                const { change: rc, pct: rp } = calcGainLoss(r.sum_subscribed, r.shares_purchased * (currentPrice || r.original_share_price))
+                              {currentPrice > 0 ? (() => {
+                                const rc = r.shares_purchased * currentPrice - r.sum_subscribed
+                                const { pct: rp } = calcGainLoss(r.sum_subscribed, r.shares_purchased * currentPrice)
                                 return (
                                   <span className={rc >= 0 ? 'text-positive' : 'text-negative'} style={{ fontSize: 11 }}>
                                     {rc >= 0 ? '+' : ''}{formatCurrency(rc)} ({formatPercent(rp)})
                                   </span>
                                 )
-                              })()}
+                              })() : '—'}
                             </td>
                             <td style={{ paddingLeft: 8, color: '#555' }}>{r.share_class}</td>
+                            <td />
                           </tr>
                         ))}
                       </>
@@ -395,9 +474,84 @@ export default function CompanyPage({
         )}
       </div>
 
+      {/* Exit History */}
+      {sellRows.length > 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <button
+            onClick={() => setExitHistoryCollapsed(c => !c)}
+            style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>
+              Exit History ({sellRows.length})
+            </div>
+            <span className={`expand-arrow${exitHistoryCollapsed ? '' : ' open'}`} />
+          </button>
+
+          {!exitHistoryCollapsed && (
+            <div style={{ marginTop: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <th style={thStyle}>Investor</th>
+                    <th style={thR}>Date</th>
+                    <th style={thR}>Shares Sold</th>
+                    <th style={thR}>Sale Proceeds</th>
+                    <th style={thR}>Realised P&L</th>
+                    <th style={thR}>Return %</th>
+                    <th style={{ ...thStyle, paddingLeft: 8 }}>Exit Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sellRows.map(tx => {
+                    const pos      = netByClient.get(tx.client_id)
+                    const avgCost  = pos && pos.sharesIn > 0 ? pos.totalCost / pos.sharesIn : 0
+                    const costOfSold = avgCost * tx.shares_purchased
+                    const realisedPL = tx.sum_subscribed - costOfSold
+                    const retPct   = costOfSold > 0 ? (realisedPL / costOfSold) * 100 : 0
+                    const isPartial = pos ? pos.remaining > 0 : false
+                    const name     = tx.clients?.full_name ?? 'Unknown'
+                    const cid      = tx.clients?.id ?? tx.client_id
+
+                    return (
+                      <tr key={tx.id} style={{ borderBottom: '1px solid #f8f8f8' }}>
+                        <td style={{ padding: '8px 0' }}>
+                          <Link href={`/clients/${cid}`} style={{ color: '#185fa5', textDecoration: 'none', fontWeight: 500 }}>
+                            {name}
+                          </Link>
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#555' }}>{formatDate(tx.investment_date)}</td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#555' }}>
+                          {tx.shares_purchased.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>{formatCurrency(tx.sum_subscribed)}</td>
+                        <td style={{ textAlign: 'right', padding: '8px 0' }}>
+                          <span className={realisedPL >= 0 ? 'text-positive' : 'text-negative'} style={{ fontSize: 11 }}>
+                            {costOfSold > 0 ? <>{realisedPL >= 0 ? '+' : ''}{formatCurrency(realisedPL)}</> : '—'}
+                          </span>
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0' }}>
+                          <span className={retPct >= 0 ? 'text-positive' : 'text-negative'} style={{ fontSize: 11 }}>
+                            {costOfSold > 0 ? formatPercent(retPct) : '—'}
+                          </span>
+                        </td>
+                        <td style={{ paddingLeft: 8 }}>
+                          {isPartial
+                            ? <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>
+                            : <span className="pill pill-grey"  style={{ fontSize: 9 }}>Full exit</span>
+                          }
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Internal updates + News */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-        {/* Internal updates */}
         <div className="card">
           <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12 }}>Internal updates</div>
           {updates.length === 0 ? (
@@ -419,7 +573,6 @@ export default function CompanyPage({
           )}
         </div>
 
-        {/* Company news */}
         <div className="card">
           <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 12 }}>Company news</div>
           {newsItems.length === 0 ? (
@@ -446,7 +599,6 @@ export default function CompanyPage({
         </div>
       </div>
 
-      {/* Update Valuation Modal */}
       {showValuationModal && (
         <UpdateValuationModal
           companyId={company.id}
