@@ -198,9 +198,9 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
           <thead>
             <tr>
               <th style={{ ...thL, width: '30%' }}>Company</th>
-              <th style={{ ...thR, width: '18%' }}>Cost</th>
+              <th style={{ ...thR, width: '18%' }}>Invested</th>
               <th style={{ ...thR, width: '18%' }}>Current value</th>
-              <th style={{ ...thR, width: '20%' }}>Unrealised P&L</th>
+              <th style={{ ...thR, width: '20%' }}>Change</th>
               <th style={{ ...thL, width: '14%' }}>Share class</th>
             </tr>
           </thead>
@@ -316,7 +316,7 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
       {showExitHistory && sellRows.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', fontSize: 12, fontWeight: 600, color: '#0f2744' }}>
-            Exit History
+            Exit History ({sellRows.length})
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
