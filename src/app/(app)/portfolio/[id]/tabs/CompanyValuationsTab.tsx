@@ -128,6 +128,12 @@ function stepPath(pts: { x: number; y: number }[]): string {
 
 function fmt2(n: number) { return `£${n.toFixed(2)}` }
 
+/** Format a Date as YYYY-MM-DD in LOCAL time (not UTC) so it matches database date strings. */
+function localDateStr(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 function SourceBadge({ source }: { source: string | null }) {
   if (!source || source === 'manual') {
     return (
@@ -190,7 +196,8 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
     [investments]
   )
 
-  const start = getRangeStart(range)
+  // Memoised so a new Date object isn't created on every render (which would invalidate allSeries on every hover event)
+  const start = useMemo(() => getRangeStart(range), [range])
 
   const allSeries = useMemo(() => {
     if (classes.length === 0 && valuations.length > 0) {
@@ -326,7 +333,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
 
   const hasData    = svgLines.some(l => l.svgPts.length > 0)
   const cv         = valuations[0] ?? null
-  const hoveredVal = hoveredPoint ? valuationByDate.get(hoveredPoint.date.toISOString().slice(0, 10)) : null
+  const hoveredVal = hoveredPoint ? valuationByDate.get(localDateStr(hoveredPoint.date)) : null
 
   const thSt: React.CSSProperties = {
     padding: '8px 14px', fontSize: 10, fontWeight: 500, color: '#888',
@@ -471,7 +478,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                   {fmt2(hoveredPoint.price)}
                 </div>
                 {(() => {
-                  const dateStr = hoveredPoint.date.toISOString().slice(0, 10)
+                  const dateStr = localDateStr(hoveredPoint.date)
                   const prevVal = historyRows.find(r => r.date === dateStr)
                   if (prevVal?.change != null) {
                     const c = prevVal.change
