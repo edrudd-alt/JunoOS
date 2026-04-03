@@ -96,6 +96,15 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
   // Current valuation
   const currentValuation = valuations?.[0] ?? null
 
+  console.log('=== COMPANY PAGE DEBUG ===')
+  console.log('Company ID:', id)
+  console.log('Company name:', company.name)
+  console.log('Investments count:', investmentData?.length ?? 'null')
+  console.log('Investments error:', investmentsError)
+  console.log('First investment:', JSON.stringify(investmentData?.[0] ?? 'none'))
+  console.log('Valuations count:', valuations?.length ?? 'null')
+  console.log('=== END DEBUG ===')
+
   return (
     <CompanyPage
       company={company}
