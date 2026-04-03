@@ -55,31 +55,6 @@ export default async function DashboardPage() {
     companyValuations[cid].push(Number(v.share_price))
   }
 
-  for (const v of recentValuations ?? []) {
-    const cid = v.company_id as string
-    if (seenCompanies.has(cid)) continue
-    seenCompanies.add(cid)
-    const prices = companyValuations[cid]
-    const newPrice = prices[0]
-    const oldPrice = prices[1] ?? null
-
-    // Count affected clients and aggregate change
-    const companyPortfolio = (portfolioRows ?? []).filter(r => {
-      // We need client investments per company — approximate from portfolio summary
-      return true
-    })
-
-    valuationChanges.push({
-      companyId: cid,
-      companyName: (v.companies as unknown as { name: string } | null)?.name ?? 'Unknown',
-      newPrice,
-      oldPrice,
-      date: v.valuation_date as string,
-      affectedClients: 0,
-      aggregateChange: 0,
-    })
-  }
-
   // Recent activity feed
   const { data: activity } = await supabase
     .from('internal_updates')
@@ -94,31 +69,44 @@ export default async function DashboardPage() {
     .order('published_at', { ascending: false })
     .limit(12)
 
-  // Per-company portfolio data for valuation changes panel
-  const portfolioByCompany: Record<string, { totalInvested: number; currentValue: number; investorCount: number }> = {}
-  const clientsByCompany: Record<string, Set<string>> = {}
-
-  // Get investments grouped by company for investor counts
+  // Active investments grouped by company — used to compute affected investor counts
+  // and aggregate share counts for valuation change calculations
   const { data: investments } = await supabase
     .from('investments')
-    .select('client_id, company_id, shares_purchased, sum_subscribed')
+    .select('client_id, company_id, shares_purchased')
     .eq('status', 'active')
+
+  const clientsByCompany: Record<string, Set<string>> = {}
+  const sharesByCompany: Record<string, number> = {}
 
   for (const inv of investments ?? []) {
     const cid = inv.company_id as string
     if (!clientsByCompany[cid]) clientsByCompany[cid] = new Set()
     clientsByCompany[cid].add(inv.client_id as string)
+    sharesByCompany[cid] = (sharesByCompany[cid] ?? 0) + Number(inv.shares_purchased ?? 0)
   }
 
-  // Fill in affectedClients for valuation changes
-  for (const vc of valuationChanges) {
-    vc.affectedClients = clientsByCompany[vc.companyId]?.size ?? 0
-    if (vc.oldPrice && vc.oldPrice > 0) {
-      // Aggregate change = shares * (new - old) for all investors in this company
-      const companyInvs = (investments ?? []).filter(i => i.company_id === vc.companyId)
-      const totalShares = companyInvs.reduce((s, i) => s + Number(i.shares_purchased ?? 0), 0)
-      vc.aggregateChange = totalShares * (vc.newPrice - vc.oldPrice)
-    }
+  for (const v of recentValuations ?? []) {
+    const cid = v.company_id as string
+    if (seenCompanies.has(cid)) continue
+    seenCompanies.add(cid)
+    const prices = companyValuations[cid]
+    const newPrice = prices[0]
+    const oldPrice = prices[1] ?? null
+
+    const affectedClients = clientsByCompany[cid]?.size ?? 0
+    const totalShares = sharesByCompany[cid] ?? 0
+    const aggregateChange = oldPrice !== null ? totalShares * (newPrice - oldPrice) : 0
+
+    valuationChanges.push({
+      companyId: cid,
+      companyName: (v.companies as unknown as { name: string } | null)?.name ?? 'Unknown',
+      newPrice,
+      oldPrice,
+      date: v.valuation_date as string,
+      affectedClients,
+      aggregateChange,
+    })
   }
 
   // Sort by largest absolute aggregate change
