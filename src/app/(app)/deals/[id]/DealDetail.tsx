@@ -226,7 +226,27 @@ export default function DealDetail({
 
         if (!activeInvs?.length) continue
 
-        let sharesToDeduct = iData.sharesSold ?? 0
+        // Insert a sell transaction record so the ledger can show the exit
+        const sharesSold = iData.sharesSold ?? 0
+        const salePrice  = deal.share_price ?? 0
+        if (sharesSold > 0) {
+          await supabase.from('investments').insert({
+            client_id:            di.clients.id,
+            company_id:           companyId,
+            share_class:          deal.share_class ?? iData.shareClass ?? 'Ordinary',
+            investment_date:      deal.created_at?.split('T')[0] ?? new Date().toISOString().split('T')[0],
+            original_share_price: salePrice,
+            shares_purchased:     sharesSold,
+            sum_subscribed:       sharesSold * salePrice,
+            eis_status:           'no',
+            holding_location:     'direct',
+            status:               'active',
+            transaction_type:     'sell',
+            notes:                `Exit deal — ${deal.deal_type === 'full_exit' ? 'Full exit' : 'Partial exit'}`,
+          })
+        }
+
+        let sharesToDeduct = sharesSold
         for (const inv of activeInvs) {
           if (sharesToDeduct <= 0) break
           if (inv.shares_purchased <= sharesToDeduct) {
