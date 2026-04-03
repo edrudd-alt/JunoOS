@@ -4,79 +4,102 @@ import ClientList from './ClientList'
 export default async function ClientsPage() {
   const supabase = await createClient()
 
-  // Fetch all lead investors (lead_investor_id IS NULL = they are the lead)
-  const { data: clients, error } = await supabase
-    .from('clients')
-    .select(`
-      id, full_name, investor_reference, email, kyc_status, kyc_expiry,
-      entity_type, tax_status, date_joined, lead_investor_id, fund_type
-    `)
-    .order('full_name')
+  const today = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const in60DaysStr = new Date(today.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
-  if (error) {
-    console.error('Error fetching clients:', error)
+  const [
+    { data: allClients },
+    { data: portfolioSummaries },
+    { data: companies },
+    { data: activityRows },
+    { data: rawInvestments },
+    { data: rawDealInvestors },
+  ] = await Promise.all([
+    supabase
+      .from('clients')
+      .select('id, full_name, investor_reference, email, kyc_status, kyc_expiry, entity_type, tax_status, date_joined, lead_investor_id, fund_type')
+      .order('full_name'),
+    supabase
+      .from('client_portfolio_summary')
+      .select('client_id, company_id, total_invested, current_value, gain_loss'),
+    supabase
+      .from('companies')
+      .select('id, name')
+      .order('name'),
+    supabase
+      .from('internal_updates')
+      .select('entity_id, created_at')
+      .eq('entity_type', 'client')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('investments')
+      .select('client_id, investment_date, transaction_type')
+      .order('investment_date', { ascending: false }),
+    supabase
+      .from('deal_investors')
+      .select('client_id, signing_status')
+      .eq('signing_status', 'pending'),
+  ])
+
+  // Last buy investment date per client (buy or null/legacy = treat as buy)
+  const lastInvestmentByClient: Record<string, string> = {}
+  for (const row of rawInvestments ?? []) {
+    const txType = (row.transaction_type as string | null) ?? 'buy'
+    if (txType !== 'buy' && txType !== 'transfer_in') continue
+    const cid = row.client_id as string
+    if (!lastInvestmentByClient[cid]) lastInvestmentByClient[cid] = row.investment_date as string
   }
 
-  // Fetch portfolio summaries for each client
-  const { data: portfolioSummaries } = await supabase
-    .from('client_portfolio_summary')
-    .select('client_id, company_id, total_invested, current_value, gain_loss')
+  // Per-client flags
+  const unsignedClientIds = new Set((rawDealInvestors ?? []).map(d => d.client_id as string))
+  const clientFlags: Record<string, { kycOverdue: boolean; kycRenewalDue: boolean; appUnsigned: boolean }> = {}
+  let kycOverdueCount = 0
+  let kycRenewalCount = 0
 
-  // Fetch all companies for filter
-  const { data: companies } = await supabase
-    .from('companies')
-    .select('id, name')
-    .order('name')
-
-  // Build portfolio data keyed by client_id
-  const portfolioByClient: Record<string, {
-    totalInvested: number
-    currentValue: number
-    gainLoss: number
-    companyIds: Set<string>
-  }> = {}
-
-  for (const row of portfolioSummaries ?? []) {
-    if (!portfolioByClient[row.client_id]) {
-      portfolioByClient[row.client_id] = {
-        totalInvested: 0,
-        currentValue: 0,
-        gainLoss: 0,
-        companyIds: new Set(),
-      }
+  for (const c of allClients ?? []) {
+    const expiry = c.kyc_expiry as string | null
+    const kycOverdue = !!(expiry && expiry < todayStr)
+    const kycRenewalDue = !!(expiry && expiry >= todayStr && expiry <= in60DaysStr)
+    if (kycOverdue) kycOverdueCount++
+    if (kycRenewalDue) kycRenewalCount++
+    clientFlags[c.id] = {
+      kycOverdue,
+      kycRenewalDue,
+      appUnsigned: unsignedClientIds.has(c.id),
     }
-    portfolioByClient[row.client_id].totalInvested += Number(row.total_invested)
-    portfolioByClient[row.client_id].currentValue += Number(row.current_value)
-    portfolioByClient[row.client_id].gainLoss += Number(row.gain_loss)
-    portfolioByClient[row.client_id].companyIds.add(row.company_id)
   }
 
-  // Build company→client map for filtering
-  const clientsByCompany: Record<string, Set<string>> = {}
+  const attentionCounts = {
+    kycOverdue:     kycOverdueCount,
+    kycRenewalDue:  kycRenewalCount,
+    appUnsigned:    unsignedClientIds.size,
+    amlOutstanding: (allClients ?? []).filter(c => c.kyc_status === 'outstanding').length,
+  }
+
+  // Lead name lookup for linked-entity subtitles
+  const leadNameById: Record<string, string> = {}
+  for (const c of allClients ?? []) leadNameById[c.id] = c.full_name as string
+
+  // Portfolio data
+  const portfolioByClient: Record<string, { totalInvested: number; currentValue: number; gainLoss: number; companyIds: string[] }> = {}
+  const clientsByCompanyMap: Record<string, Set<string>> = {}
   for (const row of portfolioSummaries ?? []) {
-    if (!clientsByCompany[row.company_id]) clientsByCompany[row.company_id] = new Set()
-    clientsByCompany[row.company_id].add(row.client_id)
+    const cid = row.client_id as string
+    const coId = row.company_id as string
+    if (!portfolioByClient[cid]) portfolioByClient[cid] = { totalInvested: 0, currentValue: 0, gainLoss: 0, companyIds: [] }
+    portfolioByClient[cid].totalInvested += Number(row.total_invested)
+    portfolioByClient[cid].currentValue  += Number(row.current_value)
+    portfolioByClient[cid].gainLoss      += Number(row.gain_loss)
+    portfolioByClient[cid].companyIds.push(coId)
+    if (!clientsByCompanyMap[coId]) clientsByCompanyMap[coId] = new Set()
+    clientsByCompanyMap[coId].add(cid)
   }
+  const clientsByCompany = Object.fromEntries(
+    Object.entries(clientsByCompanyMap).map(([k, v]) => [k, Array.from(v)])
+  )
 
-  const allClients = clients ?? []
-
-  // Separate leads from linked entities
-  const leads = allClients.filter(c => !c.lead_investor_id)
-  const linkedByLead: Record<string, typeof allClients> = {}
-  for (const c of allClients.filter(c => c.lead_investor_id)) {
-    const lid = c.lead_investor_id!
-    if (!linkedByLead[lid]) linkedByLead[lid] = []
-    linkedByLead[lid].push(c)
-  }
-
-  // Last activity from internal_updates per client
-  const { data: activityRows } = await supabase
-    .from('internal_updates')
-    .select('entity_id, created_at')
-    .eq('entity_type', 'client')
-    .order('created_at', { ascending: false })
-
-  // Most recent activity per client (rows are already desc so first match wins)
+  // Last activity per client
   const lastActivityByClient: Record<string, string> = {}
   for (const row of (activityRows ?? []) as Record<string, string>[]) {
     if (row.entity_id && !lastActivityByClient[row.entity_id]) {
@@ -84,25 +107,17 @@ export default async function ClientsPage() {
     }
   }
 
-  // Serialise Sets to arrays for client component
-  const portfolioByClientSerialisable = Object.fromEntries(
-    Object.entries(portfolioByClient).map(([id, data]) => [
-      id,
-      { ...data, companyIds: Array.from(data.companyIds) },
-    ])
-  )
-  const clientsByCompanySerialisable = Object.fromEntries(
-    Object.entries(clientsByCompany).map(([id, set]) => [id, Array.from(set)])
-  )
-
   return (
     <ClientList
-      leads={leads}
-      linkedByLead={linkedByLead}
-      portfolioByClient={portfolioByClientSerialisable}
-      clientsByCompany={clientsByCompanySerialisable}
+      allClients={(allClients ?? []) as Record<string, unknown>[]}
+      leadNameById={leadNameById}
+      portfolioByClient={portfolioByClient}
+      clientsByCompany={clientsByCompany}
       companies={companies ?? []}
+      lastInvestmentByClient={lastInvestmentByClient}
       lastActivityByClient={lastActivityByClient}
+      attentionCounts={attentionCounts}
+      clientFlags={clientFlags}
     />
   )
 }
