@@ -280,20 +280,20 @@ export default function CompanyPage({
         <div className="card">
           <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Current valuation</div>
           <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>{currentPrice > 0 ? formatCurrency(currentValue) : '—'}</div>
-          {currentPrice > 0 && (
-            <div style={{ fontSize: 11, marginTop: 3 }} className={change >= 0 ? 'text-positive' : 'text-negative'}>
-              {change >= 0 ? '+' : ''}{formatCurrency(change)} ({formatPercent(pct)})
+          {currentValuation && (
+            <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
+              @ £{currentValuation.share_price.toFixed(2)} · {formatDate(currentValuation.valuation_date)}
             </div>
           )}
         </div>
         <div className="card">
-          <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Current share price</div>
-          <div style={{ fontSize: 18, fontWeight: 600, color: '#0f2744' }}>
-            {currentValuation ? `£${currentValuation.share_price.toFixed(2)}` : '—'}
+          <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 6 }}>Change</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }} className={currentPrice > 0 ? (change >= 0 ? 'text-positive' : 'text-negative') : ''}>
+            {currentPrice > 0 ? <>{change >= 0 ? '+' : ''}{formatCurrency(change)}</> : '—'}
           </div>
-          {currentValuation && (
-            <div style={{ fontSize: 11, color: '#888', marginTop: 3 }}>
-              Updated {formatDate(currentValuation.valuation_date)}
+          {currentPrice > 0 && (
+            <div style={{ fontSize: 11, marginTop: 3 }} className={change >= 0 ? 'text-positive' : 'text-negative'}>
+              {formatPercent(pct)} unrealised
             </div>
           )}
         </div>
