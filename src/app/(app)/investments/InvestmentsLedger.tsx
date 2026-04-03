@@ -6,7 +6,7 @@ import type { Client, Company, Valuation } from '@/types'
 import type { RawInvestment, HoldingRow, CompanyHolding } from './ledgerUtils'
 import { HoldingsView } from './HoldingsView'
 import { LedgerView } from './LedgerView'
-import { PerformanceView } from './PerformanceView'
+import { SalesView } from './SalesView'
 import { RecordTransactionModal } from './RecordTransactionModal'
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -30,7 +30,7 @@ export default function InvestmentsLedger({
   const [investments, setInvestments] = useState<RawInvestment[]>(
     initialInvestments as unknown as RawInvestment[]
   )
-  const [view, setView]           = useState<'holdings' | 'ledger' | 'performance'>('holdings')
+  const [view, setView]           = useState<'holdings' | 'ledger' | 'sales'>('holdings')
   const [expanded, setExpanded]   = useState<Set<string>>(new Set())
   const [showModal, setShowModal] = useState(false)
   const [modalPreset, setModalPreset] = useState<{ txType?: 'buy' | 'sell'; companyId?: string } | null>(null)
@@ -179,9 +179,9 @@ export default function InvestmentsLedger({
 
       {/* View toggle */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
-        <button style={viewBtnStyle(view === 'holdings')}    onClick={() => setView('holdings')}>Holdings</button>
-        <button style={viewBtnStyle(view === 'ledger')}      onClick={() => setView('ledger')}>Full ledger</button>
-        <button style={viewBtnStyle(view === 'performance')} onClick={() => setView('performance')}>Performance</button>
+        <button style={viewBtnStyle(view === 'holdings')} onClick={() => setView('holdings')}>Holdings</button>
+        <button style={viewBtnStyle(view === 'ledger')}   onClick={() => setView('ledger')}>Full ledger</button>
+        <button style={viewBtnStyle(view === 'sales')}    onClick={() => setView('sales')}>Sales</button>
       </div>
 
       {/* ── Holdings view ── */}
@@ -199,9 +199,9 @@ export default function InvestmentsLedger({
         <LedgerView investments={investments} clientById={clientById} />
       )}
 
-      {/* ── Performance view ── */}
-      {view === 'performance' && (
-        <PerformanceView holdings={companyHoldings} />
+      {/* ── Sales view ── */}
+      {view === 'sales' && (
+        <SalesView investments={investments} holdings={companyHoldings} clientById={clientById} />
       )}
 
       {/* ── Modal ── */}
