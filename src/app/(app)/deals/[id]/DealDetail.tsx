@@ -5,44 +5,12 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
+import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDetailTypes'
+import { SignatureTracking } from './SignatureTracking'
+import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
+import { GenericChecklist } from './GenericChecklist'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface DealInvestor {
-  id: string
-  amount: number | null
-  signing_status: string
-  poa_held: boolean
-  clients: { id: string; full_name: string; email: string | null } | null
-}
-
-// Per-investor computed data stored in completion_checklist.investor_data
-interface InvestorData {
-  name: string
-  shares?: number
-  shareClass?: string
-  eis?: string
-  cost?: number
-  feePayable?: number
-  totalCost?: number
-  currentShares?: number | null
-  // Sale deal fields
-  totalShares?: number
-  sharesSold?: number
-  remaining?: number
-  avgCostPrice?: number
-  grossProceeds?: number
-  pnl?: number
-  netProceeds?: number
-}
-
-interface CompletionChecklist {
-  // New format
-  investor_data?: Record<string, InvestorData>
-  per_investor?: Record<string, Record<string, boolean>>
-  // Legacy flat format (old deals / other deal types)
-  [key: string]: unknown
-}
 
 interface Deal {
   id: string
@@ -95,22 +63,15 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   complete:         { label: 'Complete',           cls: 'pill-green' },
 }
 
-const SIGNING_OPTIONS = ['not_sent', 'sent', 'viewed', 'signed', 'declined']
-const SIGNING_LABELS: Record<string, string> = {
-  not_sent: 'Not sent', sent: 'Sent', viewed: 'Viewed', signed: 'Signed', declined: 'Declined',
-}
-
-// Per-investor checklist items by deal type
 const BUY_ITEMS = [
   { key: 'app_form_received', label: 'App form received' },
   { key: 'agreement_signed',  label: 'Agreement signed' },
   { key: 'cash_received',     label: 'Cash received' },
 ]
 const SALE_ITEMS = [
-  { key: 'poa_confirmed',          label: 'PoA confirmed' },
-  { key: 'bank_details_received',  label: 'Bank details received' },
+  { key: 'poa_confirmed',         label: 'PoA confirmed' },
+  { key: 'bank_details_received', label: 'Bank details received' },
 ]
-// Generic items for other deal types (legacy / KYC / side letter / membership)
 const GENERIC_ITEMS = [
   { key: 'funds_received',       label: 'Funds received' },
   { key: 'shares_issued',        label: 'Shares issued / register updated' },
@@ -119,12 +80,6 @@ const GENERIC_ITEMS = [
   { key: 'eis_certificate_sent', label: 'EIS certificate sent to investors' },
   { key: 'invoice_raised',       label: 'Invoice raised' },
 ]
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '7px 10px',
-  border: '0.5px solid #d0d0c8', borderRadius: 5,
-  fontSize: 13, outline: 'none', boxSizing: 'border-box', background: '#fff',
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -144,8 +99,8 @@ export default function DealDetail({
   const router   = useRouter()
   const supabase = createClient()
 
-  const isBuyDeal  = deal.deal_type === 'new_investment' || deal.deal_type === 'follow_on'
-  const isSaleDeal = deal.deal_type === 'full_exit' || deal.deal_type === 'partial_exit'
+  const isBuyDeal       = deal.deal_type === 'new_investment' || deal.deal_type === 'follow_on'
+  const isSaleDeal      = deal.deal_type === 'full_exit' || deal.deal_type === 'partial_exit'
   const isNewDealFormat = !!(deal.completion_checklist?.investor_data)
 
   const perInvestorItems = isBuyDeal ? BUY_ITEMS : isSaleDeal ? SALE_ITEMS : []
@@ -154,16 +109,13 @@ export default function DealDetail({
     () => Object.fromEntries((deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent']))
   )
 
-  // Per-investor checklist state
   const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
     () => (deal.completion_checklist?.per_investor as Record<string, Record<string, boolean>>) ?? {}
   )
 
-  // Legacy / generic checklist
   const [checklist, setChecklist] = useState<Record<string, boolean>>(() => {
     const cc = deal.completion_checklist
     if (!cc) return {}
-    // Extract only flat boolean keys (ignore investor_data and per_investor)
     const result: Record<string, boolean> = {}
     for (const [k, v] of Object.entries(cc)) {
       if (k !== 'investor_data' && k !== 'per_investor' && typeof v === 'boolean') {
@@ -184,10 +136,8 @@ export default function DealDetail({
 
   const investorData = (deal.completion_checklist?.investor_data ?? {}) as Record<string, InvestorData>
 
-  // Check if all per-investor items are done
   const allPerInvestorDone = useCallback(() => {
     if (perInvestorItems.length === 0) {
-      // Generic checklist — all items must be checked
       return GENERIC_ITEMS.every(i => checklist[i.key])
     }
     for (const di of investors) {
@@ -250,7 +200,6 @@ export default function DealDetail({
     const companyId = deal.companies?.id
 
     if (isBuyDeal) {
-      // Activate pending investments
       for (const di of investors) {
         if (di.clients?.id) {
           let q = supabase.from('investments')
@@ -262,7 +211,6 @@ export default function DealDetail({
         }
       }
     } else if (isSaleDeal) {
-      // Reduce or remove active investments
       for (const di of investors) {
         if (!di.clients?.id || !companyId) continue
         const iData = di.clients.id ? investorData[di.clients.id] : null
@@ -277,7 +225,6 @@ export default function DealDetail({
 
         if (!activeInvs?.length) continue
 
-        // Deduct sold shares across their investments
         let sharesToDeduct = iData.sharesSold ?? 0
         for (const inv of activeInvs) {
           if (sharesToDeduct <= 0) break
@@ -395,231 +342,44 @@ export default function DealDetail({
       {/* ── Overview tab ── */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SignatureTracking
+            investors={investors}
+            dealStatus={deal.status}
+            signingStatuses={signingStatuses}
+            setSigningStatuses={setSigningStatuses}
+            saving={saving}
+            saved={saved}
+            onSave={saveSigningStatuses}
+          />
 
-          {/* Signature tracking */}
-          <div className="card">
-            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>Signature tracking</div>
-            {investors.length === 0 ? (
-              <p style={{ fontSize: 12, color: '#888' }}>No investors added</p>
-            ) : (
-              <>
-                <table style={{ marginBottom: 14 }}>
-                  <thead>
-                    <tr>
-                      <th>Investor</th>
-                      <th>Amount</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {investors.map(di => (
-                      <tr key={di.id}>
-                        <td style={{ fontSize: 12 }}>
-                          <div style={{ fontWeight: 500 }}>{di.clients?.full_name ?? '—'}</div>
-                          {di.poa_held && <div style={{ fontSize: 10, color: '#888' }}>POA held</div>}
-                        </td>
-                        <td style={{ fontSize: 12 }}>{di.amount ? formatCurrency(di.amount) : '—'}</td>
-                        <td>
-                          {deal.status === 'complete' ? (
-                            <span className="pill pill-green" style={{ fontSize: 10 }}>Signed</span>
-                          ) : (
-                            <select
-                              value={signingStatuses[di.id] ?? 'not_sent'}
-                              onChange={e => setSigningStatuses(prev => ({ ...prev, [di.id]: e.target.value }))}
-                              style={{ ...inputStyle, width: 'auto', fontSize: 11, padding: '4px 6px' }}
-                            >
-                              {SIGNING_OPTIONS.map(o => (
-                                <option key={o} value={o}>{SIGNING_LABELS[o]}</option>
-                              ))}
-                            </select>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                <SuggestedNextStep investors={investors} statuses={signingStatuses} />
-                {deal.status !== 'complete' && (
-                  <button
-                    className="btn btn-primary"
-                    onClick={saveSigningStatuses}
-                    disabled={saving}
-                    style={{ fontSize: 12, padding: '6px 14px' }}
-                  >
-                    {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save status'}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Per-investor completion checklist (buy/sale deals) */}
           {(isBuyDeal || isSaleDeal) && investors.length > 0 && (
-            <div className="card" style={{ padding: 0 }}>
-              <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Completion checklist</div>
-                <div style={{ fontSize: 11, color: '#888' }}>
-                  {perInvestorItems.map(i => i.label).join(' · ')}
-                </div>
-              </div>
-
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                  <thead>
-                    <tr style={{ background: '#f9f9f7' }}>
-                      <th style={thSt}>Investor</th>
-                      {/* Investor data columns */}
-                      {isBuyDeal && isNewDealFormat && <>
-                        <th style={thSt}>Shares</th>
-                        <th style={thSt}>Cost</th>
-                        <th style={thSt}>EIS</th>
-                      </>}
-                      {isSaleDeal && isNewDealFormat && <>
-                        <th style={thSt}>Shares sold</th>
-                        <th style={thSt}>Gross proceeds</th>
-                        <th style={thSt}>P&amp;L</th>
-                        <th style={thSt}>Net proceeds</th>
-                      </>}
-                      {/* Checklist items */}
-                      {perInvestorItems.map(item => (
-                        <th key={item.key} style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          {item.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {investors.map(di => {
-                      const clientId = di.clients?.id ?? ''
-                      const iData = clientId ? investorData[clientId] : null
-                      const rowChecks = perInvestor[clientId] ?? {}
-                      const allChecked = perInvestorItems.every(i => rowChecks[i.key])
-
-                      return (
-                        <tr key={di.id} style={{ background: allChecked ? '#f0faf6' : undefined }}>
-                          <td style={tdSt}>
-                            <div style={{ fontWeight: 500 }}>{di.clients?.full_name ?? '—'}</div>
-                            {di.clients?.email && <div style={{ fontSize: 10, color: '#aaa' }}>{di.clients.email}</div>}
-                          </td>
-
-                          {/* Buy deal investor data */}
-                          {isBuyDeal && isNewDealFormat && <>
-                            <td style={tdSt}>{iData?.shares != null ? iData.shares.toLocaleString() : '—'}</td>
-                            <td style={tdSt}>{iData?.cost != null ? formatCurrency(iData.cost) : '—'}</td>
-                            <td style={tdSt}>
-                              {iData?.eis ? (
-                                <span style={{
-                                  fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 3,
-                                  background: iData.eis === 'yes' ? '#d1fae5' : iData.eis === 'no' ? '#fee2e2' : '#f5f5f2',
-                                  color: iData.eis === 'yes' ? '#065f46' : iData.eis === 'no' ? '#991b1b' : '#555',
-                                }}>
-                                  {iData.eis.toUpperCase()}
-                                </span>
-                              ) : '—'}
-                            </td>
-                          </>}
-
-                          {/* Sale deal investor data */}
-                          {isSaleDeal && isNewDealFormat && <>
-                            <td style={tdSt}>{iData?.sharesSold != null ? iData.sharesSold.toLocaleString() : '—'}</td>
-                            <td style={tdSt}>{iData?.grossProceeds != null ? formatCurrency(iData.grossProceeds) : '—'}</td>
-                            <td style={tdSt}>
-                              {iData?.pnl != null ? (
-                                <span style={{ color: iData.pnl >= 0 ? '#1d9e75' : '#a32d2d', fontWeight: 500 }}>
-                                  {iData.pnl >= 0 ? '+' : ''}{formatCurrency(iData.pnl)}
-                                </span>
-                              ) : '—'}
-                            </td>
-                            <td style={{ ...tdSt, fontWeight: 500 }}>
-                              {iData?.netProceeds != null ? formatCurrency(iData.netProceeds) : '—'}
-                            </td>
-                          </>}
-
-                          {/* Checklist checkboxes */}
-                          {perInvestorItems.map(item => (
-                            <td key={item.key} style={{ ...tdSt, textAlign: 'center' }}>
-                              <input
-                                type="checkbox"
-                                checked={rowChecks[item.key] ?? false}
-                                onChange={e => setInvestorItem(clientId, item.key, e.target.checked)}
-                                disabled={deal.status === 'complete'}
-                                style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: 'pointer' }}
-                              />
-                            </td>
-                          ))}
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {deal.status !== 'complete' && (
-                <div style={{ padding: '10px 16px', borderTop: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <button
-                    className="btn"
-                    onClick={saveChecklist}
-                    disabled={saving}
-                    style={{ fontSize: 12, padding: '6px 14px' }}
-                  >
-                    {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
-                  </button>
-                  {!canComplete && (
-                    <span style={{ fontSize: 11, color: '#888' }}>
-                      Complete all items above to enable "Mark complete"
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
+            <CompletionChecklistComponent
+              investors={investors}
+              isBuyDeal={isBuyDeal}
+              isSaleDeal={isSaleDeal}
+              isNewDealFormat={isNewDealFormat}
+              investorData={investorData}
+              perInvestor={perInvestor}
+              perInvestorItems={perInvestorItems}
+              onSetInvestorItem={setInvestorItem}
+              dealStatus={deal.status}
+              saving={saving}
+              saved={saved}
+              canComplete={canComplete}
+              onSave={saveChecklist}
+            />
           )}
 
-          {/* Generic checklist (other deal types or legacy) */}
           {!isBuyDeal && !isSaleDeal && (
-            <div className="card">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Completion checklist</div>
-                <div style={{ fontSize: 11, color: '#888' }}>
-                  {GENERIC_ITEMS.filter(i => checklist[i.key]).length} / {GENERIC_ITEMS.length}
-                </div>
-              </div>
-              <div style={{ height: 4, background: '#f0f0ec', borderRadius: 2, marginBottom: 14, overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%', borderRadius: 2, background: '#1d9e75',
-                  width: `${(GENERIC_ITEMS.filter(i => checklist[i.key]).length / GENERIC_ITEMS.length) * 100}%`,
-                  transition: 'width 0.2s',
-                }} />
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {GENERIC_ITEMS.map(item => (
-                  <label key={item.key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={checklist[item.key] ?? false}
-                      onChange={e => setChecklist(prev => ({ ...prev, [item.key]: e.target.checked }))}
-                      disabled={deal.status === 'complete'}
-                      style={{ accentColor: '#1d9e75' }}
-                    />
-                    <span style={{
-                      textDecoration: checklist[item.key] ? 'line-through' : 'none',
-                      color: checklist[item.key] ? '#aaa' : '#333',
-                    }}>
-                      {item.label}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              {deal.status !== 'complete' && (
-                <button
-                  className="btn"
-                  onClick={saveChecklist}
-                  disabled={saving}
-                  style={{ marginTop: 14, fontSize: 12, padding: '6px 14px' }}
-                >
-                  {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
-                </button>
-              )}
-            </div>
+            <GenericChecklist
+              items={GENERIC_ITEMS}
+              checklist={checklist}
+              setChecklist={setChecklist}
+              dealStatus={deal.status}
+              saving={saving}
+              saved={saved}
+              onSave={saveChecklist}
+            />
           )}
         </div>
       )}
@@ -735,7 +495,7 @@ export default function DealDetail({
   )
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── File-local sub-components ────────────────────────────────────────────────
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
@@ -746,59 +506,14 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SuggestedNextStep({ investors, statuses }: { investors: DealInvestor[]; statuses: Record<string, string> }) {
-  const statusValues   = investors.map(di => statuses[di.id] ?? di.signing_status ?? 'not_sent')
-  const allSigned      = statusValues.every(s => s === 'signed')
-  const noneSent       = statusValues.every(s => s === 'not_sent')
-  const anyDeclined    = statusValues.some(s => s === 'declined')
-  const unsignedInvestors = investors.filter(di => {
-    const s = statuses[di.id] ?? di.signing_status
-    return s !== 'signed'
-  })
-
-  if (allSigned || investors.length === 0) return null
-
-  let message = ''
-  if (noneSent) {
-    message = 'Documents not yet sent — send to all investors to proceed.'
-  } else if (anyDeclined) {
-    const names = investors
-      .filter(di => statuses[di.id] === 'declined')
-      .map(di => di.clients?.full_name ?? 'Unknown')
-      .join(', ')
-    message = `${names} declined — follow up or re-send documents.`
-  } else if (unsignedInvestors.length > 0) {
-    const names = unsignedInvestors.slice(0, 2).map(di => di.clients?.full_name ?? 'Unknown').join(', ')
-    const more  = unsignedInvestors.length > 2 ? ` +${unsignedInvestors.length - 2} more` : ''
-    message = `Awaiting signatures from: ${names}${more}.`
-  }
-
-  if (!message) return null
-
-  return (
-    <div style={{
-      background: '#fffbf0', border: '0.5px solid #f5d87a', borderRadius: 6,
-      padding: '8px 12px', fontSize: 11, color: '#7a5a00', marginBottom: 12,
-    }}>
-      <strong>Next step:</strong> {message}
-    </div>
-  )
-}
-
 function InvoiceStatusPill({ status }: { status: string }) {
   const config: Record<string, { label: string; cls: string }> = {
-    draft: { label: 'Draft', cls: 'pill-grey' }, sent: { label: 'Sent', cls: 'pill-blue' },
-    paid:  { label: 'Paid',  cls: 'pill-green' }, overdue: { label: 'Overdue', cls: 'pill-red' },
-    cancelled: { label: 'Cancelled', cls: 'pill-grey' },
+    draft:     { label: 'Draft',      cls: 'pill-grey'  },
+    sent:      { label: 'Sent',       cls: 'pill-blue'  },
+    paid:      { label: 'Paid',       cls: 'pill-green' },
+    overdue:   { label: 'Overdue',    cls: 'pill-red'   },
+    cancelled: { label: 'Cancelled',  cls: 'pill-grey'  },
   }
   const c = config[status] ?? { label: status, cls: 'pill-grey' }
   return <span className={`pill ${c.cls}`}>{c.label}</span>
-}
-
-const thSt: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 10, fontWeight: 500, color: '#888',
-  textAlign: 'left', whiteSpace: 'nowrap', borderBottom: '0.5px solid #e8e7e0',
-}
-const tdSt: React.CSSProperties = {
-  padding: '8px 10px', fontSize: 12, borderBottom: '0.5px solid #f0f0ec', verticalAlign: 'middle',
 }
