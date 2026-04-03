@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useMemo, useRef, useCallback } from 'react'
-import { formatDate } from '@/lib/utils'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { formatCurrency } from '@/lib/utils'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +21,7 @@ interface InvestmentRound {
   investment_date: string
   original_share_price: number
   share_class: string
+  sum_subscribed: number
   transaction_type?: string
 }
 
@@ -46,6 +49,31 @@ const H = 200
 const PAD = { l: 56, r: 16, t: 16, b: 32 }
 const CHART_W = W - PAD.l - PAD.r
 const CHART_H = H - PAD.t - PAD.b
+
+// ─── Date helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Convert a Date to YYYY-MM-DD in UK time (Europe/London).
+ * Used when matching Date objects back to database date strings.
+ */
+function toUKDateStr(d: Date): string {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/London',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  })
+  const p = Object.fromEntries(f.formatToParts(d).map(x => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}`
+}
+
+/**
+ * Format a YYYY-MM-DD date string for display (e.g. "15 Jun 2024").
+ * Parses components directly to avoid any timezone ambiguity.
+ */
+function fmtDateStr(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${d} ${months[m - 1]} ${y}`
+}
 
 // ─── Chart helpers ────────────────────────────────────────────────────────────
 
@@ -128,39 +156,19 @@ function stepPath(pts: { x: number; y: number }[]): string {
 
 function fmt2(n: number) { return `£${n.toFixed(2)}` }
 
-/** Format a Date as YYYY-MM-DD in LOCAL time (not UTC) so it matches database date strings. */
-function localDateStr(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SourceBadge({ source }: { source: string | null }) {
   if (!source || source === 'manual') {
-    return (
-      <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#f0f0ec', color: '#888' }}>
-        Manual
-      </span>
-    )
+    return <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#f0f0ec', color: '#888' }}>Manual</span>
   }
   if (source.startsWith('deal') || source === 'deal') {
-    return (
-      <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#e8f0fb', color: '#185fa5' }}>
-        Auto: Deal
-      </span>
-    )
+    return <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#e8f0fb', color: '#185fa5' }}>Auto: Deal</span>
   }
   if (source === 'investment_round') {
-    return (
-      <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#e8f5f0', color: '#0a5a3d' }}>
-        Investment round
-      </span>
-    )
+    return <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#e8f5f0', color: '#0a5a3d' }}>Investment round</span>
   }
-  return (
-    <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#f0f0ec', color: '#888' }}>
-      {source}
-    </span>
-  )
+  return <span style={{ fontSize: 10, padding: '1px 7px', borderRadius: 3, background: '#f0f0ec', color: '#888' }}>{source}</span>
 }
 
 function ClassPill({ label, active, color, onClick }: {
@@ -180,7 +188,15 @@ function ClassPill({ label, active, color, onClick }: {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const inputSt: React.CSSProperties = {
+  width: '100%', padding: '4px 7px', border: '0.5px solid #c8c8c0',
+  borderRadius: 4, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: '#fff',
+}
+
 export default function CompanyValuationsTab({ valuations: valRaw, investments: invRaw, onOpenModal }: Props) {
+  const router      = useRouter()
+  const supabase    = createClient()
+
   const valuations  = valRaw as unknown as Valuation[]
   const investments = invRaw as unknown as InvestmentRound[]
 
@@ -191,12 +207,22 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
   } | null>(null)
   const svgRef = useRef<SVGSVGElement>(null)
 
+  // Edit state
+  const [editingId,      setEditingId]      = useState<string | null>(null)
+  const [editValues,     setEditValues]     = useState({ date: '', price: '', methodology: '', notes: '' })
+  const [savingEdit,     setSavingEdit]     = useState(false)
+  const [editError,      setEditError]      = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deletingId,     setDeletingId]     = useState<string | null>(null)
+
+  // ── Chart series ──────────────────────────────────────────────────────────
+
   const classes = useMemo(() =>
     [...new Set(investments.filter(i => (i.transaction_type ?? 'buy') !== 'sell' && (i.transaction_type ?? 'buy') !== 'transfer_out').map(i => i.share_class))].filter(Boolean),
     [investments]
   )
 
-  // Memoised so a new Date object isn't created on every render (which would invalidate allSeries on every hover event)
+  // Memoised so a new Date object is not created on every render
   const start = useMemo(() => getRangeStart(range), [range])
 
   const allSeries = useMemo(() => {
@@ -259,15 +285,12 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
   })), [lines, minMs, rangeMs, minP, rangeP])
 
   // Valuation update markers (circles) and investment round markers (diamonds)
-  const valuationMarkers = useMemo(() => {
-    return valuations.map(v => {
-      const d   = new Date(v.valuation_date + 'T00:00:00')
-      const x   = dateToX(d, minMs, rangeMs)
-      const y   = priceToY(v.share_price, minP, rangeP)
-      const inRange = x >= PAD.l && x <= W - PAD.r
-      return { id: v.id, x, y, date: d, price: v.share_price, notes: v.notes, methodology: v.methodology, source: v.source, inRange }
-    }).filter(m => m.inRange)
-  }, [valuations, minMs, rangeMs, minP, rangeP])
+  const valuationMarkers = useMemo(() => valuations.map(v => {
+    const d = new Date(v.valuation_date + 'T00:00:00')
+    const x = dateToX(d, minMs, rangeMs)
+    const y = priceToY(v.share_price, minP, rangeP)
+    return { id: v.id, x, y, date: d, price: v.share_price, inRange: x >= PAD.l && x <= W - PAD.r }
+  }).filter(m => m.inRange), [valuations, minMs, rangeMs, minP, rangeP])
 
   const roundMarkers = useMemo(() => {
     const seen = new Set<string>()
@@ -275,14 +298,12 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
       if ((i.transaction_type ?? 'buy') === 'sell' || (i.transaction_type ?? 'buy') === 'transfer_out') return false
       const key = `${i.investment_date}|${i.share_class}|${i.original_share_price}`
       if (seen.has(key)) return false
-      seen.add(key)
-      return true
+      seen.add(key); return true
     }).map(i => {
-      const d   = new Date(i.investment_date + 'T00:00:00')
-      const x   = dateToX(d, minMs, rangeMs)
-      const y   = priceToY(i.original_share_price, minP, rangeP)
-      const inRange = x >= PAD.l && x <= W - PAD.r
-      return { id: i.id, x, y, date: d, price: i.original_share_price, shareClass: i.share_class, inRange }
+      const d = new Date(i.investment_date + 'T00:00:00')
+      const x = dateToX(d, minMs, rangeMs)
+      const y = priceToY(i.original_share_price, minP, rangeP)
+      return { id: i.id, x, y, date: d, price: i.original_share_price, shareClass: i.share_class, inRange: x >= PAD.l && x <= W - PAD.r }
     }).filter(m => m.inRange)
   }, [investments, minMs, rangeMs, minP, rangeP])
 
@@ -302,55 +323,146 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
     setHoveredPoint(best)
   }, [svgLines])
 
-  // Valuation lookup by date string for detail panel
+  // ── Lookups ───────────────────────────────────────────────────────────────
+
   const valuationByDate = useMemo(() => {
     const m = new Map<string, Valuation>()
     for (const v of valuations) m.set(v.valuation_date, v)
     return m
   }, [valuations])
 
-  // History table rows
+  // Total invested per date (buy/transfer_in only)
+  const investedByDate = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const i of investments) {
+      const t = i.transaction_type ?? 'buy'
+      if (t === 'sell' || t === 'transfer_out') continue
+      m.set(i.investment_date, (m.get(i.investment_date) ?? 0) + (i.sum_subscribed ?? 0))
+    }
+    return m
+  }, [investments])
+
+  // Hover-derived values (use UK date string to match DB keys)
+  const hoveredDateStr  = hoveredPoint ? toUKDateStr(hoveredPoint.date) : null
+  const hoveredVal      = hoveredDateStr ? (valuationByDate.get(hoveredDateStr) ?? null) : null
+  const investedAtHover = hoveredDateStr ? (investedByDate.get(hoveredDateStr) ?? null) : null
+
+  // ── History table rows ────────────────────────────────────────────────────
+
   const historyRows = useMemo(() => {
-    type Row = { dateMs: number; date: string; price: number; type: string; shareClass?: string; notes?: string | null; methodology?: string | null; source?: string | null }
+    type Row = {
+      dateMs: number; date: string; price: number
+      type: 'Manual update' | 'Investment round'
+      shareClass?: string; notes?: string | null
+      methodology?: string | null; source?: string | null
+      valuationId?: string           // present on Manual update rows only
+      investedAmount?: number | null // present on Investment round rows only
+    }
     const rows: Row[] = []
     const roundSeen = new Set<string>()
+
     for (const inv of investments) {
       if ((inv.transaction_type ?? 'buy') === 'sell' || (inv.transaction_type ?? 'buy') === 'transfer_out') continue
       const key = `${inv.investment_date}|${inv.share_class}|${inv.original_share_price}`
       if (roundSeen.has(key)) continue
       roundSeen.add(key)
-      rows.push({ dateMs: new Date(inv.investment_date + 'T00:00:00').getTime(), date: inv.investment_date, price: inv.original_share_price, type: 'Investment round', shareClass: inv.share_class })
+      rows.push({
+        dateMs: new Date(inv.investment_date + 'T00:00:00').getTime(),
+        date:   inv.investment_date,
+        price:  inv.original_share_price,
+        type:   'Investment round',
+        shareClass: inv.share_class,
+        investedAmount: investedByDate.get(inv.investment_date) ?? null,
+      })
     }
+
     for (const v of valuations) {
-      rows.push({ dateMs: new Date(v.valuation_date + 'T00:00:00').getTime(), date: v.valuation_date, price: v.share_price, type: 'Manual update', notes: v.notes, methodology: v.methodology, source: v.source })
+      rows.push({
+        dateMs:      new Date(v.valuation_date + 'T00:00:00').getTime(),
+        date:        v.valuation_date,
+        price:       v.share_price,
+        type:        'Manual update',
+        notes:       v.notes,
+        methodology: v.methodology,
+        source:      v.source,
+        valuationId: v.id,
+      })
     }
+
+    // Most recent first
     rows.sort((a, b) => b.dateMs - a.dateMs)
+
     return rows.map((row, i) => {
       const next = rows[i + 1]
       return { ...row, change: next ? row.price - next.price : null }
     })
-  }, [investments, valuations])
+  }, [investments, valuations, investedByDate])
 
-  const hasData    = svgLines.some(l => l.svgPts.length > 0)
-  const cv         = valuations[0] ?? null
-  const hoveredVal = hoveredPoint ? valuationByDate.get(localDateStr(hoveredPoint.date)) : null
+  // ── Edit / delete actions ─────────────────────────────────────────────────
+
+  function startEdit(row: typeof historyRows[number]) {
+    if (!row.valuationId) return
+    setEditingId(row.valuationId)
+    setEditError('')
+    setEditValues({
+      date:        row.date,
+      price:       String(row.price),
+      methodology: row.methodology ?? '',
+      notes:       row.notes ?? '',
+    })
+  }
+
+  async function saveEdit() {
+    if (!editingId) return
+    const price = parseFloat(editValues.price)
+    if (isNaN(price) || price <= 0) { setEditError('Enter a valid price'); return }
+    setSavingEdit(true); setEditError('')
+    const { error } = await supabase.from('valuations').update({
+      valuation_date: editValues.date,
+      share_price:    price,
+      methodology:    editValues.methodology.trim() || null,
+      notes:          editValues.notes.trim() || null,
+    }).eq('id', editingId)
+    if (error) { setEditError(error.message); setSavingEdit(false); return }
+    setSavingEdit(false); setEditingId(null)
+    router.refresh()
+  }
+
+  async function confirmDelete(valuationId: string) {
+    setDeletingId(valuationId)
+    const { error } = await supabase.from('valuations').delete().eq('id', valuationId)
+    setDeletingId(null)
+    if (error) { console.error(error); return }
+    setDeleteConfirmId(null)
+    router.refresh()
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const hasData = svgLines.some(l => l.svgPts.length > 0)
+  const cv      = valuations[0] ?? null
 
   const thSt: React.CSSProperties = {
-    padding: '8px 14px', fontSize: 10, fontWeight: 500, color: '#888',
-    textAlign: 'left', borderBottom: '0.5px solid #e8e7e0',
+    padding: '8px 12px', fontSize: 10, fontWeight: 500, color: '#888',
+    textAlign: 'left', borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap',
   }
   const tdSt: React.CSSProperties = {
-    padding: '8px 14px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle',
+    padding: '8px 12px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle',
+  }
+  const actionBtnSt: React.CSSProperties = {
+    fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '0.5px solid #d0d0c8',
+    background: '#fff', cursor: 'pointer', color: '#555',
   }
 
   return (
     <div>
-      {/* Chart + detail panel — 2fr 1fr */}
+      {/* ── Chart + detail panel ── */}
       <div className="card" style={{ marginBottom: 16, padding: 0, overflow: 'hidden' }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr' }}>
+
           {/* Left: chart */}
           <div style={{ padding: 16, borderRight: '0.5px solid #e8e7e0' }}>
-            {/* Header */}
+            {/* Header: price + class pills + range buttons */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                 <div style={{ fontSize: 22, fontWeight: 700, color: '#0f2744' }}>
@@ -382,7 +494,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
               </div>
             </div>
 
-            {/* SVG */}
+            {/* SVG chart */}
             <div style={{ position: 'relative', marginBottom: 8 }}>
               <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`}
                 style={{ width: '100%', height: 'auto', display: 'block' }}
@@ -405,7 +517,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                   if (x < PAD.l || x > W - PAD.r) return null
                   return (
                     <text key={i} x={x} y={H - PAD.b + 14} textAnchor="middle" style={{ fontSize: 9, fill: '#aaa', fontFamily: 'inherit' }}>
-                      {d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      {d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })}
                     </text>
                   )
                 })}
@@ -471,53 +583,65 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
           <div style={{ padding: 16 }}>
             {hoveredPoint ? (
               <div>
+                {/* Date header */}
                 <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 8 }}>
-                  {hoveredPoint.date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  {hoveredPoint.date.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
+
+                {/* Share price */}
                 <div style={{ fontSize: 24, fontWeight: 700, color: '#0f2744', marginBottom: 4 }}>
                   {fmt2(hoveredPoint.price)}
                 </div>
+
+                {/* Change vs previous */}
                 {(() => {
-                  const dateStr = localDateStr(hoveredPoint.date)
-                  const prevVal = historyRows.find(r => r.date === dateStr)
-                  if (prevVal?.change != null) {
-                    const c = prevVal.change
-                    return (
-                      <div style={{ fontSize: 12, marginBottom: 10 }}>
-                        <span style={{ color: c > 0 ? '#1d9e75' : c < 0 ? '#a32d2d' : '#888' }}>
-                          {c > 0 ? '+' : ''}{fmt2(c)}
+                  const row = historyRows.find(r => r.date === hoveredDateStr)
+                  if (!row || row.change == null) return null
+                  const c = row.change
+                  const prevPrice = row.price - c
+                  const changePct = prevPrice > 0 ? (c / prevPrice) * 100 : null
+                  return (
+                    <div style={{ fontSize: 12, marginBottom: 12 }}>
+                      <span style={{ color: c > 0 ? '#1d9e75' : c < 0 ? '#a32d2d' : '#888', fontWeight: 500 }}>
+                        {c > 0 ? '+' : ''}{fmt2(c)}
+                      </span>
+                      {changePct != null && (
+                        <span style={{ color: c > 0 ? '#1d9e75' : c < 0 ? '#a32d2d' : '#888', marginLeft: 5 }}>
+                          ({c > 0 ? '+' : ''}{changePct.toFixed(1)}%)
                         </span>
-                        <span style={{ color: '#aaa', marginLeft: 4 }}>vs previous</span>
-                      </div>
-                    )
-                  }
-                  return null
+                      )}
+                      <span style={{ color: '#aaa', marginLeft: 4 }}>vs previous</span>
+                    </div>
+                  )
                 })()}
-                {hoveredVal && (
-                  <>
-                    {hoveredVal.methodology && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 10, color: '#aaa', marginBottom: 2 }}>Methodology</div>
-                        <div style={{ fontSize: 12, color: '#444' }}>{hoveredVal.methodology}</div>
-                      </div>
-                    )}
-                    {hoveredVal.source && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 10, color: '#aaa', marginBottom: 4 }}>Source</div>
-                        <SourceBadge source={hoveredVal.source} />
-                      </div>
-                    )}
-                    {hoveredVal.notes && (
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 10, color: '#aaa', marginBottom: 2 }}>Notes</div>
-                        <div style={{ fontSize: 12, color: '#444', lineHeight: 1.4 }}>{hoveredVal.notes}</div>
-                      </div>
-                    )}
-                  </>
+
+                {/* Method of valuation */}
+                {hoveredVal?.methodology && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Method of valuation</div>
+                    <div style={{ fontSize: 12, color: '#333' }}>{hoveredVal.methodology}</div>
+                  </div>
                 )}
-                <div style={{ fontSize: 11, color: '#888', marginTop: 4, fontStyle: 'italic' }}>
-                  {svgLines.length > 1 ? hoveredPoint.label : 'Share price'}
-                </div>
+
+                {/* Notes */}
+                {hoveredVal?.notes && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Notes</div>
+                    <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5 }}>{hoveredVal.notes}</div>
+                  </div>
+                )}
+
+                {/* Invested at this round */}
+                {investedAtHover != null && investedAtHover > 0 && (
+                  <div style={{ marginBottom: 10, padding: '8px 10px', background: '#f0f4fa', borderRadius: 6 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Invested at this round</div>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: '#185fa5' }}>{formatCurrency(investedAtHover)}</div>
+                  </div>
+                )}
+
+                {svgLines.length > 1 && (
+                  <div style={{ fontSize: 11, color: '#aaa', fontStyle: 'italic', marginTop: 4 }}>{hoveredPoint.label}</div>
+                )}
               </div>
             ) : (
               <div>
@@ -528,36 +652,28 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                   {currentPrice != null ? fmt2(currentPrice) : '—'}
                 </div>
                 {cv && (
-                  <div style={{ fontSize: 11, color: '#888', marginBottom: 12 }}>
-                    Updated {formatDate(cv.valuation_date)}
+                  <div style={{ fontSize: 11, color: '#888', marginBottom: 14 }}>
+                    Updated {fmtDateStr(cv.valuation_date)}
                   </div>
                 )}
                 {cv?.methodology && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, color: '#aaa', marginBottom: 2 }}>Methodology</div>
-                    <div style={{ fontSize: 12, color: '#444' }}>{cv.methodology}</div>
-                  </div>
-                )}
-                {cv?.source && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, color: '#aaa', marginBottom: 4 }}>Source</div>
-                    <SourceBadge source={cv.source} />
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Method of valuation</div>
+                    <div style={{ fontSize: 12, color: '#333' }}>{cv.methodology}</div>
                   </div>
                 )}
                 {cv?.notes && (
-                  <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 10, color: '#aaa', marginBottom: 2 }}>Notes</div>
-                    <div style={{ fontSize: 12, color: '#444', lineHeight: 1.4 }}>{cv.notes}</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>Notes</div>
+                    <div style={{ fontSize: 12, color: '#444', lineHeight: 1.5 }}>{cv.notes}</div>
                   </div>
                 )}
                 {!hasData && (
-                  <div style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic', marginTop: 8 }}>
-                    No price history yet
-                  </div>
+                  <div style={{ fontSize: 12, color: '#aaa', fontStyle: 'italic', marginTop: 8 }}>No price history yet</div>
                 )}
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 10, color: '#bbb' }}>Hover over the chart to inspect a date</div>
-                </div>
+                {hasData && (
+                  <div style={{ marginTop: 12, fontSize: 10, color: '#bbb' }}>Hover over the chart to inspect a date</div>
+                )}
               </div>
             )}
           </div>
@@ -571,7 +687,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
         </div>
       </div>
 
-      {/* Price history table */}
+      {/* ── Price history table ── */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '12px 14px', borderBottom: '0.5px solid #e8e7e0' }}>
           <span style={{ fontSize: 12, fontWeight: 500 }}>Price history</span>
@@ -588,21 +704,73 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                 <th style={{ ...thSt, textAlign: 'right' }}>Share price</th>
                 <th style={{ ...thSt, textAlign: 'right' }}>Change £</th>
                 <th style={{ ...thSt, textAlign: 'right' }}>Change %</th>
-                <th style={thSt}>Methodology</th>
+                <th style={thSt}>Method</th>
                 <th style={thSt}>Notes</th>
                 <th style={thSt}>Source</th>
+                <th style={{ ...thSt, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {historyRows.map((row, i) => {
-                const changePct = row.change != null && row.price - row.change > 0
+                const isEditing       = editingId === row.valuationId && row.type === 'Manual update'
+                const isDeleteConfirm = deleteConfirmId === row.valuationId && row.type === 'Manual update'
+                const changePct       = row.change != null && (row.price - row.change) > 0
                   ? (row.change / (row.price - row.change)) * 100
                   : null
+
+                if (isEditing) {
+                  return (
+                    <tr key={i} style={{ background: '#f5f8ff' }}>
+                      <td style={tdSt}>
+                        <input type="date" value={editValues.date}
+                          onChange={e => setEditValues(v => ({ ...v, date: e.target.value }))}
+                          style={{ ...inputSt, width: 130 }} />
+                      </td>
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        <input type="number" step="0.0001" min="0" value={editValues.price}
+                          onChange={e => setEditValues(v => ({ ...v, price: e.target.value }))}
+                          style={{ ...inputSt, width: 90, textAlign: 'right' }} />
+                      </td>
+                      <td colSpan={2} style={{ ...tdSt, color: '#ccc', fontSize: 11, fontStyle: 'italic' }}>Recalculated on save</td>
+                      <td style={tdSt}>
+                        <input type="text" value={editValues.methodology} placeholder="e.g. DCF, last round"
+                          onChange={e => setEditValues(v => ({ ...v, methodology: e.target.value }))}
+                          style={inputSt} />
+                      </td>
+                      <td style={tdSt}>
+                        <input type="text" value={editValues.notes} placeholder="Optional notes"
+                          onChange={e => setEditValues(v => ({ ...v, notes: e.target.value }))}
+                          style={inputSt} />
+                      </td>
+                      <td style={tdSt} />
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        <div style={{ display: 'flex', gap: 5, justifyContent: 'flex-end', flexDirection: 'column', alignItems: 'flex-end' }}>
+                          <div style={{ display: 'flex', gap: 5 }}>
+                            <button className="btn btn-primary" onClick={saveEdit} disabled={savingEdit}
+                              style={{ fontSize: 11, padding: '3px 10px' }}>
+                              {savingEdit ? 'Saving…' : 'Save'}
+                            </button>
+                            <button style={{ ...actionBtnSt }} onClick={() => { setEditingId(null); setEditError('') }}>
+                              Cancel
+                            </button>
+                          </div>
+                          {editError && <div style={{ fontSize: 10, color: '#a32d2d' }}>{editError}</div>}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                }
+
                 return (
-                  <tr key={i}>
-                    <td style={tdSt}>{formatDate(row.date)}</td>
+                  <tr key={i} style={{ borderBottom: '0.5px solid #f5f5f2' }}>
+                    <td style={tdSt}>{fmtDateStr(row.date)}</td>
                     <td style={{ ...tdSt, textAlign: 'right', fontWeight: 500, fontFamily: 'monospace' }}>
                       {fmt2(row.price)}
+                      {row.investedAmount != null && row.investedAmount > 0 && (
+                        <div style={{ fontSize: 10, color: '#185fa5', fontFamily: 'inherit', fontWeight: 400, marginTop: 2 }}>
+                          {formatCurrency(row.investedAmount)} invested
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...tdSt, textAlign: 'right' }}>
                       {row.change != null ? (
@@ -621,10 +789,10 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                     <td style={{ ...tdSt, color: '#555' }}>
                       {row.methodology ?? <span style={{ color: '#ddd' }}>—</span>}
                     </td>
-                    <td style={{ ...tdSt, color: '#888', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <td style={{ ...tdSt, color: '#888', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {row.type === 'Investment round' ? (
                         <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 3, background: '#e8f5f0', color: '#0a5a3d' }}>
-                          Investment round{row.shareClass ? ` · ${row.shareClass}` : ''}
+                          Round{row.shareClass ? ` · ${row.shareClass}` : ''}
                         </span>
                       ) : (row.notes ?? <span style={{ color: '#ddd' }}>—</span>)}
                     </td>
@@ -633,6 +801,33 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                         ? <SourceBadge source="investment_round" />
                         : <SourceBadge source={row.source ?? null} />
                       }
+                    </td>
+                    <td style={{ ...tdSt, textAlign: 'right' }}>
+                      {row.type === 'Manual update' && (
+                        isDeleteConfirm ? (
+                          <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            <span style={{ fontSize: 11, color: '#a32d2d' }}>Delete?</span>
+                            <button
+                              style={{ ...actionBtnSt, background: '#a32d2d', color: '#fff', border: 'none' }}
+                              onClick={() => confirmDelete(row.valuationId!)}
+                              disabled={deletingId === row.valuationId}
+                            >
+                              {deletingId === row.valuationId ? '…' : 'Yes'}
+                            </button>
+                            <button style={actionBtnSt} onClick={() => setDeleteConfirmId(null)}>No</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                            <button style={actionBtnSt} onClick={() => startEdit(row)}>Edit</button>
+                            <button
+                              style={{ ...actionBtnSt, color: '#a32d2d', borderColor: '#f0c0c0' }}
+                              onClick={() => setDeleteConfirmId(row.valuationId!)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )
+                      )}
                     </td>
                   </tr>
                 )
