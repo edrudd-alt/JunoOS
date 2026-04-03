@@ -130,7 +130,19 @@ export default function Reports({ updates: updatesRaw }: { updates: Record<strin
                       <td><span className={`pill ${st.cls}`}>{st.label}</span></td>
                       <td style={{ fontSize: 11, color: '#888' }}>{formatDate(u.created_at)}</td>
                       <td>
-                        <span style={{ fontSize: 11, color: '#185fa5', cursor: 'pointer' }}>Continue</span>
+                        <span
+                          title="Resume from wizard coming soon"
+                          style={{ fontSize: 11, color: '#bbb', cursor: 'not-allowed', userSelect: 'none' }}
+                        >
+                          Continue
+                          <span style={{
+                            display: 'inline-block', marginLeft: 5,
+                            fontSize: 9, background: '#f0f0ec', color: '#aaa',
+                            padding: '1px 5px', borderRadius: 3, verticalAlign: 'middle',
+                          }}>
+                            Coming soon
+                          </span>
+                        </span>
                       </td>
                     </tr>
                   )

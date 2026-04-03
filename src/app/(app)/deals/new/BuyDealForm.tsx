@@ -135,6 +135,8 @@ export default function BuyDealForm({
   const [error,        setError]        = useState('')
   // Fund type prompt for 'both' clients
   const [fundTypePrompt, setFundTypePrompt] = useState<{ client: Client; resolve: (ft: 'syndicate' | 'multi_manager') => void } | null>(null)
+  // Remove investor confirmation
+  const [confirmRemove, setConfirmRemove] = useState<{ uid: string; name: string } | null>(null)
 
   const selectedCompany = companies.find(c => c.id === companyId)
   const shareClasses    = Array.isArray(selectedCompany?.share_classes) ? selectedCompany!.share_classes : []
@@ -719,7 +721,7 @@ export default function BuyDealForm({
 
                       <td style={{ ...tdSt, textAlign: 'center' }}>
                         <button
-                          onClick={() => removeRow(row.uid)}
+                          onClick={() => setConfirmRemove({ uid: row.uid, name: row.name })}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#bbb', fontSize: 16, lineHeight: 1, padding: 2 }}
                           onMouseEnter={e => e.currentTarget.style.color = '#a32d2d'}
                           onMouseLeave={e => e.currentTarget.style.color = '#bbb'}
@@ -744,6 +746,39 @@ export default function BuyDealForm({
           </div>
         )}
       </div>
+
+      {/* Remove investor confirmation */}
+      {confirmRemove && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div className="card" style={{ width: 340, padding: '28px 24px' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '0 0 8px' }}>
+              Remove investor?
+            </h2>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 24px' }}>
+              Remove <strong>{confirmRemove.name}</strong> from this deal?
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmRemove(null)}
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { removeRow(confirmRemove.uid); setConfirmRemove(null) }}
+                className="btn btn-primary"
+                style={{ fontSize: 12, background: '#a32d2d' }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fund type prompt modal for 'both' clients */}
       {fundTypePrompt && (

@@ -107,8 +107,9 @@ export default function Dashboard({
         <MetricCard
           label="Pending signatures"
           value="—"
-          icon={<FileText size={14} color="#888" />}
+          icon={<FileText size={14} color="#ccc" />}
           muted
+          sub={<span style={{ fontSize: 10, color: '#bbb', letterSpacing: '0.03em' }}>Coming soon</span>}
         />
       </div>
 
@@ -245,7 +246,12 @@ export default function Dashboard({
         <div className="card">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <div style={{ fontSize: 12, fontWeight: 500 }}>Portfolio company news</div>
-            <button className="btn btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }}>
+            <button
+              className="btn btn-secondary"
+              disabled
+              title="Coming soon"
+              style={{ fontSize: 11, padding: '3px 8px', opacity: 0.45, cursor: 'not-allowed' }}
+            >
               <RefreshCw size={10} /> Refresh
             </button>
           </div>

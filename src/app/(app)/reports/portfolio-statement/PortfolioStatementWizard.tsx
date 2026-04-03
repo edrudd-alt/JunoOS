@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -83,6 +83,15 @@ export default function PortfolioStatementWizard({
 
   // Step 1 config
   const [selectedClientId, setSelectedClientId] = useState('')
+
+  // Auto-select client from ?client= query param
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const clientParam = params.get('client')
+    if (clientParam && clients.some(c => c.id === clientParam)) {
+      setSelectedClientId(clientParam)
+    }
+  }, [clients])
   const [excludedCompanyIds, setExcludedCompanyIds] = useState<Set<string>>(new Set())
   const [grouping, setGrouping] = useState('share_class')
   const [reportDate, setReportDate] = useState<'today' | 'month_end' | 'custom'>('today')

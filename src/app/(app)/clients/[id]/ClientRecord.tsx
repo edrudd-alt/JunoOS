@@ -110,6 +110,14 @@ export default function ClientRecord({
   const [tab, setTab] = useState<Tab>('overview')
   const [actionsOpen, setActionsOpen] = useState(false)
   const [showFundTypeModal, setShowFundTypeModal] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+
+  function showToast(msg: string) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  function closeActions() { setActionsOpen(false) }
 
   // Read ?tab= from URL on mount
   useEffect(() => {
@@ -232,22 +240,23 @@ export default function ClientRecord({
                   onMouseLeave={() => setActionsOpen(false)}
                 >
                   <ActionGroup label="Reporting">
-                    <ActionItem label="Generate portfolio statement" />
-                    <ActionItem label="Generate investor update letter" />
-                    <ActionItem label="Generate EIS confirmation" />
+                    <ActionItem label="Generate portfolio statement" href={`/reports/portfolio-statement?client=${clientId}`} />
+                    <ActionItem label="Generate investor update letter" href="/reports/investor-update" />
+                    <ActionItem label="Generate EIS confirmation" onClick={() => { closeActions(); showToast('EIS confirmation generation coming soon') }} />
                   </ActionGroup>
                   <ActionDivider />
                   <ActionGroup label="Investments">
-                    <ActionItem label="Add new investment" />
+                    <ActionItem label="Add new investment" href="/deals/new" />
                   </ActionGroup>
                   <ActionDivider />
                   <ActionGroup label="Documents & signatures">
-                    <ActionItem label="Send document for signature" />
-                    <ActionItem label="Upload document" />
+                    <ActionItem label="Send document for signature" onClick={() => { closeActions(); showToast('Document signing coming soon — Documenso integration required') }} />
+                    <ActionItem label="Upload document" onClick={() => { closeActions(); showToast('Document upload coming soon') }} />
                   </ActionGroup>
                   <ActionDivider />
                   <ActionGroup label="Client">
                     <ActionItem label="Add note" onClick={() => { switchTab('notes'); setActionsOpen(false) }} />
+                    <ActionItem label="Edit client details" href={`/clients/${clientId}/edit`} />
                     <ActionItem label="Edit fund type" onClick={() => { setShowFundTypeModal(true); setActionsOpen(false) }} />
                   </ActionGroup>
                 </div>
@@ -371,6 +380,19 @@ export default function ClientRecord({
         )}
       </div>
 
+      {/* Toast notification */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 500,
+          padding: '10px 20px', borderRadius: 6, zIndex: 2000,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          whiteSpace: 'nowrap',
+        }}>
+          {toast}
+        </div>
+      )}
+
       {/* Edit fund type modal */}
       {showFundTypeModal && (
         <EditFundTypeModal
@@ -483,15 +505,29 @@ function ActionDivider() {
   return <div style={{ borderTop: '0.5px solid #e8e7e0', margin: '4px 0' }} />
 }
 
-function ActionItem({ label, onClick }: { label: string; onClick?: () => void }) {
+function ActionItem({ label, onClick, href }: { label: string; onClick?: () => void; href?: string }) {
+  const itemStyle: React.CSSProperties = {
+    display: 'block', width: '100%', textAlign: 'left',
+    padding: '6px 14px', fontSize: 12, color: '#333',
+    background: 'none', border: 'none', cursor: 'pointer',
+    textDecoration: 'none',
+  }
+  if (href) {
+    return (
+      <Link
+        href={href}
+        style={itemStyle}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+      >
+        {label}
+      </Link>
+    )
+  }
   return (
     <button
       onClick={onClick}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left',
-        padding: '6px 14px', fontSize: 12, color: '#333',
-        background: 'none', border: 'none', cursor: 'pointer',
-      }}
+      style={itemStyle}
       onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
       onMouseLeave={e => (e.currentTarget.style.background = 'none')}
     >

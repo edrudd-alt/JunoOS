@@ -173,10 +173,11 @@ export default function DealDetail({
     return result
   })
 
-  const [saving,     setSaving]     = useState(false)
-  const [saved,      setSaved]      = useState(false)
-  const [completing, setCompleting] = useState(false)
-  const [activeTab,  setActiveTab]  = useState<'overview' | 'documents' | 'invoices'>('overview')
+  const [saving,          setSaving]          = useState(false)
+  const [saved,           setSaved]           = useState(false)
+  const [completing,      setCompleting]      = useState(false)
+  const [confirmComplete, setConfirmComplete] = useState(false)
+  const [activeTab,       setActiveTab]       = useState<'overview' | 'documents' | 'invoices'>('overview')
 
   const status    = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
   const investors = deal.deal_investors ?? []
@@ -344,7 +345,7 @@ export default function DealDetail({
             )}
             <button
               className="btn btn-primary"
-              onClick={markComplete}
+              onClick={() => setConfirmComplete(true)}
               disabled={completing || !canComplete}
               title={!canComplete ? 'Complete all checklist items first' : undefined}
             >
@@ -687,6 +688,47 @@ export default function DealDetail({
               </tfoot>
             </table>
           )}
+        </div>
+      )}
+
+      {/* Mark complete confirmation modal */}
+      {confirmComplete && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div className="card" style={{ width: 400, padding: '28px 24px' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '0 0 8px' }}>
+              Mark this deal as complete?
+            </h2>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 6px' }}>
+              {isBuyDeal
+                ? 'This will activate all pending investments for the investors in this deal.'
+                : isSaleDeal
+                ? 'This will process the exit and update all investor holdings accordingly.'
+                : 'This will mark the deal as complete.'}
+            </p>
+            <p style={{ fontSize: 11, color: '#a32d2d', margin: '0 0 24px' }}>
+              This action cannot be easily undone.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmComplete(false)}
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirmComplete(false); markComplete() }}
+                className="btn btn-primary"
+                style={{ fontSize: 12 }}
+                disabled={completing}
+              >
+                Mark complete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -751,7 +751,14 @@ export default function NewDealWizard({
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    <button className="btn btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }}>Preview</button>
+                    <button
+                      className="btn btn-secondary"
+                      disabled
+                      title="Document preview coming soon"
+                      style={{ fontSize: 10, padding: '2px 8px', opacity: 0.45, cursor: 'not-allowed' }}
+                    >
+                      Preview
+                    </button>
                     <button className="btn btn-secondary" style={{ fontSize: 10, padding: '2px 8px' }} onClick={() => setStep(1)}>Edit</button>
                   </div>
                 </div>
@@ -999,7 +1006,14 @@ function TrackStep({
             <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>Suggested next step</div>
             <div style={{ fontSize: 11, color: '#555' }}>An investor has reviewed — consider countersigning now</div>
           </div>
-          <button className="btn btn-primary" style={{ marginLeft: 'auto', fontSize: 11 }}>Sign now</button>
+          <button
+            className="btn btn-primary"
+            disabled
+            title="Electronic countersigning coming soon"
+            style={{ marginLeft: 'auto', fontSize: 11, opacity: 0.45, cursor: 'not-allowed' }}
+          >
+            Sign now
+          </button>
         </div>
       )}
 
@@ -1050,11 +1064,21 @@ function TrackStep({
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }}>
+                        <button
+                          className="btn btn-secondary"
+                          disabled
+                          title="Automated reminders coming soon"
+                          style={{ fontSize: 10, padding: '3px 8px', opacity: 0.45, cursor: 'not-allowed' }}
+                        >
                           Send reminder
                         </button>
                         {inv.poaHeld && (
-                          <button className="btn btn-secondary" style={{ fontSize: 10, padding: '3px 8px' }}>
+                          <button
+                            className="btn btn-secondary"
+                            disabled
+                            title="Electronic signing coming soon"
+                            style={{ fontSize: 10, padding: '3px 8px', opacity: 0.45, cursor: 'not-allowed' }}
+                          >
                             Sign now
                           </button>
                         )}
