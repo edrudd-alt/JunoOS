@@ -31,10 +31,10 @@ export default async function ClientRecordPage({ params }: Props) {
   const linkedEntities = (allInGroup?.filter(c => c.id !== leadId) ?? []) as unknown as ClientRow[]
   const allGroupIds = [leadId, ...linkedEntities.map(e => e.id)]
 
-  // Query 3: all independent queries in parallel
+  // Query 3: all independent queries in parallel — no embedded joins
   const [
     { data: portfolioRows },
-    { data: investments },
+    { data: rawInvestments },
     { data: documents },
     { data: updateRecipients },
     { data: notes },
@@ -50,40 +50,35 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('*')
       .in('client_id', allGroupIds),
 
-    // Investments with company data (for Investments tab)
+    // Investments — no join, no status filter (show full picture on client record)
     supabase
       .from('investments')
       .select(`
         id, share_class, investment_date, original_share_price,
         shares_purchased, sum_subscribed, eis_status, holding_entity,
-        holding_location, status,
-        companies (id, name, sector, stage)
+        holding_location, status, company_id
       `)
       .in('client_id', allGroupIds)
-      .eq('status', 'active')
       .order('investment_date', { ascending: false }),
 
-    // Documents
+    // Documents — no join
     supabase
       .from('documents')
-      .select('id, type, filename, storage_url, period, document_date, company_id, companies(name)')
+      .select('id, type, filename, storage_url, period, document_date, company_id')
       .or(`client_id.eq.${id}${allGroupIds.length > 1 ? `,client_id.in.(${allGroupIds.join(',')})` : ''}`)
       .order('document_date', { ascending: false }),
 
-    // Updates sent (investor_update_recipients)
+    // Updates sent — no join, include FK column for manual merge
     supabase
       .from('investor_update_recipients')
-      .select(`
-        id, sent_at,
-        investor_updates (id, title, update_type, sent_at)
-      `)
+      .select('id, sent_at, investor_update_id')
       .eq('client_id', id)
       .order('sent_at', { ascending: false }),
 
-    // Notes
+    // Notes — no join, include created_by for manual merge
     supabase
       .from('client_notes')
-      .select('id, note_text, created_at, team_members(full_name)')
+      .select('id, note_text, created_at, created_by')
       .eq('client_id', id)
       .order('created_at', { ascending: false }),
 
@@ -95,14 +90,14 @@ export default async function ClientRecordPage({ params }: Props) {
       .in('type', ['kyc', 'poa', 'membership_agreement', 'suitability_assessment', 'source_of_funds'])
       .order('document_date', { ascending: false }),
 
-    // Pending investments (awaiting deal completion)
+    // Pending investments — no join
     supabase
       .from('investments')
-      .select('id, share_class, company_id, companies(id, name)')
+      .select('id, share_class, company_id')
       .in('client_id', allGroupIds)
       .eq('status', 'pending'),
 
-    // Deal investors → active deals (second half handled below)
+    // Deal investors → deal IDs only (active deals fetched below)
     supabase
       .from('deal_investors')
       .select('deal_id')
@@ -127,30 +122,80 @@ export default async function ClientRecordPage({ params }: Props) {
       .maybeSingle(),
   ])
 
-  // Query 4a: valuations (depends on investments result)
-  const companyIds = [
-    ...new Set(
-      (investments ?? [])
-        .map((i) => (i.companies as unknown as { id: string } | null)?.id)
-        .filter((cid): cid is string => Boolean(cid))
-    ),
-  ]
-  const { data: valuations } = companyIds.length > 0
-    ? await supabase
-        .from('company_current_valuations')
-        .select('company_id, share_price, valuation_date')
-        .in('company_id', companyIds)
-    : { data: [] }
-
-  // Query 4b: active deals (depends on dealInvestorRows result)
-  const dealIds = [...new Set((dealInvestorRows ?? []).map(d => (d as Record<string, unknown>).deal_id as string))]
-  const { data: activeDeals } = dealIds.length > 0
+  // Query 4a: active deals (depends on dealInvestorRows) — no join
+  const dealIds = [...new Set((dealInvestorRows ?? []).map(d => (d as Record<string, unknown>).deal_id as string).filter(Boolean))]
+  const { data: rawActiveDeals } = dealIds.length > 0
     ? await supabase
         .from('deals')
-        .select('id, deal_type, status, companies(id, name)')
+        .select('id, deal_type, status, company_id')
         .in('id', dealIds)
         .neq('status', 'complete')
-    : { data: [] }
+    : { data: [] as { id: string; deal_type: string; status: string; company_id: string | null }[] }
+
+  // Query 4b: all secondary lookups in parallel (now all company IDs are known)
+  const investmentCids = [...new Set((rawInvestments ?? []).map(i => (i as Record<string, unknown>).company_id as string).filter(Boolean))]
+  const documentCids   = [...new Set((documents ?? []).map(d => (d as Record<string, unknown>).company_id as string).filter(Boolean))]
+  const pendingCids    = [...new Set((pendingInvestments ?? []).map(i => (i as Record<string, unknown>).company_id as string).filter(Boolean))]
+  const dealCids       = [...new Set((rawActiveDeals ?? []).map(d => d.company_id).filter((c): c is string => Boolean(c)))]
+  const allCids        = [...new Set([...investmentCids, ...documentCids, ...pendingCids, ...dealCids])]
+
+  const updateIds  = [...new Set((updateRecipients ?? []).map(r => (r as Record<string, unknown>).investor_update_id as string).filter(Boolean))]
+  const creatorIds = [...new Set((notes ?? []).map(n => (n as Record<string, unknown>).created_by as string).filter(Boolean))]
+
+  const [
+    { data: companiesData },
+    { data: investorUpdatesData },
+    { data: teamMembersData },
+    { data: valuations },
+  ] = await Promise.all([
+    allCids.length > 0
+      ? supabase.from('companies').select('id, name, sector, stage').in('id', allCids)
+      : { data: [] as { id: string; name: string; sector: string | null; stage: string | null }[] },
+    updateIds.length > 0
+      ? supabase.from('investor_updates').select('id, title, update_type, sent_at').in('id', updateIds)
+      : { data: [] as { id: string; title: string; update_type: string; sent_at: string | null }[] },
+    creatorIds.length > 0
+      ? supabase.from('team_members').select('id, full_name').in('id', creatorIds)
+      : { data: [] as { id: string; full_name: string }[] },
+    investmentCids.length > 0
+      ? supabase.from('company_current_valuations').select('company_id, share_price, valuation_date').in('company_id', investmentCids)
+      : { data: [] as { company_id: string; share_price: number; valuation_date: string }[] },
+  ])
+
+  // Merge secondary data into results
+  const companyMap    = new Map((companiesData ?? []).map(c => [c.id, c]))
+  const updateMap     = new Map((investorUpdatesData ?? []).map(u => [u.id, u]))
+  const teamMemberMap = new Map((teamMembersData ?? []).map(t => [t.id, t]))
+
+  const investments = (rawInvestments ?? []).map(i => ({
+    ...i,
+    companies: companyMap.get((i as Record<string, unknown>).company_id as string) ?? null,
+  }))
+
+  const mergedDocuments = (documents ?? []).map(d => {
+    const cid = (d as Record<string, unknown>).company_id as string | null
+    return { ...d, companies: cid ? { name: companyMap.get(cid)?.name ?? null } : null }
+  })
+
+  const mergedUpdateRecipients = (updateRecipients ?? []).map(r => {
+    const uid = (r as Record<string, unknown>).investor_update_id as string | null
+    return { ...r, investor_updates: uid ? (updateMap.get(uid) ?? null) : null }
+  })
+
+  const mergedNotes = (notes ?? []).map(n => {
+    const cby = (n as Record<string, unknown>).created_by as string | null
+    return { ...n, team_members: cby ? { full_name: teamMemberMap.get(cby)?.full_name ?? null } : null }
+  })
+
+  const mergedPendingInvestments = (pendingInvestments ?? []).map(i => ({
+    ...i,
+    companies: companyMap.get((i as Record<string, unknown>).company_id as string) ?? null,
+  }))
+
+  const activeDeals = (rawActiveDeals ?? []).map(d => ({
+    ...d,
+    companies: d.company_id ? (companyMap.get(d.company_id) ?? null) : null,
+  }))
 
   const lastActivity = (lastActivityRow as Record<string, unknown> | null)?.created_at as string | null
     ?? client.date_joined ?? null
@@ -161,14 +206,14 @@ export default async function ClientRecordPage({ params }: Props) {
       lead={lead}
       linkedEntities={linkedEntities}
       portfolioRows={(portfolioRows ?? []) as unknown as Parameters<typeof ClientRecord>[0]['portfolioRows']}
-      investments={(investments ?? []) as Record<string, unknown>[]}
+      investments={investments as Record<string, unknown>[]}
       valuations={(valuations ?? []) as Record<string, unknown>[]}
-      documents={(documents ?? []) as Record<string, unknown>[]}
-      updateRecipients={(updateRecipients ?? []) as Record<string, unknown>[]}
-      notes={(notes ?? []) as Record<string, unknown>[]}
+      documents={mergedDocuments as Record<string, unknown>[]}
+      updateRecipients={mergedUpdateRecipients as Record<string, unknown>[]}
+      notes={mergedNotes as Record<string, unknown>[]}
       membershipDocs={(membershipDocs ?? []) as unknown as Parameters<typeof ClientRecord>[0]['membershipDocs']}
-      pendingInvestments={(pendingInvestments ?? []) as Record<string, unknown>[]}
-      activeDeals={(activeDeals ?? []) as Record<string, unknown>[]}
+      pendingInvestments={mergedPendingInvestments as Record<string, unknown>[]}
+      activeDeals={activeDeals as Record<string, unknown>[]}
       followUpNotes={(followUpNotes ?? []) as Record<string, unknown>[]}
       lastActivity={lastActivity}
     />

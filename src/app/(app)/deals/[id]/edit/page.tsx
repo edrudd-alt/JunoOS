@@ -8,19 +8,15 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
   const supabase = await createClient()
 
   const [
-    { data: deal },
+    { data: rawDeal },
     { data: companies },
     { data: clients },
     { data: investments },
   ] = await Promise.all([
+    // Fetch deal without the nested clients join
     supabase
       .from('deals')
-      .select(`
-        id, deal_type, status, company_id, share_class, share_price,
-        investment_date, eis_qualifying, completion_checklist,
-        deal_investors (id, client_id, amount, poa_held, signing_status,
-          clients (id, full_name, email))
-      `)
+      .select('id, deal_type, status, company_id, share_class, share_price, investment_date, eis_qualifying, completion_checklist')
       .eq('id', id)
       .maybeSingle(),
     supabase.from('companies').select('id, name, share_classes').order('name'),
@@ -32,14 +28,29 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
       .eq('status', 'active'),
   ])
 
-  if (!deal) return notFound()
-  if (deal.status === 'complete') {
+  if (!rawDeal) return notFound()
+  if (rawDeal.status === 'complete') {
     return (
       <div style={{ padding: 32, fontSize: 13, color: '#888' }}>
         This deal is complete and cannot be edited.
       </div>
     )
   }
+
+  // Fetch deal_investors separately and merge with clients data
+  const { data: dealInvestors } = await supabase
+    .from('deal_investors')
+    .select('id, client_id, amount, poa_held, signing_status')
+    .eq('deal_id', id)
+
+  // Reuse the already-fetched clients array for the lookup (avoids extra query)
+  const clientsMap = new Map((clients ?? []).map(c => [c.id, c]))
+  const mergedDealInvestors = (dealInvestors ?? []).map(di => ({
+    ...di,
+    clients: clientsMap.get(di.client_id) ?? null,
+  }))
+
+  const deal = { ...rawDeal, deal_investors: mergedDealInvestors }
 
   const backHref = `/deals/${id}`
 
