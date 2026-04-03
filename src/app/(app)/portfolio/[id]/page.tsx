@@ -20,23 +20,72 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
 
   if (!company) notFound()
 
-  // All valuations for this company
-  const { data: valuations } = await supabase
-    .from('valuations')
-    .select('id, share_price, valuation_date, notes')
-    .eq('company_id', id)
-    .order('valuation_date', { ascending: false })
+  // All parallel queries
+  const [
+    { data: valuations },
+    { data: rawInvestments },
+    { data: kpiData },
+    { data: internalUpdates },
+    { data: news },
+    { data: openDealsRaw },
+    { data: companyDocs },
+  ] = await Promise.all([
+    // Valuations — include new methodology + source columns
+    supabase
+      .from('valuations')
+      .select('id, share_price, valuation_date, notes, methodology, source')
+      .eq('company_id', id)
+      .order('valuation_date', { ascending: false }),
 
-  // Investments — fetch WITHOUT the clients join to avoid PostgREST silent failures
-  const { data: rawInvestments } = await supabase
-    .from('investments')
-    .select(`
-      id, share_class, investment_date, original_share_price,
-      shares_purchased, sum_subscribed, eis_status,
-      holding_entity, holding_location, status, client_id, transaction_type
-    `)
-    .eq('company_id', id)
-    .order('investment_date', { ascending: false })
+    // Investments — no join, includes fund_type for account filter
+    supabase
+      .from('investments')
+      .select(`
+        id, share_class, investment_date, original_share_price,
+        shares_purchased, sum_subscribed, eis_status,
+        holding_entity, holding_location, status, client_id, transaction_type, fund_type
+      `)
+      .eq('company_id', id)
+      .order('investment_date', { ascending: false }),
+
+    // KPIs
+    supabase
+      .from('kpi_data')
+      .select('id, kpi_name, period, period_date, value, unit, auto_extracted, manually_verified')
+      .eq('company_id', id)
+      .order('period_date', { ascending: false }),
+
+    // Internal updates
+    supabase
+      .from('internal_updates')
+      .select('id, update_type, description, created_at')
+      .eq('company_id', id)
+      .order('created_at', { ascending: false })
+      .limit(20),
+
+    // Company news
+    supabase
+      .from('company_news')
+      .select('id, headline, source, url, published_at, is_significant, significance_reason')
+      .eq('company_id', id)
+      .order('published_at', { ascending: false })
+      .limit(10),
+
+    // Open deals (not complete) for this company
+    supabase
+      .from('deals')
+      .select('id, deal_type, status, created_at')
+      .eq('company_id', id)
+      .neq('status', 'complete'),
+
+    // Company documents (for financials stat)
+    supabase
+      .from('documents')
+      .select('id, type, filename, storage_url, document_date, period')
+      .eq('company_id', id)
+      .order('document_date', { ascending: false })
+      .limit(30),
+  ])
 
   // Fetch client details separately and merge
   const clientIds = [...new Set((rawInvestments ?? []).map(i => i.client_id))]
@@ -47,47 +96,45 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
         .in('id', clientIds)
     : { data: [] as { id: string; full_name: string; lead_investor_id: string | null }[] }
 
+  // Fetch deal investor counts
+  const openDealIds = (openDealsRaw ?? []).map(d => d.id)
+  const { data: dealInvestorRows } = openDealIds.length > 0
+    ? await supabase
+        .from('deal_investors')
+        .select('deal_id')
+        .in('deal_id', openDealIds)
+    : { data: [] as { deal_id: string }[] }
+
   const clientMap = new Map((clientsData ?? []).map(c => [c.id, c]))
   const investments = (rawInvestments ?? []).map(i => ({
     ...i,
     clients: clientMap.get(i.client_id) ?? null,
   }))
 
-  // KPIs for this company
-  const { data: kpiData } = await supabase
-    .from('kpi_data')
-    .select('id, kpi_name, period, period_date, value, unit, auto_extracted, manually_verified')
-    .eq('company_id', id)
-    .order('period_date', { ascending: false })
+  const investorCountByDeal: Record<string, number> = {}
+  for (const di of dealInvestorRows ?? []) {
+    const did = (di as Record<string, unknown>).deal_id as string
+    investorCountByDeal[did] = (investorCountByDeal[did] ?? 0) + 1
+  }
 
-  // Internal updates feed
-  const { data: internalUpdates } = await supabase
-    .from('internal_updates')
-    .select('id, update_type, description, created_at')
-    .eq('company_id', id)
-    .order('created_at', { ascending: false })
-    .limit(20)
+  const openDeals = (openDealsRaw ?? []).map(d => ({
+    ...d,
+    investor_count: investorCountByDeal[d.id] ?? 0,
+  }))
 
-  // Company news
-  const { data: news } = await supabase
-    .from('company_news')
-    .select('id, headline, source, url, published_at, is_significant, significance_reason')
-    .eq('company_id', id)
-    .order('published_at', { ascending: false })
-    .limit(10)
-
-  // Current valuation
   const currentValuation = valuations?.[0] ?? null
 
   return (
     <CompanyPage
       company={company}
-      valuations={valuations ?? []}
-      currentValuation={currentValuation}
+      valuations={(valuations ?? []) as Record<string, unknown>[]}
+      currentValuation={currentValuation as Record<string, unknown> | null}
       investments={investments as Record<string, unknown>[]}
       kpiData={kpiData ?? []}
       internalUpdates={(internalUpdates ?? []) as Record<string, unknown>[]}
       news={(news ?? []) as Record<string, unknown>[]}
+      openDeals={openDeals as Record<string, unknown>[]}
+      companyDocs={(companyDocs ?? []) as Record<string, unknown>[]}
       initialAction={action ?? null}
     />
   )
