@@ -46,7 +46,7 @@ type RangeKey = typeof RANGES[number]['key']
 
 const W = 600
 const H = 200
-const PAD = { l: 56, r: 16, t: 16, b: 32 }
+const PAD = { l: 56, r: 16, t: 16, b: 40 }
 const CHART_W = W - PAD.l - PAD.r
 const CHART_H = H - PAD.t - PAD.b
 
@@ -443,11 +443,12 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
   const cv      = valuations[0] ?? null
 
   const thSt: React.CSSProperties = {
-    padding: '8px 12px', fontSize: 10, fontWeight: 500, color: '#888',
-    textAlign: 'left', borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap',
+    padding: '8px 14px', fontSize: 10, fontWeight: 500, color: '#aaa',
+    textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em',
+    borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap',
   }
   const tdSt: React.CSSProperties = {
-    padding: '8px 12px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle',
+    padding: '8px 14px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle',
   }
   const actionBtnSt: React.CSSProperties = {
     fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '0.5px solid #d0d0c8',
@@ -515,10 +516,17 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                 {xTicks.map((d, i) => {
                   const x = dateToX(d, minMs, rangeMs)
                   if (x < PAD.l || x > W - PAD.r) return null
+                  const day  = d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })
+                  const year = d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', year: 'numeric' })
                   return (
-                    <text key={i} x={x} y={H - PAD.b + 14} textAnchor="middle" style={{ fontSize: 9, fill: '#aaa', fontFamily: 'inherit' }}>
-                      {d.toLocaleDateString('en-GB', { timeZone: 'Europe/London', day: 'numeric', month: 'short' })}
-                    </text>
+                    <g key={i}>
+                      <text x={x} y={H - PAD.b + 12} textAnchor="middle" style={{ fontSize: 8.5, fill: '#aaa', fontFamily: 'inherit' }}>
+                        {day}
+                      </text>
+                      <text x={x} y={H - PAD.b + 22} textAnchor="middle" style={{ fontSize: 8.5, fill: '#bbb', fontFamily: 'inherit' }}>
+                        {year}
+                      </text>
+                    </g>
                   )
                 })}
 
@@ -527,7 +535,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
 
                 {svgLines.map((line, li) => (
                   <path key={li} d={stepPath(line.svgPts)} fill="none"
-                    stroke={line.color} strokeWidth={svgLines.length > 1 ? 1.5 : 2}
+                    stroke={line.color} strokeWidth={svgLines.length > 1 ? 1 : 1.5}
                     strokeLinejoin="round" opacity={svgLines.length > 1 ? 0.85 : 1} />
                 ))}
 
