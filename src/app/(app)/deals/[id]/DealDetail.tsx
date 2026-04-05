@@ -10,7 +10,8 @@ import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDeta
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
-import { StepBar } from '../new/buy/StepBar'
+import { StepBar }     from '../new/buy/StepBar'
+import { SellStepBar } from '../new/sell/SellStepBar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,18 @@ export default function DealDetail({
       case 'partially_signed': return 4
       case 'fully_signed':     return 5
       case 'complete':         return 6
+      default:                 return 2
+    }
+  })()
+
+  // Sell deal: steps 0–1 in SellDealWizard; DealDetail shows steps 2–8
+  const sellStepIndex = (() => {
+    switch (deal.status) {
+      case 'draft':            return 2  // Consent
+      case 'sent':             return 3  // PoA
+      case 'partially_signed': return 4  // Bank details
+      case 'fully_signed':     return 5  // Review
+      case 'complete':         return 8  // Post-deal
       default:                 return 2
     }
   })()
@@ -294,8 +307,9 @@ export default function DealDetail({
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      {/* Step bar — buy deals only */}
-      {isBuyDeal && <StepBar activeStep={buyStepIndex} />}
+      {/* Step bars */}
+      {isBuyDeal  && <StepBar     activeStep={buyStepIndex}  />}
+      {isSaleDeal && <SellStepBar activeStep={sellStepIndex} />}
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>

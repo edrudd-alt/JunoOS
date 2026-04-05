@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import BuyDealWizard from './BuyDealWizard'
-import SaleDealForm from './SaleDealForm'
+import SellDealWizard from './SellDealWizard'
 import NewDealWizard from './NewDealWizard'
 
 type DealTypeValue =
@@ -100,7 +100,7 @@ export default function NewDealPage({ companies, clients, investments }: Props) 
 
   if (selectedType === 'full_exit' || selectedType === 'partial_exit') {
     return (
-      <SaleDealForm
+      <SellDealWizard
         dealType={selectedType}
         companies={companies}
         clients={clients}
