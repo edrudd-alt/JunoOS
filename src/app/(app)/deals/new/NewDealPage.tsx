@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import BuyDealForm from './BuyDealForm'
+import BuyDealWizard from './BuyDealWizard'
 import SaleDealForm from './SaleDealForm'
 import NewDealWizard from './NewDealWizard'
 
@@ -88,7 +88,7 @@ export default function NewDealPage({ companies, clients, investments }: Props) 
 
   if (selectedType === 'new_investment' || selectedType === 'follow_on') {
     return (
-      <BuyDealForm
+      <BuyDealWizard
         dealType={selectedType}
         companies={companies}
         clients={clients}

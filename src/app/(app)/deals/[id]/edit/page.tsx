@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
-import BuyDealForm, { type ExistingBuyDeal } from '../../new/BuyDealForm'
+import { notFound, redirect } from 'next/navigation'
 import SaleDealForm, { type ExistingSaleDeal } from '../../new/SaleDealForm'
 
 export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
@@ -54,17 +53,9 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
 
   const backHref = `/deals/${id}`
 
+  // Buy deals: edit functionality is handled within the new deal workflow
   if (deal.deal_type === 'new_investment' || deal.deal_type === 'follow_on') {
-    return (
-      <BuyDealForm
-        dealType={deal.deal_type as 'new_investment' | 'follow_on'}
-        companies={(companies ?? []) as Record<string, unknown>[]}
-        clients={(clients ?? []) as Record<string, unknown>[]}
-        investments={(investments ?? []) as Record<string, unknown>[]}
-        backHref={backHref}
-        existingDeal={deal as unknown as ExistingBuyDeal}
-      />
-    )
+    redirect(backHref)
   }
 
   if (deal.deal_type === 'full_exit' || deal.deal_type === 'partial_exit') {

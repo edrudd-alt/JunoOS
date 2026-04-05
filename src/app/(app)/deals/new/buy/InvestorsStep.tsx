@@ -1,0 +1,566 @@
+'use client'
+
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import { formatCurrency } from '@/lib/utils'
+import type { BuyDealType, EisStatus, SetupData, InvestorRow } from './buyWizardTypes'
+
+// ─── Local types ──────────────────────────────────────────────────────────────
+
+interface Client {
+  id:               string
+  full_name:        string
+  email:            string | null
+  default_fee_rate: number
+  tax_status:       string
+  lead_investor_id: string | null
+  fund_type:        string
+  active_fund_type: string
+}
+
+interface Investment {
+  id:                   string
+  client_id:            string
+  company_id:           string
+  share_class:          string
+  shares_purchased:     number
+  original_share_price: number
+  sum_subscribed:       number
+}
+
+interface Props {
+  dealType:    BuyDealType
+  setupData:   SetupData
+  clients:     Record<string, unknown>[]
+  investments: Record<string, unknown>[]
+  onBack:      () => void
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function uid() { return Math.random().toString(36).slice(2, 10) }
+
+function deriveEis(dealEis: EisStatus, clientTaxStatus: string): EisStatus {
+  if (dealEis === 'yes' && ['eis', 'seis', 'both'].includes(clientTaxStatus)) return 'yes'
+  if (dealEis === 'no') return 'no'
+  return 'tbc'
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const inputSt: React.CSSProperties = {
+  width: '100%', padding: '7px 10px',
+  border: '0.5px solid #d0d0c8', borderRadius: 5,
+  fontSize: 12, outline: 'none', boxSizing: 'border-box',
+  background: '#fff', fontFamily: 'inherit',
+}
+
+const thSt: React.CSSProperties = {
+  padding: '8px 10px', fontSize: 10, fontWeight: 500, color: '#888',
+  textAlign: 'left', whiteSpace: 'nowrap', borderBottom: '0.5px solid #e8e7e0',
+  textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+
+const tdSt: React.CSSProperties = {
+  padding: '8px 10px', fontSize: 12, borderBottom: '0.5px solid #f0f0ec',
+  verticalAlign: 'middle', fontFamily: 'inherit',
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function InvestorsStep({ dealType, setupData, clients: clientsRaw, investments: investmentsRaw, onBack }: Props) {
+  const clients     = clientsRaw     as unknown as Client[]
+  const investments = investmentsRaw as unknown as Investment[]
+  const router      = useRouter()
+  const supabase    = createClient()
+  const isFollowOn  = dealType === 'follow_on'
+
+  const sharePriceNum = parseFloat(setupData.sharePrice) || 0
+
+  const [rows,          setRows]          = useState<InvestorRow[]>([])
+  const [clientSearch,  setClientSearch]  = useState('')
+  const [saving,        setSaving]        = useState(false)
+  const [error,         setError]         = useState('')
+
+  const [fundTypePrompt, setFundTypePrompt] = useState<{
+    client: Client
+    resolve: (ft: 'syndicate' | 'multi_manager') => void
+  } | null>(null)
+
+  const [confirmRemove, setConfirmRemove] = useState<{ uid: string; name: string } | null>(null)
+
+  // Group active investments by company → client
+  const holdingsByCompany = useMemo(() => {
+    const map = new Map<string, Map<string, { shares: number; cost: number; shareClass: string }>>()
+    for (const inv of investments) {
+      if (!map.has(inv.company_id)) map.set(inv.company_id, new Map())
+      const clientMap = map.get(inv.company_id)!
+      const existing  = clientMap.get(inv.client_id)
+      if (existing) {
+        existing.shares += inv.shares_purchased
+        existing.cost   += inv.sum_subscribed
+      } else {
+        clientMap.set(inv.client_id, {
+          shares:     inv.shares_purchased,
+          cost:       inv.sum_subscribed,
+          shareClass: inv.share_class,
+        })
+      }
+    }
+    return map
+  }, [investments])
+
+  // Auto-populate investors for follow-on deals
+  const followOnInitRef = useRef(false)
+  useEffect(() => {
+    if (!isFollowOn || followOnInitRef.current) return
+    followOnInitRef.current = true
+    const holdings = holdingsByCompany.get(setupData.companyId)
+    if (!holdings) return
+    const newRows: InvestorRow[] = []
+    for (const [clientId, holding] of holdings) {
+      const client = clients.find(c => c.id === clientId)
+      if (!client) continue
+      newRows.push({
+        uid:               uid(),
+        clientId,
+        name:              client.full_name,
+        email:             client.email ?? '',
+        currentShares:     holding.shares,
+        currentValue:      holding.cost,
+        currentShareClass: holding.shareClass,
+        shares:            '',
+        shareClassOverride: null,
+        eisOverride:       null,
+        poaHeld:           false,
+        feePct:            String(client.default_fee_rate || 2),
+        fundType:          (client.fund_type === 'multi_manager' || client.active_fund_type === 'multi_manager')
+                             ? 'multi_manager' : 'syndicate',
+      })
+    }
+    setRows(newRows)
+  }, [isFollowOn, setupData.companyId, holdingsByCompany, clients])
+
+  const computeRow = useCallback((row: InvestorRow) => {
+    const sharesNum  = parseFloat(row.shares) || 0
+    const cost       = sharesNum * sharePriceNum
+    const feePct     = parseFloat(row.feePct) || 0
+    const feePayable = cost * feePct / 100
+    const totalCost  = cost + feePayable
+    const client     = clients.find(c => c.id === row.clientId)
+    const autoEis    = deriveEis(setupData.eisQualifying, client?.tax_status ?? '')
+    const eisStatus  = row.eisOverride ?? autoEis
+    const sc         = row.shareClassOverride ?? setupData.shareClass
+    return { sharesNum, cost, feePayable, totalCost, eisStatus, sc, feePct }
+  }, [sharePriceNum, setupData.eisQualifying, setupData.shareClass, clients])
+
+  const totals = useMemo(() => {
+    return rows.reduce((acc, row) => {
+      const { sharesNum, cost, feePayable, totalCost } = computeRow(row)
+      return {
+        shares: acc.shares + sharesNum,
+        cost:   acc.cost   + cost,
+        fees:   acc.fees   + feePayable,
+        total:  acc.total  + totalCost,
+      }
+    }, { shares: 0, cost: 0, fees: 0, total: 0 })
+  }, [rows, computeRow])
+
+  function updateRow(rowUid: string, updates: Partial<InvestorRow>) {
+    setRows(prev => prev.map(r => r.uid === rowUid ? { ...r, ...updates } : r))
+  }
+
+  function doAddInvestor(client: Client, fundType: 'syndicate' | 'multi_manager') {
+    const holding = holdingsByCompany.get(setupData.companyId)?.get(client.id) ?? null
+    setRows(prev => [...prev, {
+      uid:               uid(),
+      clientId:          client.id,
+      name:              client.full_name,
+      email:             client.email ?? '',
+      currentShares:     holding?.shares ?? null,
+      currentValue:      holding?.cost ?? null,
+      currentShareClass: holding?.shareClass ?? null,
+      shares:            '',
+      shareClassOverride: null,
+      eisOverride:       null,
+      poaHeld:           false,
+      feePct:            String(client.default_fee_rate || 2),
+      fundType,
+    }])
+    setClientSearch('')
+  }
+
+  function addInvestor(client: Client) {
+    if (client.fund_type === 'both') {
+      setFundTypePrompt({ client, resolve: (ft) => { setFundTypePrompt(null); doAddInvestor(client, ft) } })
+    } else {
+      doAddInvestor(client, client.fund_type === 'multi_manager' ? 'multi_manager' : 'syndicate')
+    }
+  }
+
+  const existingIds     = new Set(rows.map(r => r.clientId))
+  const filteredClients = clients.filter(c =>
+    !c.lead_investor_id &&
+    !existingIds.has(c.id) &&
+    c.full_name.toLowerCase().includes(clientSearch.toLowerCase()),
+  )
+
+  async function handleSave() {
+    setError('')
+    if (rows.length === 0)                                          { setError('Add at least one investor'); return }
+    if (rows.some(r => !(parseFloat(r.shares) > 0)))               { setError('Enter shares for all investors'); return }
+
+    setSaving(true)
+
+    const investorData: Record<string, unknown> = {}
+    for (const row of rows) {
+      const { sharesNum, cost, feePayable, totalCost, eisStatus, sc, feePct } = computeRow(row)
+      investorData[row.clientId] = {
+        name: row.name, shares: sharesNum, shareClass: sc, eis: eisStatus,
+        poaHeld: row.poaHeld, feeRate: feePct, cost, feePayable, totalCost,
+        currentShares: row.currentShares, fundType: row.fundType,
+      }
+    }
+
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { data: deal, error: dealErr } = await supabase
+      .from('deals')
+      .insert({
+        deal_type:            dealType,
+        company_id:           setupData.companyId,
+        share_class:          setupData.shareClass || null,
+        share_price:          sharePriceNum,
+        investment_amount:    totals.cost || null,
+        investment_date:      setupData.investmentDate,
+        eis_qualifying:       setupData.eisQualifying,
+        status:               'draft',
+        completion_checklist: { investor_data: investorData },
+        created_by:           user?.id ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (dealErr || !deal) {
+      setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
+      setSaving(false)
+      return
+    }
+
+    await supabase.from('deal_investors').insert(
+      rows.map(row => ({
+        deal_id:        deal.id,
+        client_id:      row.clientId,
+        amount:         computeRow(row).cost || null,
+        poa_held:       row.poaHeld,
+        signing_status: 'pending',
+      })),
+    )
+
+    for (const row of rows) {
+      const { sharesNum, eisStatus, sc } = computeRow(row)
+      await supabase.from('investments').insert({
+        client_id:            row.clientId,
+        company_id:           setupData.companyId,
+        share_class:          sc || null,
+        investment_date:      setupData.investmentDate,
+        original_share_price: sharePriceNum,
+        shares_purchased:     sharesNum,
+        sum_subscribed:       sharesNum * sharePriceNum,
+        eis_status:           eisStatus,
+        holding_location:     'direct',
+        status:               'pending',
+        fund_type:            row.fundType ?? 'syndicate',
+      })
+    }
+
+    await supabase.from('internal_updates').insert({
+      company_id:  setupData.companyId,
+      update_type: 'deal',
+      description: `Deal created: ${isFollowOn ? 'Follow-on investment' : 'New investment'} — ${setupData.companyName} (${rows.length} investor${rows.length !== 1 ? 's' : ''})`,
+      created_by:  user?.id ?? null,
+    })
+
+    router.push(`/deals/${deal.id}`)
+  }
+
+  return (
+    <div>
+      {/* Summary of step 1 */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        {[
+          { label: 'Company',    value: setupData.companyName },
+          { label: 'Share class', value: setupData.shareClass || '—' },
+          { label: 'Price / share', value: `£${parseFloat(setupData.sharePrice || '0').toFixed(4)}` },
+          { label: 'Date',       value: setupData.investmentDate },
+          { label: 'EIS',        value: setupData.eisQualifying.toUpperCase() },
+        ].map(item => (
+          <div key={item.label} className="card" style={{ padding: '8px 14px', flex: '0 0 auto' }}>
+            <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{item.label}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744', marginTop: 2 }}>{item.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Investor table */}
+      <div className="card" style={{ padding: 0, overflow: 'visible', marginBottom: 16 }}>
+        <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744' }}>
+            Investors
+            {rows.length > 0 && <span style={{ fontWeight: 400, color: '#888', marginLeft: 6 }}>({rows.length})</span>}
+          </div>
+          <div style={{ position: 'relative' }}>
+            <input
+              type="search"
+              placeholder="Add investor…"
+              value={clientSearch}
+              onChange={e => setClientSearch(e.target.value)}
+              style={{ ...inputSt, width: 200, padding: '5px 10px' }}
+            />
+            {clientSearch.trim() && filteredClients.length > 0 && (
+              <div style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 4px)',
+                background: '#fff', border: '0.5px solid #e8e7e0', borderRadius: 6,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100,
+                minWidth: 220, maxHeight: 220, overflowY: 'auto',
+              }}>
+                {filteredClients.slice(0, 20).map(c => (
+                  <button
+                    key={c.id}
+                    onMouseDown={() => addInvestor(c)}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left',
+                      padding: '8px 12px', fontSize: 12, color: '#333',
+                      background: 'none', border: 'none', cursor: 'pointer',
+                      borderBottom: '0.5px solid #f5f5f2', fontFamily: 'inherit',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                  >
+                    {c.full_name}
+                    {c.default_fee_rate ? <span style={{ color: '#aaa', marginLeft: 6 }}>{c.default_fee_rate}%</span> : null}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {rows.length === 0 ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
+            {isFollowOn ? 'Loading current investors…' : 'Search above to add investors'}
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: '#f9f9f7' }}>
+                  <th style={thSt}>Investor</th>
+                  {isFollowOn && <th style={{ ...thSt, color: '#bbb' }}>Current holding</th>}
+                  <th style={{ ...thSt, textAlign: 'right' }}>Shares *</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Cost</th>
+                  <th style={thSt}>Share class</th>
+                  <th style={thSt}>EIS</th>
+                  <th style={{ ...thSt, textAlign: 'center' }}>PoA</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Fee %</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Fee</th>
+                  <th style={{ ...thSt, textAlign: 'right' }}>Total</th>
+                  <th style={{ ...thSt, width: 28 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(row => {
+                  const { sharesNum, cost, feePayable, totalCost, eisStatus } = computeRow(row)
+                  const hasError = !parseFloat(row.shares)
+                  const sc       = row.shareClassOverride ?? setupData.shareClass
+
+                  const shareClassOptions = (() => {
+                    const co = null // no company object here; use setupData.shareClass as default
+                    return co
+                  })()
+                  void shareClassOptions // suppress unused warning
+
+                  return (
+                    <tr key={row.uid} style={{ background: hasError ? '#fffaf0' : undefined }}>
+                      <td style={tdSt}>
+                        <div style={{ fontWeight: 500 }}>{row.name}</div>
+                        {row.email && <div style={{ fontSize: 10, color: '#aaa' }}>{row.email}</div>}
+                      </td>
+
+                      {isFollowOn && (
+                        <td style={tdSt}>
+                          {row.currentShares != null ? (
+                            <div>
+                              <div style={{ fontWeight: 500 }}>{row.currentShares.toLocaleString()}</div>
+                              {row.currentShareClass && <div style={{ fontSize: 10, color: '#888' }}>{row.currentShareClass}</div>}
+                            </div>
+                          ) : <span style={{ color: '#ccc' }}>—</span>}
+                        </td>
+                      )}
+
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        <input
+                          type="number" min="0" step="1"
+                          value={row.shares}
+                          onChange={e => updateRow(row.uid, { shares: e.target.value })}
+                          style={{ ...inputSt, width: 90, padding: '4px 8px', textAlign: 'right', border: `0.5px solid ${hasError ? '#fca5a5' : '#d0d0c8'}` }}
+                          placeholder="0"
+                        />
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        {cost > 0 ? formatCurrency(cost) : <span style={{ color: '#ccc' }}>—</span>}
+                      </td>
+
+                      <td style={tdSt}>
+                        <input
+                          type="text"
+                          value={sc}
+                          onChange={e => updateRow(row.uid, { shareClassOverride: e.target.value || null })}
+                          style={{ ...inputSt, width: 90, padding: '4px 6px' }}
+                          placeholder="—"
+                        />
+                      </td>
+
+                      <td style={tdSt}>
+                        <select
+                          value={row.eisOverride ?? eisStatus}
+                          onChange={e => updateRow(row.uid, { eisOverride: e.target.value as EisStatus })}
+                          style={{ ...inputSt, width: 70, padding: '4px 6px' }}
+                        >
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                          <option value="tbc">TBC</option>
+                        </select>
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={row.poaHeld}
+                          onChange={e => updateRow(row.uid, { poaHeld: e.target.checked })}
+                          style={{ accentColor: '#1d9e75', width: 14, height: 14 }}
+                        />
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 2, justifyContent: 'flex-end' }}>
+                          <input
+                            type="number" min="0" max="100" step="0.5"
+                            value={row.feePct}
+                            onChange={e => updateRow(row.uid, { feePct: e.target.value })}
+                            style={{ ...inputSt, width: 55, padding: '4px 6px', textAlign: 'right' }}
+                          />
+                          <span style={{ fontSize: 11, color: '#888' }}>%</span>
+                        </div>
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                        {feePayable > 0 ? formatCurrency(feePayable) : <span style={{ color: '#ccc' }}>—</span>}
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'right', fontWeight: 600 }}>
+                        {totalCost > 0 ? formatCurrency(totalCost) : <span style={{ color: '#ccc' }}>—</span>}
+                      </td>
+
+                      <td style={{ ...tdSt, textAlign: 'center' }}>
+                        <button
+                          onClick={() => setConfirmRemove({ uid: row.uid, name: row.name })}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ccc', fontSize: 16, lineHeight: 1, padding: 2 }}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#a32d2d')}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#ccc')}
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Totals bar */}
+        {rows.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', borderTop: '0.5px solid #e8e7e0', background: '#f9f9f7' }}>
+            <AggCell label={`${rows.length} investor${rows.length !== 1 ? 's' : ''}`} />
+            <AggCell label="Total shares" value={totals.shares > 0 ? totals.shares.toLocaleString() : undefined} />
+            <AggCell label="Total cost"   value={totals.cost  > 0 ? formatCurrency(totals.cost)  : undefined} />
+            <AggCell label="Total fees"   value={totals.fees  > 0 ? formatCurrency(totals.fees)  : undefined} />
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div style={{ background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#a32d2d', marginBottom: 16 }}>
+          {error}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <button onClick={onBack} className="btn btn-secondary" disabled={saving}>← Back</button>
+        <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
+          {saving ? 'Saving…' : 'Save deal →'}
+        </button>
+      </div>
+
+      {/* Remove investor confirm */}
+      {confirmRemove && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 340, padding: '24px' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Remove investor?</div>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 20px' }}>
+              Remove <strong>{confirmRemove.name}</strong> from this deal?
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmRemove(null)} className="btn btn-secondary" style={{ fontSize: 12 }}>Cancel</button>
+              <button
+                onClick={() => { setRows(prev => prev.filter(r => r.uid !== confirmRemove.uid)); setConfirmRemove(null) }}
+                className="btn btn-primary"
+                style={{ fontSize: 12, background: '#a32d2d' }}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fund type prompt */}
+      {fundTypePrompt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 340, padding: 24 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Select fund type</div>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 20px' }}>
+              <strong>{fundTypePrompt.client.full_name}</strong> is invested in both Syndicate and Multi Manager. Which fund type does this investment belong to?
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={() => fundTypePrompt.resolve('syndicate')} className="btn btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }}>
+                <div style={{ fontWeight: 600, fontSize: 12 }}>Syndicate</div>
+                <div style={{ fontSize: 11, color: '#888' }}>Standard deal — no deferred management fee</div>
+              </button>
+              <button onClick={() => fundTypePrompt.resolve('multi_manager')} className="btn btn-secondary" style={{ textAlign: 'left', padding: '10px 14px', borderColor: '#e0952a' }}>
+                <div style={{ fontWeight: 600, fontSize: 12, color: '#b97000' }}>Multi Manager</div>
+                <div style={{ fontSize: 11, color: '#888' }}>Deferred management fee applies at exit</div>
+              </button>
+            </div>
+            <button onClick={() => setFundTypePrompt(null)} style={{ marginTop: 14, fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AggCell({ label, value }: { label: string; value?: string }) {
+  return (
+    <div style={{ padding: '10px 16px', borderRight: '0.5px solid #e8e7e0' }}>
+      <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
+      {value && <div style={{ fontSize: 14, fontWeight: 600, marginTop: 2, color: '#0f2744' }}>{value}</div>}
+    </div>
+  )
+}

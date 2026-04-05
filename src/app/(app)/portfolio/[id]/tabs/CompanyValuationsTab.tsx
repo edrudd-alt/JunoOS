@@ -191,6 +191,7 @@ function ClassPill({ label, active, color, onClick }: {
 const inputSt: React.CSSProperties = {
   width: '100%', padding: '4px 7px', border: '0.5px solid #c8c8c0',
   borderRadius: 4, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: '#fff',
+  fontFamily: 'inherit',
 }
 
 export default function CompanyValuationsTab({ valuations: valRaw, investments: invRaw, onOpenModal }: Props) {
@@ -214,6 +215,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
   const [editError,      setEditError]      = useState('')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletingId,     setDeletingId]     = useState<string | null>(null)
+  const [deleteError,    setDeleteError]    = useState<string | null>(null)
 
   // ── Chart series ──────────────────────────────────────────────────────────
 
@@ -430,9 +432,10 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
 
   async function confirmDelete(valuationId: string) {
     setDeletingId(valuationId)
+    setDeleteError(null)
     const { error } = await supabase.from('valuations').delete().eq('id', valuationId)
     setDeletingId(null)
-    if (error) { console.error(error); return }
+    if (error) { setDeleteError(error.message); return }
     setDeleteConfirmId(null)
     router.refresh()
   }
@@ -443,12 +446,13 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
   const cv      = valuations[0] ?? null
 
   const thSt: React.CSSProperties = {
-    padding: '8px 14px', fontSize: 10, fontWeight: 500, color: '#aaa',
+    padding: '8px 12px', fontSize: 10, fontWeight: 500, color: '#aaa',
     textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em',
-    borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap',
+    borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap', fontFamily: 'inherit',
   }
   const tdSt: React.CSSProperties = {
-    padding: '8px 14px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2', verticalAlign: 'middle',
+    padding: '10px 12px', fontSize: 12, borderBottom: '0.5px solid #f5f5f2',
+    verticalAlign: 'middle', fontFamily: 'inherit',
   }
   const actionBtnSt: React.CSSProperties = {
     fontSize: 11, padding: '2px 8px', borderRadius: 4, border: '0.5px solid #d0d0c8',
@@ -772,8 +776,8 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                 return (
                   <tr key={i} style={{ borderBottom: '0.5px solid #f5f5f2' }}>
                     <td style={tdSt}>{fmtDateStr(row.date)}</td>
-                    <td style={{ ...tdSt, textAlign: 'right', fontWeight: 500, fontFamily: 'monospace' }}>
-                      {fmt2(row.price)}
+                    <td style={{ ...tdSt, textAlign: 'right' }}>
+                      {formatCurrency(row.price)}
                       {row.investedAmount != null && row.investedAmount > 0 && (
                         <div style={{ fontSize: 10, color: '#185fa5', fontFamily: 'inherit', fontWeight: 400, marginTop: 2 }}>
                           {formatCurrency(row.investedAmount)} invested
@@ -783,7 +787,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                     <td style={{ ...tdSt, textAlign: 'right' }}>
                       {row.change != null ? (
                         <span style={{ color: row.change > 0 ? '#1d9e75' : row.change < 0 ? '#a32d2d' : '#888' }}>
-                          {row.change > 0 ? '+' : ''}{fmt2(row.change)}
+                          {row.change > 0 ? '+' : ''}{formatCurrency(row.change)}
                         </span>
                       ) : <span style={{ color: '#ccc' }}>—</span>}
                     </td>
@@ -814,6 +818,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                       {row.type === 'Manual update' && (
                         isDeleteConfirm ? (
                           <div style={{ display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end' }}>
+                            {deleteError && deletingId === null && <span style={{ fontSize: 10, color: '#a32d2d' }}>{deleteError}</span>}
                             <span style={{ fontSize: 11, color: '#a32d2d' }}>Delete?</span>
                             <button
                               style={{ ...actionBtnSt, background: '#a32d2d', color: '#fff', border: 'none' }}
@@ -822,7 +827,7 @@ export default function CompanyValuationsTab({ valuations: valRaw, investments: 
                             >
                               {deletingId === row.valuationId ? '…' : 'Yes'}
                             </button>
-                            <button style={actionBtnSt} onClick={() => setDeleteConfirmId(null)}>No</button>
+                            <button style={actionBtnSt} onClick={() => { setDeleteConfirmId(null); setDeleteError(null) }}>No</button>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
