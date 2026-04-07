@@ -10,7 +10,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
 
   const { data: deal } = await supabase
     .from('deals')
-    .select('id, deal_type, status, company_id, share_price, share_class, investment_date, eis_qualifying, completion_checklist, notes, companies(id, name)')
+    .select('id, deal_type, status, company_id, share_price, share_class, investment_date, eis_qualifying, completion_checklist, notes')
     .eq('id', id)
     .maybeSingle()
 
@@ -31,7 +31,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
     redirect(`/deals/${id}`)
   }
 
-  const [{ data: clients }, { data: investments }] = await Promise.all([
+  const [{ data: clients }, { data: investments }, { data: companyData }] = await Promise.all([
     supabase
       .from('clients')
       .select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id, fund_type, active_fund_type')
@@ -40,12 +40,13 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
       .from('investments')
       .select('id, client_id, company_id, share_class, shares_purchased, original_share_price, sum_subscribed, eis_status, transaction_type, investment_date')
       .eq('status', 'active'),
+    deal.company_id
+      ? supabase.from('companies').select('id, name').eq('id', deal.company_id).maybeSingle()
+      : { data: null },
   ])
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const company     = deal.companies as any
   const cc          = (deal.completion_checklist ?? {}) as Record<string, unknown>
-  const companyName = company?.name ?? ''
+  const companyName = companyData?.name ?? ''
 
   if (isBuyDeal) {
     const setupData: SetupData = {
