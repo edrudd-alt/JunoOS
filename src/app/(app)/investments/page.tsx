@@ -17,7 +17,7 @@ export default async function InvestmentsPage() {
         original_share_price, shares_purchased, sum_subscribed,
         eis_status, holding_entity, holding_location, status,
         transaction_type, cost_basis, transfer_counterparty_id, transfer_type, notes,
-        fund_type, companies (id, name)
+        fund_type
       `)
       .order('investment_date', { ascending: false }),
     supabase
@@ -34,9 +34,15 @@ export default async function InvestmentsPage() {
       .order('valuation_date', { ascending: false }),
   ])
 
+  const companyMap = new Map((companies ?? []).map(c => [c.id, c as Record<string, unknown>]))
+  const investmentsWithCompany = (investments ?? []).map(inv => ({
+    ...(inv as Record<string, unknown>),
+    companies: companyMap.get((inv as Record<string, unknown>).company_id as string) ?? null,
+  }))
+
   return (
     <InvestmentsLedger
-      investments={(investments ?? []) as Record<string, unknown>[]}
+      investments={investmentsWithCompany}
       companies={(companies ?? []) as Record<string, unknown>[]}
       clients={(clients ?? []) as Record<string, unknown>[]}
       valuations={(valuations ?? []) as Record<string, unknown>[]}
