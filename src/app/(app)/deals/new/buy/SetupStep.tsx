@@ -99,6 +99,7 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
     if (!companyId)                                         { setError('Please select a company'); return }
     if (!sharePrice || parseFloat(sharePrice) <= 0)         { setError('Please enter a valid share price'); return }
     if (!investmentDate)                                    { setError('Please select an investment date'); return }
+    if (shareClass === '_custom' && !shareClassCustom.trim()) { setError('Please enter a share class name'); return }
 
     onContinue({
       companyId,

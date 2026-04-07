@@ -68,6 +68,12 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
     if (!selectedCompany)             { setError('Please select a company'); return }
     if (!grossPrice || parseFloat(grossPrice) <= 0) { setError('Please enter a valid gross sale price'); return }
     if (!saleDate)                    { setError('Please enter a sale date'); return }
+    if (method === 'given_net_price' && (!netPrice || parseFloat(netPrice) <= 0)) {
+      setError('Please enter a valid net price per share'); return
+    }
+    if (method === 'calculate_from_total' && (!totalNet || parseFloat(totalNet) <= 0)) {
+      setError('Please enter the total net proceeds'); return
+    }
     setError('')
     onContinue({
       companyId:          selectedCompany.id,

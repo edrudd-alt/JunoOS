@@ -29,12 +29,25 @@ interface Investment {
   sum_subscribed:       number
 }
 
+interface ExistingInvestorData {
+  name?:          string
+  shares?:        number
+  shareClass?:    string
+  eis?:           string
+  poaHeld?:       boolean
+  feeRate?:       number
+  currentShares?: number
+  fundType?:      string
+}
+
 interface Props {
-  dealType:    BuyDealType
-  setupData:   SetupData
-  clients:     Record<string, unknown>[]
-  investments: Record<string, unknown>[]
-  onBack:      () => void
+  dealType:              BuyDealType
+  setupData:             SetupData
+  clients:               Record<string, unknown>[]
+  investments:           Record<string, unknown>[]
+  onBack:                () => void
+  existingDealId?:       string
+  existingInvestorData?: Record<string, ExistingInvestorData>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,12 +82,16 @@ const tdSt: React.CSSProperties = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function InvestorsStep({ dealType, setupData, clients: clientsRaw, investments: investmentsRaw, onBack }: Props) {
+export function InvestorsStep({
+  dealType, setupData, clients: clientsRaw, investments: investmentsRaw,
+  onBack, existingDealId, existingInvestorData,
+}: Props) {
   const clients     = clientsRaw     as unknown as Client[]
   const investments = investmentsRaw as unknown as Investment[]
   const router      = useRouter()
   const supabase    = createClient()
   const isFollowOn  = dealType === 'follow_on'
+  const isEditMode  = !!existingDealId
 
   const sharePriceNum = parseFloat(setupData.sharePrice) || 0
 
@@ -82,6 +99,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
   const [clientSearch,  setClientSearch]  = useState('')
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState('')
+  const [bothClientQueue, setBothClientQueue] = useState<Client[]>([])
 
   const [fundTypePrompt, setFundTypePrompt] = useState<{
     client: Client
@@ -111,17 +129,73 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
     return map
   }, [investments])
 
-  // Auto-populate investors for follow-on deals
+  // In edit mode: initialise rows from completion_checklist data
+  const editInitRef = useRef(false)
+  useEffect(() => {
+    if (!isEditMode || !existingInvestorData || editInitRef.current) return
+    editInitRef.current = true
+    const newRows: InvestorRow[] = []
+    for (const [clientId, iData] of Object.entries(existingInvestorData)) {
+      const client = clients.find(c => c.id === clientId)
+      newRows.push({
+        uid:               uid(),
+        clientId,
+        name:              iData.name ?? client?.full_name ?? '',
+        email:             client?.email ?? '',
+        currentShares:     iData.currentShares ?? null,
+        currentValue:      null,
+        currentShareClass: null,
+        shares:            String(iData.shares || ''),
+        shareClassOverride: (iData.shareClass && iData.shareClass !== setupData.shareClass) ? iData.shareClass : null,
+        eisOverride:       (iData.eis as EisStatus | null) ?? null,
+        poaHeld:           iData.poaHeld ?? false,
+        feePct:            String(iData.feeRate ?? client?.default_fee_rate ?? 2),
+        fundType:          (iData.fundType as 'syndicate' | 'multi_manager') ?? 'syndicate',
+      })
+    }
+    setRows(newRows)
+  }, [isEditMode, existingInvestorData, clients, setupData.shareClass])
+
+  // Follow-on: auto-populate investors (create mode only)
   const followOnInitRef = useRef(false)
   useEffect(() => {
-    if (!isFollowOn || followOnInitRef.current) return
+    if (!isFollowOn || isEditMode || followOnInitRef.current) return
     followOnInitRef.current = true
     const holdings = holdingsByCompany.get(setupData.companyId)
     if (!holdings) return
+
     const newRows: InvestorRow[] = []
+    const bothClients: Client[]  = []
+
     for (const [clientId, holding] of holdings) {
       const client = clients.find(c => c.id === clientId)
       if (!client) continue
+
+      if (client.fund_type === 'both') {
+        // Use active_fund_type if it resolves unambiguously, otherwise queue for prompt
+        const activeFt = client.active_fund_type
+        if (activeFt === 'syndicate' || activeFt === 'multi_manager') {
+          newRows.push({
+            uid:               uid(),
+            clientId,
+            name:              client.full_name,
+            email:             client.email ?? '',
+            currentShares:     holding.shares,
+            currentValue:      holding.cost,
+            currentShareClass: holding.shareClass,
+            shares:            '',
+            shareClassOverride: null,
+            eisOverride:       null,
+            poaHeld:           false,
+            feePct:            String(client.default_fee_rate || 2),
+            fundType:          activeFt,
+          })
+        } else {
+          bothClients.push(client)
+        }
+        continue
+      }
+
       newRows.push({
         uid:               uid(),
         clientId,
@@ -140,7 +214,22 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
       })
     }
     setRows(newRows)
-  }, [isFollowOn, setupData.companyId, holdingsByCompany, clients])
+    if (bothClients.length > 0) setBothClientQueue(bothClients)
+  }, [isFollowOn, isEditMode, setupData.companyId, holdingsByCompany, clients])
+
+  // Process 'both'-fund-type clients sequentially via prompt
+  useEffect(() => {
+    if (bothClientQueue.length === 0 || fundTypePrompt) return
+    const [next, ...rest] = bothClientQueue
+    setBothClientQueue(rest)
+    setFundTypePrompt({
+      client: next,
+      resolve: (ft) => {
+        setFundTypePrompt(null)
+        doAddInvestor(next, ft)
+      },
+    })
+  }, [bothClientQueue, fundTypePrompt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const computeRow = useCallback((row: InvestorRow) => {
     const sharesNum  = parseFloat(row.shares) || 0
@@ -208,8 +297,8 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
 
   async function handleSave() {
     setError('')
-    if (rows.length === 0)                                          { setError('Add at least one investor'); return }
-    if (rows.some(r => !(parseFloat(r.shares) > 0)))               { setError('Enter shares for all investors'); return }
+    if (rows.length === 0)                                { setError('Add at least one investor'); return }
+    if (rows.some(r => !(parseFloat(r.shares) > 0)))     { setError('Enter shares for all investors'); return }
 
     setSaving(true)
 
@@ -224,6 +313,77 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
     }
 
     const { data: { user } } = await supabase.auth.getUser()
+
+    if (isEditMode && existingDealId) {
+      // ── Edit mode: update deal + replace deal_investors + replace pending investments ──
+
+      const { error: dealUpdErr } = await supabase
+        .from('deals')
+        .update({
+          share_class:          setupData.shareClass || null,
+          share_price:          sharePriceNum,
+          investment_amount:    totals.cost || null,
+          investment_date:      setupData.investmentDate,
+          eis_qualifying:       setupData.eisQualifying,
+          completion_checklist: { investor_data: investorData },
+          updated_at:           new Date().toISOString(),
+        })
+        .eq('id', existingDealId)
+
+      if (dealUpdErr) {
+        setError('Failed to update deal: ' + dealUpdErr.message)
+        setSaving(false)
+        return
+      }
+
+      // Replace deal_investors
+      await supabase.from('deal_investors').delete().eq('deal_id', existingDealId)
+
+      const { error: diErr } = await supabase.from('deal_investors').insert(
+        rows.map(row => ({
+          deal_id:        existingDealId,
+          client_id:      row.clientId,
+          amount:         computeRow(row).cost || null,
+          poa_held:       row.poaHeld,
+          signing_status: 'pending',
+        })),
+      )
+      if (diErr) {
+        setError('Failed to update investors: ' + diErr.message)
+        setSaving(false)
+        return
+      }
+
+      // Replace pending investments for these clients at this company
+      const clientIds = rows.map(r => r.clientId)
+      await supabase.from('investments')
+        .delete()
+        .in('client_id', clientIds)
+        .eq('company_id', setupData.companyId)
+        .eq('status', 'pending')
+
+      for (const row of rows) {
+        const { sharesNum, eisStatus, sc } = computeRow(row)
+        await supabase.from('investments').insert({
+          client_id:            row.clientId,
+          company_id:           setupData.companyId,
+          share_class:          sc || null,
+          investment_date:      setupData.investmentDate,
+          original_share_price: sharePriceNum,
+          shares_purchased:     sharesNum,
+          sum_subscribed:       sharesNum * sharePriceNum,
+          eis_status:           eisStatus,
+          holding_location:     'direct',
+          status:               'pending',
+          fund_type:            row.fundType ?? 'syndicate',
+        })
+      }
+
+      router.push(`/deals/${existingDealId}`)
+      return
+    }
+
+    // ── Create mode ────────────────────────────────────────────────────────────
 
     const { data: deal, error: dealErr } = await supabase
       .from('deals')
@@ -248,7 +408,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
       return
     }
 
-    await supabase.from('deal_investors').insert(
+    const { error: diErr } = await supabase.from('deal_investors').insert(
       rows.map(row => ({
         deal_id:        deal.id,
         client_id:      row.clientId,
@@ -257,6 +417,11 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         signing_status: 'pending',
       })),
     )
+    if (diErr) {
+      setError('Failed to add deal investors: ' + diErr.message)
+      setSaving(false)
+      return
+    }
 
     for (const row of rows) {
       const { sharesNum, eisStatus, sc } = computeRow(row)
@@ -349,7 +514,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
 
         {rows.length === 0 ? (
           <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 12 }}>
-            {isFollowOn ? 'Loading current investors…' : 'Search above to add investors'}
+            {isFollowOn && !isEditMode ? 'Loading current investors…' : 'Search above to add investors'}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -374,12 +539,6 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
                   const { sharesNum, cost, feePayable, totalCost, eisStatus } = computeRow(row)
                   const hasError = !parseFloat(row.shares)
                   const sc       = row.shareClassOverride ?? setupData.shareClass
-
-                  const shareClassOptions = (() => {
-                    const co = null // no company object here; use setupData.shareClass as default
-                    return co
-                  })()
-                  void shareClassOptions // suppress unused warning
 
                   return (
                     <tr key={row.uid} style={{ background: hasError ? '#fffaf0' : undefined }}>
@@ -502,7 +661,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button onClick={onBack} className="btn btn-secondary" disabled={saving}>← Back</button>
         <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save deal →'}
+          {saving ? 'Saving…' : isEditMode ? 'Save changes →' : 'Save deal →'}
         </button>
       </div>
 

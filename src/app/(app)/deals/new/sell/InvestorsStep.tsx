@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
@@ -28,12 +28,20 @@ interface RawInvestment {
   transaction_type?: string | null
 }
 
+interface ExistingInvestorData {
+  sharesSold?: number
+  feeRate?:    number
+  excluded?:   boolean
+}
+
 interface Props {
-  dealType:  SellDealType
-  setupData: SellSetupData
-  clients:   Record<string, unknown>[]
-  investments: Record<string, unknown>[]
-  onBack:    () => void
+  dealType:              SellDealType
+  setupData:             SellSetupData
+  clients:               Record<string, unknown>[]
+  investments:           Record<string, unknown>[]
+  onBack:                () => void
+  existingDealId?:       string
+  existingInvestorData?: Record<string, ExistingInvestorData>
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -47,24 +55,28 @@ function resolveClientFundType(c: RawClient): 'syndicate' | 'multi_manager' {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function InvestorsStep({ dealType, setupData, clients: clientsRaw, investments: investmentsRaw, onBack }: Props) {
+export function InvestorsStep({
+  dealType, setupData, clients: clientsRaw, investments: investmentsRaw,
+  onBack, existingDealId, existingInvestorData,
+}: Props) {
   const clients     = clientsRaw     as unknown as RawClient[]
   const investments = investmentsRaw as unknown as RawInvestment[]
   const router      = useRouter()
   const supabase    = createClient()
 
-  const isFullExit = dealType === 'full_exit'
+  const isFullExit  = dealType === 'full_exit'
+  const isEditMode  = !!existingDealId
   const grossPriceNum = parseFloat(setupData.grossPricePerShare) || 0
 
-  // ── Build holdings for the selected company ────────────────────────────────
+  // ── Build net holdings for the selected company ────────────────────────────
   const holdingsMap = useMemo(() => {
-    // Map: clientId → { sharesOwned, totalCost, totalBuyShares, shareClass, earliestDate }
     const map = new Map<string, {
-      sharesOwned:  number
-      totalCost:    number
+      sharesOwned:    number
+      totalCost:      number
       totalBuyShares: number
-      shareClass:   string
-      earliestDate: string | null
+      shareClass:     string
+      earliestDate:   string | null
+      isNegative:     boolean
     }>()
 
     for (const inv of investments) {
@@ -82,6 +94,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
           totalBuyShares: isSell ? 0 : shares,
           shareClass:     inv.share_class ?? '',
           earliestDate:   isSell ? null : date,
+          isNegative:     false,
         })
       } else {
         const h = map.get(clientId)!
@@ -97,17 +110,41 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         }
       }
     }
+
+    // Flag negative balances (data anomaly)
+    for (const h of map.values()) {
+      if (h.sharesOwned < 0) h.isNegative = true
+    }
+
     return map
   }, [investments, setupData.companyId])
 
-  // ── Initial rows ───────────────────────────────────────────────────────────
+  // ── Detect negative-share anomalies ───────────────────────────────────────
+  const negativeClients = useMemo(() => {
+    const names: string[] = []
+    for (const [clientId, h] of holdingsMap) {
+      if (!h.isNegative) continue
+      const client = clients.find(c => c.id === clientId)
+      names.push(client?.full_name ?? clientId)
+    }
+    return names
+  }, [holdingsMap, clients])
+
+  // ── Initial rows ──────────────────────────────────────────────────────────
   const [rows, setRows] = useState<SellInvestorRow[]>(() => {
     const result: SellInvestorRow[] = []
     for (const [clientId, holding] of holdingsMap) {
       if (holding.sharesOwned <= 0) continue
       const client = clients.find(c => c.id === clientId)
       if (!client) continue
-      const avgCostPrice = holding.totalBuyShares > 0 ? holding.totalCost / holding.totalBuyShares : 0
+
+      const avgCostPrice  = holding.totalBuyShares > 0 ? holding.totalCost / holding.totalBuyShares : 0
+      const iData         = existingInvestorData?.[clientId]
+      const prefilledSold = iData?.sharesSold != null
+        ? String(iData.sharesSold)
+        : isFullExit ? String(holding.sharesOwned) : ''
+      const sellAll       = parseFloat(prefilledSold) === holding.sharesOwned
+
       result.push({
         uid:                    uid(),
         clientId,
@@ -119,10 +156,10 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         earliestInvestmentDate: holding.earliestDate,
         fundType:               resolveClientFundType(client),
         shareClass:             setupData.shareClass || holding.shareClass,
-        sharesSold:             isFullExit ? String(holding.sharesOwned) : '',
-        sellAll:                isFullExit,
-        excluded:               false,
-        feePct:                 String(client.default_fee_rate ?? 2),
+        sharesSold:             prefilledSold,
+        sellAll,
+        excluded:               iData?.excluded ?? false,
+        feePct:                 String(iData?.feeRate ?? client.default_fee_rate ?? 2),
       })
     }
     return result
@@ -143,7 +180,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
 
   const activeRows = rows.filter(r => !r.excluded)
 
-  function computeRow(row: SellInvestorRow) {
+  const computeRow = useCallback((row: SellInvestorRow) => {
     const sharesSoldNum  = parseFloat(row.sharesSold) || 0
     const grossProceeds  = sharesSoldNum * grossPriceNum
     const costOfSold     = row.sharesOwned > 0 ? (row.totalCost / row.sharesOwned) * sharesSoldNum : 0
@@ -151,25 +188,25 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
     const remaining      = row.sharesOwned - sharesSoldNum
     const oversold       = sharesSoldNum > row.sharesOwned
     return { sharesSoldNum, grossProceeds, pnl, remaining, oversold }
-  }
+  }, [grossPriceNum])
 
   const totals = useMemo(() => activeRows.reduce((acc, row) => {
     const { sharesSoldNum, grossProceeds, pnl } = computeRow(row)
     return {
-      shares:  acc.shares  + sharesSoldNum,
-      gross:   acc.gross   + grossProceeds,
-      pnl:     acc.pnl     + pnl,
+      shares: acc.shares + sharesSoldNum,
+      gross:  acc.gross  + grossProceeds,
+      pnl:    acc.pnl    + pnl,
     }
-  }, { shares: 0, gross: 0, pnl: 0 }), [rows, grossPriceNum]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, { shares: 0, gross: 0, pnl: 0 }), [activeRows, computeRow])
 
   const hasOversold = activeRows.some(r => computeRow(r).oversold)
 
   async function handleSave() {
-    if (activeRows.length === 0)                    { setError('No investors to include'); return }
+    if (activeRows.length === 0) { setError('No investors to include'); return }
     if (!isFullExit && activeRows.some(r => !parseFloat(r.sharesSold))) {
       setError('Please enter shares sold for all included investors'); return
     }
-    if (hasOversold)                                { setError('One or more investors have more shares sold than currently held'); return }
+    if (hasOversold) { setError('One or more investors have more shares sold than currently held'); return }
 
     setSaving(true)
     setError('')
@@ -177,11 +214,10 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
     const dealCostsNum     = parseFloat(setupData.dealCosts) || 0
     const grossPricePerShr = parseFloat(setupData.grossPricePerShare) || 0
 
-    // Build per-investor snapshot stored in completion_checklist
     const investorData: Record<string, unknown> = {}
     for (const row of activeRows) {
       const { sharesSoldNum, grossProceeds, pnl, remaining } = computeRow(row)
-      const feePct   = parseFloat(row.feePct) || 0
+      const feePct = parseFloat(row.feePct) || 0
       investorData[row.clientId] = {
         name:           row.name,
         sharesOwned:    row.sharesOwned,
@@ -200,6 +236,56 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
 
     const { data: { user } } = await supabase.auth.getUser()
 
+    if (isEditMode && existingDealId) {
+      // ── Edit mode: update deal + replace deal_investors ──────────────────
+
+      // Fetch existing completion_checklist to preserve setup fields
+      const { data: existingDeal } = await supabase
+        .from('deals')
+        .select('completion_checklist')
+        .eq('id', existingDealId)
+        .single()
+
+      const existingCC = (existingDeal?.completion_checklist ?? {}) as Record<string, unknown>
+
+      const { error: dealUpdErr } = await supabase
+        .from('deals')
+        .update({
+          investment_amount:    totals.gross || null,
+          completion_checklist: { ...existingCC, investor_data: investorData },
+          updated_at:           new Date().toISOString(),
+        })
+        .eq('id', existingDealId)
+
+      if (dealUpdErr) {
+        setError('Failed to update deal: ' + dealUpdErr.message)
+        setSaving(false)
+        return
+      }
+
+      await supabase.from('deal_investors').delete().eq('deal_id', existingDealId)
+
+      const { error: diErr } = await supabase.from('deal_investors').insert(
+        activeRows.map(row => ({
+          deal_id:        existingDealId,
+          client_id:      row.clientId,
+          amount:         computeRow(row).grossProceeds || null,
+          poa_held:       false,
+          signing_status: 'pending',
+        }))
+      )
+      if (diErr) {
+        setError('Failed to update investors: ' + diErr.message)
+        setSaving(false)
+        return
+      }
+
+      router.push(`/deals/${existingDealId}`)
+      return
+    }
+
+    // ── Create mode ──────────────────────────────────────────────────────────
+
     const { data: deal, error: dealErr } = await supabase
       .from('deals')
       .insert({
@@ -212,12 +298,12 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         status:            'draft',
         notes:             setupData.notes || null,
         completion_checklist: {
-          investor_data:       investorData,
+          investor_data:         investorData,
           gross_price_per_share: grossPricePerShr,
-          deal_costs:          dealCostsNum,
-          net_proceeds_method: setupData.netProceedsMethod,
-          net_price_per_share: parseFloat(setupData.netPricePerShare) || null,
-          total_net_proceeds:  parseFloat(setupData.totalNetProceeds) || null,
+          deal_costs:            dealCostsNum,
+          net_proceeds_method:   setupData.netProceedsMethod,
+          net_price_per_share:   parseFloat(setupData.netPricePerShare) || null,
+          total_net_proceeds:    parseFloat(setupData.totalNetProceeds) || null,
         },
         created_by: user?.id ?? null,
       })
@@ -230,7 +316,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
       return
     }
 
-    await supabase.from('deal_investors').insert(
+    const { error: diErr } = await supabase.from('deal_investors').insert(
       activeRows.map(row => ({
         deal_id:        deal.id,
         client_id:      row.clientId,
@@ -239,6 +325,11 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         signing_status: 'pending',
       }))
     )
+    if (diErr) {
+      setError('Failed to add deal investors: ' + diErr.message)
+      setSaving(false)
+      return
+    }
 
     await supabase.from('internal_updates').insert({
       company_id:  setupData.companyId,
@@ -263,6 +354,13 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
         <span><span style={{ color: '#888' }}>Date: </span><strong>{setupData.saleDate}</strong></span>
         {setupData.dealCosts && <span><span style={{ color: '#888' }}>Deal costs: </span><strong>{formatCurrency(parseFloat(setupData.dealCosts))}</strong></span>}
       </div>
+
+      {/* Negative-share warning */}
+      {negativeClients.length > 0 && (
+        <div style={{ background: '#fff7ed', border: '0.5px solid #fdba74', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#92400e', marginBottom: 16 }}>
+          Data anomaly: the following investors appear to have a negative share balance — check their investment records before proceeding: <strong>{negativeClients.join(', ')}</strong>
+        </div>
+      )}
 
       {error && (
         <div style={{ background: '#fef2f2', border: '0.5px solid #fca5a5', borderRadius: 6, padding: '10px 14px', fontSize: 12, color: '#a32d2d', marginBottom: 16 }}>
@@ -426,7 +524,7 @@ export function InvestorsStep({ dealType, setupData, clients: clientsRaw, invest
           className="btn btn-primary"
           disabled={saving || hasOversold || activeRows.length === 0}
         >
-          {saving ? 'Saving…' : 'Save deal →'}
+          {saving ? 'Saving…' : isEditMode ? 'Save changes →' : 'Save deal →'}
         </button>
       </div>
     </div>
