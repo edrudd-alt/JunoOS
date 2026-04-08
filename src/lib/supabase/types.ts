@@ -4,7 +4,7 @@ export type EntityType = 'own_name' | 'family' | 'corporate'
 export type HoldingLocation = 'direct' | 'nominee' | 'both'
 export type EisStatus = 'yes' | 'no' | 'tbc'
 export type InvestmentStatus = 'active' | 'pending' | 'exited'
-export type DealType = 'new_investment' | 'follow_on' | 'exit' | 'kyc' | 'side_letter' | 'membership'
+export type DealType = 'new_investment' | 'follow_on' | 'exit' | 'full_exit' | 'partial_exit' | 'kyc' | 'side_letter' | 'membership'
 export type DealStatus = 'draft' | 'sent' | 'partially_signed' | 'fully_signed' | 'complete'
 export type DocumentType =
   | 'board_minutes' | 'management_accounts' | 'call_notes' | 'ceo_update'
