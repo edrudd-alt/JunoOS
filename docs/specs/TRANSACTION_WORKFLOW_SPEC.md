@@ -1083,3 +1083,189 @@ No transaction statement in the buy/sell format — a simpler transfer confirmat
 ---
 
 *End of Section 5. Section 6 (CLN and dividend transactions) to follow.*
+
+## Section 6: Debt Transactions and Dividends
+
+### 6.0 Total return note
+
+Dividends received and loan note interest received are both components of total investor return, alongside capital gain/loss on disposal and EIS/SEIS tax relief received. All of these figures are captured in the data model and are available for inclusion in return calculations. Total return reporting — combining capital gain/loss, income received, and EIS/SEIS relief into a single investor return figure — is a future reporting module and is not in scope for the current build. This note is recorded here so the requirement is not lost.
+
+---
+
+### 6.1 Straight Loan Notes
+
+#### Overview
+A straight loan note is a debt investment where Juno's clients (investors) lend money to a portfolio company at an agreed interest rate. Juno administers the loan on behalf of its clients but does not itself lend money. The loan note has no conversion rights and no connection to the company's equity. If conversion rights exist, the instrument is a CLN and is handled separately.
+
+Straight loan notes are not currently held in the portfolio but are in scope for future deals.
+
+#### Instrument characteristics
+- Principal: fixed amount lent at inception — never changes
+- Interest rate: fixed rate per annum
+- Interest calculation: simple interest on original principal only — not compounded. Interest does not get added to the loan balance.
+- Principal and interest are always tracked separately
+- Interest treatment: nearly always rolled up — accrues but is not paid until redemption
+- Repayment: full or partial repayment of principal plus all accrued interest to date
+- No equity connection — tracked entirely separately from any equity held in the same company
+- No conversion rights — if conversion rights exist the instrument is a CLN
+
+#### Interest calculation
+The platform calculates estimated accrued interest dynamically:
+
+Accrued interest = principal x annual rate x (days elapsed / 365)
+
+If the borrower provides a definitive accrued interest figure at any point, the team records a manual adjustment as at a specific date. This confirmed figure replaces the platform's calculation up to that date. From that date forward, the platform continues accruing simple interest on top of the confirmed figure.
+
+Multiple manual adjustments can be recorded over the life of the note. Each becomes the new baseline from its effective date.
+
+At any point in time: total accrued interest = confirmed figure from last adjustment (if any) + simple interest accrued from the date of that adjustment to today. If no manual adjustment has been recorded: total accrued interest = simple interest from issue date to today.
+
+#### Database
+
+loan_notes table — one row per loan note per investor:
+- id
+- company_id — FK to companies
+- client_id — FK to clients
+- held_by_entity_id — FK to clients (specific entity holding the note)
+- location — 'direct' or 'nominee'
+- nominee_id — nullable
+- principal_amount — fixed, never updated
+- interest_rate — fixed rate per annum (decimal, e.g. 0.08 for 8%)
+- interest_treatment — 'rolled_up' or 'paid'
+- issue_date
+- maturity_date
+- status — 'active', 'partially_repaid', 'repaid'
+- loan_document_reference — free text
+- notes
+- created_at
+
+Note: no current_balance field. Principal never changes. Interest is always calculated dynamically.
+
+loan_note_interest_adjustments table — manual interest confirmations from borrower:
+- id
+- loan_note_id — FK to loan_notes
+- effective_date — date the confirmed figure applies to
+- confirmed_accrued_interest — definitive figure provided by borrower
+- notes
+- created_by
+- created_at
+
+loan_note_repayments table — one row per repayment event:
+- id
+- loan_note_id — FK to loan_notes
+- company_id
+- client_id
+- repayment_date
+- principal_repaid
+- interest_repaid
+- total_repaid — calculated
+- full_repayment — boolean
+- payment_route — 'direct' or 'nominee'
+- created_at
+
+#### Workflow stages
+1. Record loan note — capture initial terms at inception
+2. Record interest adjustment — if borrower provides confirmed accrued interest figure
+3. Record repayment — full or partial
+4. Post-completion — repayment confirmation to investor
+
+#### Stage 1: Record loan note
+Data captured: company, investor, held by entity, location, principal amount, interest rate, interest treatment, issue date, maturity date, loan document reference, notes.
+
+On save: loan note created with status 'active'. Platform begins accruing estimated interest from issue date. Loan document uploaded and stored against deal record, company documents tab, and OneDrive.
+
+#### Stage 2: Record interest adjustment
+Triggered when borrower provides a confirmed accrued interest figure. Data captured: effective date, confirmed accrued interest (£), notes.
+
+On save: platform uses this figure as the new baseline from the effective date. Future accrual continues on top using simple interest from the effective date. Adjustment recorded in loan note history with date, confirmed figure, and team member who recorded it.
+
+#### Stage 3: Record repayment
+Data captured: repayment date, principal repaid (£), interest repaid (£) — team enters agreed figure, platform shows current estimated accrued interest as reference, full or partial repayment, payment route.
+
+If full repayment: status updated to 'repaid'.
+If partial repayment: status updated to 'partially_repaid'. Remaining principal shown on record.
+
+#### Stage 4: Post-completion
+Repayment confirmation sent to investor by email via Outlook. Contains: Juno branding, investor name and address, company name, loan note reference, repayment date, principal repaid, interest repaid, total repaid, outstanding principal if partial, confirmation of closure if full. Filed to platform and OneDrive.
+
+#### Display
+Loan notes appear on the client record under a Debt section, separate from equity holdings. Not included in equity portfolio calculations. Shown per note: company, original principal, interest rate, issue and maturity dates, estimated accrued interest to date, last confirmed interest figure and date if any, status, amount repaid to date if any.
+
+#### Open questions for later
+1. For interest paid periodically — is there a standard schedule (quarterly, annually) or does it vary by deal?
+2. Does Juno ever need to withhold or account for tax on dividend payments?
+3. For cumulative preference share dividends — does Juno track accrual on the platform or only record actual payments?
+
+---
+
+### 6.2 CLN (Convertible Loan Note)
+
+To be specced in a separate session. A CLN shares the same loan mechanics as a straight loan note but adds conversion rights — the ability to convert the outstanding principal and accrued interest into equity at an agreed price. The conversion event simultaneously closes the debt position and creates a buy transaction on the investor's equity record.
+
+---
+
+### 6.3 Dividends
+
+#### Overview
+A dividend is a cash payment from a portfolio company to its shareholders. Dividends are declared per share per class — the same rate applies to all holders of that class. The company pays investors directly. Juno does not collect and redistribute.
+
+Juno's role:
+- Inform the company or nominee of each investor's bank details so payment can be made
+- Send a dividend confirmation to each investor once payment is made
+
+Dividends can be declared on ordinary shares or preference shares.
+
+#### Database — dividends table
+One row per investor per dividend event:
+- id
+- company_id
+- client_id
+- share_class_id — FK to company_share_classes
+- shares_held — number of shares held at record date
+- amount_per_share
+- total_amount — calculated
+- record_date — date determining eligible shareholders
+- payment_date
+- payment_route — 'direct' or 'nominee'
+- bank_details_sent — boolean
+- bank_details_sent_date — nullable
+- confirmation_sent — boolean
+- confirmation_sent_date — nullable
+- status — 'pending', 'bank_details_sent', 'paid', 'confirmed'
+- notes
+- created_at
+
+#### Workflow stages
+1. Record dividend declaration
+2. Send bank details to company or nominee
+3. Record payment
+4. Send confirmation to investors
+
+#### Stage 1: Record dividend declaration
+Data captured: company, share class, amount per share, record date, expected payment date, notes.
+
+On save: platform calculates total dividend per investor based on shares held at record date. One dividend record created per investor. Summary shown: total investors, total amount, per share class breakdown.
+
+#### Stage 2: Send bank details
+Platform generates a bank details schedule: investor name, share class, shares held, total dividend amount, payment destination (investor bank account for direct, nominee account for nominee-held).
+
+Schedule sent to company or nominee by email via Outlook. bank_details_sent updated per investor.
+
+Note: investor bank account details stored on client record. Nominee account details stored on nominee record.
+
+#### Stage 3: Record payment
+Team confirms payment made. Data captured: actual payment date, confirmed amount per investor (may differ slightly from expected due to company rounding). Status updated to 'paid'.
+
+#### Stage 4: Send confirmation
+Dividend confirmation letter sent to each investor by email via Outlook. Contains: Juno branding, investor name and address, company name, share class, shares held at record date, amount per share, total received, payment date, payment route.
+
+Filed to platform (client investment docs tab) and OneDrive following naming convention. Status updated to 'confirmed'.
+
+#### Display
+Dividends shown on client record under Dividends received section and on company page. Per event: company, share class, amount per share, total received, payment date, status.
+
+Cumulative dividends received per company shown on portfolio summary — this is the Cumulative Dividend Paid column already present in existing portfolio reports.
+
+---
+
+*End of Section 6. Section 7 (shared post-completion elements) to follow.*
