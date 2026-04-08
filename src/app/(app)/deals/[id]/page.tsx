@@ -34,7 +34,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       ? supabase.from('companies').select('id, name').eq('id', rawDeal.company_id).maybeSingle()
       : { data: null },
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
-    supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
+    supabase.from('invoices').select('id, client_id, fee_amount, status, created_at').eq('deal_id', id),
   ])
 
   // Collect all client IDs needed (deal_investors + invoices)

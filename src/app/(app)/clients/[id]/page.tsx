@@ -115,8 +115,7 @@ export default async function ClientRecordPage({ params }: Props) {
     supabase
       .from('internal_updates')
       .select('created_at')
-      .eq('entity_type', 'client')
-      .eq('entity_id', id)
+      .eq('client_id', id)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),

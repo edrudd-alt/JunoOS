@@ -29,8 +29,7 @@ export default async function ClientsPage() {
       .order('name'),
     supabase
       .from('internal_updates')
-      .select('entity_id, created_at')
-      .eq('entity_type', 'client')
+      .select('client_id, created_at')
       .order('created_at', { ascending: false }),
     supabase
       .from('investments')
@@ -102,8 +101,8 @@ export default async function ClientsPage() {
   // Last activity per client
   const lastActivityByClient: Record<string, string> = {}
   for (const row of (activityRows ?? []) as Record<string, string>[]) {
-    if (row.entity_id && !lastActivityByClient[row.entity_id]) {
-      lastActivityByClient[row.entity_id] = row.created_at
+    if (row.client_id && !lastActivityByClient[row.client_id]) {
+      lastActivityByClient[row.client_id] = row.created_at
     }
   }
 
