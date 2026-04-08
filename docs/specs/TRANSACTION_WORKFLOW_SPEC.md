@@ -960,3 +960,126 @@ If a team member attempts to record a transaction against a share class that doe
 ---
 
 *End of Sections 8 and 9. Section 5 (transfer workflow), Section 6 (CLN and dividends), and Section 7 (shared post-completion elements) to follow.*
+
+## Section 5: Transfer Workflow
+
+### 5.1 Overview
+
+A transfer records the movement of shares from one holder to another without a cash transaction at market value. Common scenarios:
+
+- Spousal transfer — investor transfers shares to their spouse or civil partner
+- Estate transfer on death — portfolio transferred to estate and subsequently to beneficiaries
+- Other gift or restructuring transfers
+
+Transfers are initiated by:
+- The investor themselves
+- Juno recommending a transfer (e.g. as part of tax planning advice)
+- An adviser, estate, lawyer, or family member (in probate scenarios)
+
+No fee is charged by Juno on a transfer.
+
+### 5.2 Key rules
+
+- The recipient takes on the original acquisition price and date of each lot being transferred. They do not get a new acquisition date at the date of transfer.
+- A transfer can be partial (some shares) or full (entire holding). Full holding is the most common case.
+- A transfer involves two records: the transferor (from) and the transferee (to). Both must be client records on the platform before the transfer can be recorded.
+- If the transferee is not yet a client record, the KYC / onboarding workflow must be completed first.
+
+### 5.3 EIS and SEIS
+
+Open question: whether EIS or SEIS status and qualifying period transfer with the shares to the recipient, or whether the transfer resets or voids the qualifying period. To be confirmed with adviser before the transfer workflow is built.
+
+Until confirmed, the platform flags any transfer of EIS or SEIS qualifying shares with a warning:
+
+"These shares are [EIS/SEIS]-qualifying. Please confirm the tax treatment of this transfer before proceeding. The platform will record the transfer but cannot advise on whether EIS/SEIS relief is affected."
+
+### 5.4 Documents
+
+Stock transfer forms are required where shares are held outside a nominee structure (i.e. held directly). Nominee-held shares may not require a stock transfer form — this depends on the nominee's process.
+
+The transfer workflow offers two document handling options:
+
+Option A — Application form approach: generate a transfer application form (similar in structure to the buy/sell application form) showing: transferor name and details, transferee name and details, share class, number of shares, original acquisition price and date, transfer date, reason for transfer. Sent via Documenso for signature where required.
+
+Option B — External documents: lawyers or the nominee handle documents externally. Juno uploads the completed stock transfer form to the deal record when received.
+
+The team selects which option applies at deal setup. Both options can be used together if required (e.g. application form for Juno's records plus external stock transfer form for the registrar).
+
+### 5.5 Workflow stages
+
+1. Deal setup — record transfer details and select document handling option
+2. Documents — generate application form and/or upload external documents
+3. Transaction recording — write the transfer to both records
+4. Post-completion — confirmation to both parties
+
+### 5.6 Stage 1: Deal Setup
+
+Data captured:
+- Transfer type (spousal / estate / other gift / restructuring)
+- Company
+- Transferor (from — FK to clients)
+- Transferee (to — FK to clients)
+- Share class
+- Number of shares (defaults to full holding, can be overridden)
+- Transfer date
+- Reason (free text)
+- Document handling option (application form / external / both)
+- Notes
+
+The wizard pre-populates the transferor's current holding for the selected company and share class. The team confirms or overrides the number of shares.
+
+For estate transfers: the transferor may be a deceased investor. The platform supports recording a transfer from a deceased investor's record. A note is added to the record flagging the date of death.
+
+### 5.7 Stage 2: Documents
+
+If application form option selected:
+- Platform generates a transfer application form pre-filled with transfer details
+- Sent via Documenso if signatures required
+- Signed form filed to both the transferor and transferee records on the platform and OneDrive
+
+If external documents option selected:
+- Team uploads stock transfer form when received from lawyers or nominee
+- Filed to both records on the platform and OneDrive
+
+### 5.8 Stage 3: Transaction Recording
+
+On confirmation, the platform writes two records:
+
+Transferor record:
+- Transaction type: transfer_out
+- Share class, number of shares, transfer date
+- Original acquisition price and date preserved in history
+- Holding reduced or closed depending on whether partial or full transfer
+
+Transferee record:
+- Transaction type: transfer_in
+- Share class, number of shares, transfer date
+- Original acquisition price and date: inherited from transferor's original lot(s) — FIFO order
+- New holding created on transferee's record
+
+No share price confirmation step — transfers do not update the company share price.
+
+No fee calculation — transfers are fee-free.
+
+### 5.9 Stage 4: Post-completion
+
+Confirmation sent to both transferor and transferee by email via Outlook confirming:
+- Transfer date
+- Company and share class
+- Number of shares transferred
+- Original acquisition price and date (for transferee's records)
+
+Filed to both records on the platform and OneDrive.
+
+No transaction statement in the buy/sell format — a simpler transfer confirmation letter is generated instead.
+
+### 5.10 Notes for later
+
+1. EIS/SEIS treatment on transfer — to be confirmed with adviser before build.
+2. Documenso applicability for stock transfer forms — to be confirmed based on nominee and registrar requirements.
+3. Transfer application form template — to be agreed before build, similar to buy/sell application form.
+4. Probate workflow detail — estate transfers may require additional steps (grant of probate, executor authority). To be reviewed if this becomes a common scenario.
+
+---
+
+*End of Section 5. Section 6 (CLN and dividend transactions) to follow.*
