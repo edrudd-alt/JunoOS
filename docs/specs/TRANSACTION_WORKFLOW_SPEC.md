@@ -1465,3 +1465,197 @@ The existing OneDrive folder structure predates the platform and uses inconsiste
 ---
 
 *End of Section 7. Section 6.2 (CLN workflow) to follow in a separate session. The transaction workflow specification is otherwise complete.*
+
+### 6.2 CLN and ASA (Convertible Instruments)
+
+#### Overview
+There are two types of convertible instrument in scope for JunoOS:
+- ASA (Advanced Subscription Agreement) — an EIS-specific instrument where Juno's clients subscribe for shares before a round is priced. No interest. Must convert within 6 months of investment to preserve EIS qualification.
+- Standard CLN (Convertible Loan Note) — a loan note with conversion rights. Carries simple rolled-up interest. Converts to equity on a trigger event. Not EIS qualifying.
+
+Both instruments follow the same investment workflow as an equity buy up to the point of conversion. Conversion itself is an administrative process with no bookbuild or application form.
+
+---
+
+#### Part A: ASA (Advanced Subscription Agreement)
+
+**Instrument characteristics:**
+- EIS qualifying instrument
+- Investor subscribes for shares before the round is priced
+- No interest
+- Fee: 5% of principal, charged at investment
+- Must convert within 6 months of ASA investment date to preserve EIS qualification
+- If not converted within 6 months: conversion still occurs but EIS qualification is lost — platform flags this
+- Conversion terms agreed at conversion date, not at investment date
+- Usually converts to same share class as the new round — occasionally different
+
+**Conversion price mechanics:**
+
+The conversion price is calculated at conversion using any combination of the following terms, all stored at investment:
+- Discount rate — nullable. Investor converts at a discount to the next round price. Example: 20% discount on a £1.00 round = £0.80 conversion price.
+- Valuation cap — nullable. Maximum implied valuation at which the investor converts. Cap price = valuation cap / total shares in issue at conversion. If cap price is lower than discounted price, cap applies.
+
+Four possible combinations:
+- Discount only: conversion price = round price x (1 - discount rate)
+- Cap only: conversion price = valuation cap / total shares in issue
+- Both discount and cap: conversion price = lower of discounted price and cap price — investor always gets the better price
+- Neither: conversion price = fixed price agreed at conversion
+
+Number of shares issued = principal / conversion price.
+
+Note: cap price calculation requires total shares in issue at conversion from the cap table. The capital events workflow must be up to date before any conversion can be processed.
+
+**Critical EIS date rule:**
+The 3-year EIS qualifying holding period starts on the conversion date, not the ASA investment date. The ASA investment date is used only to calculate the 6-month conversion deadline. All EIS holding period calculations, warnings, and reporting must use the conversion date as the EIS start date.
+
+- ASA investment date — starts 6-month conversion clock only
+- Conversion date — starts 3-year EIS qualifying holding period
+- Conversion date + 3 years — EIS qualifying period end date
+
+**Database — cln_positions table:**
+One row per ASA or CLN position per investor. Shared table for both instrument types.
+
+- id
+- type — 'asa' or 'cln'
+- company_id
+- client_id
+- held_by_entity_id
+- location — 'direct' or 'nominee'
+- nominee_id — nullable
+- principal_amount — fixed, never changes
+- interest_rate — null for ASA, fixed rate for CLN
+- interest_treatment — null for ASA, 'rolled_up' or 'paid' for CLN
+- investment_date
+- conversion_deadline — ASA only: investment_date + 6 months. Null for CLN.
+- maturity_date — CLN only. Null for ASA.
+- discount_rate — nullable decimal (e.g. 0.20 for 20%)
+- valuation_cap — nullable decimal (e.g. 5000000 for £5m)
+- conversion_price — nullable, populated at conversion
+- conversion_share_class_id — FK to company_share_classes, nullable until conversion
+- conversion_triggers — JSONB, CLN only. Stores parsed trigger conditions from legal documents.
+- status — 'active', 'converted', 'repaid'
+- eis_qualifying — boolean. True for ASA converting within deadline. Always false for CLN.
+- conversion_date — nullable, populated on conversion
+- eis_start_date — ASA only: set to conversion_date on conversion. Null for CLN.
+- fee_rate — decimal
+- fee_amount — calculated at investment on principal only
+- notes
+- created_at
+
+Interest adjustments use the loan_note_interest_adjustments table with a cln_position_id FK.
+
+**6-month deadline tracking:**
+- Dashboard warning: any ASA where conversion_deadline is within 30 days and status is 'active' is flagged on the main dashboard
+- ASA record: days remaining until conversion deadline shown prominently
+- If conversion_deadline has passed and status is still 'active': flagged as overdue with warning that EIS qualification will be lost on conversion
+
+**Investment workflow:**
+Same as standard equity buy: deal setup, bookbuild, application form, completion tracking, transaction recording, post-completion. Fee invoiced at investment. Share price confirmation not applicable at investment stage. Transaction statement notes this is an ASA and conversion terms are to be confirmed at conversion.
+
+**Conversion workflow:**
+Triggered when company notifies Juno the round has priced. Administrative process — no bookbuild, no application form.
+
+Data captured at conversion:
+- Conversion date
+- New round price per share (used if discount rate stored)
+- Total shares in issue at conversion (used if valuation cap stored)
+- Platform calculates and displays: discounted price if applicable, cap price if applicable, proposed conversion price
+- Team confirms or overrides conversion price
+- Share class
+- Number of shares issued (calculated: principal / confirmed conversion price, shown for confirmation)
+- Whether converting within 6-month deadline (auto-calculated, shown for confirmation)
+
+On confirmation:
+- cln_positions: status = 'converted', conversion_date, conversion_price, conversion_share_class_id, eis_qualifying populated
+- eis_start_date set to conversion_date
+- New buy transaction created on investor's equity record: share class, shares issued, conversion price, conversion date as investment date, EIS qualifying = true if within deadline
+- If EIS qualifying: EIS certificate process begins
+- Transaction statement generated
+- Share certificate process begins
+
+If converting outside 6-month deadline:
+- Platform warns team that EIS qualification will be lost
+- Team must explicitly confirm before proceeding
+- eis_qualifying = false on both cln_positions and resulting buy transaction
+- Transaction statement notes EIS qualification not preserved
+
+---
+
+#### Part B: Standard CLN (Convertible Loan Note)
+
+**Instrument characteristics:**
+- Not EIS qualifying
+- Loan note with conversion rights
+- Fee: 5% of principal, charged at investment
+- Interest: simple interest on original principal, nearly always rolled up
+- Same interest mechanics as straight loan note — see Section 6.1
+- Conversion triggered by specific events defined in deal documents — company notifies Juno
+- Conversion price: fixed price, discount to next round, valuation cap, or any combination — same mechanics as ASA
+- On conversion: principal + accrued interest convert to equity at agreed price
+- Repayment possible if conversion trigger never hit
+
+**Conversion triggers:**
+Defined in CLN legal documents. Claude parses uploaded legal documents and suggests trigger conditions for team review and confirmation. Stored in conversion_triggers JSONB field on cln_positions.
+
+Typical triggers:
+- Qualifying funding round — new equity round above a specified minimum size
+- Maturity date — converts automatically if not repaid or converted by maturity
+- Board resolution — company and noteholder agree to convert
+
+Platform displays stored triggers prominently on the CLN record. Platform does not monitor for triggers automatically — company notifies Juno when a trigger is hit.
+
+**Investment workflow:**
+Same as ASA and standard equity buy. Fee invoiced at investment on principal only. Discount rate and/or valuation cap recorded at investment if known. Conversion triggers recorded after legal documents are received and parsed.
+
+**Interest during the life of the CLN:**
+Identical to straight loan note interest mechanics in Section 6.1. Platform calculates estimated accrued interest dynamically. Manual adjustments supported. Principal and interest always tracked separately.
+
+**Conversion workflow:**
+Triggered when company notifies Juno of a conversion event. Administrative process.
+
+Data captured at conversion:
+- Conversion date
+- Conversion trigger that was hit (selected from stored triggers)
+- New round price per share (if discount or cap applies)
+- Total shares in issue at conversion (if cap applies)
+- Platform calculates and displays proposed conversion price
+- Team confirms or overrides conversion price
+- Accrued interest being converted (£) — team enters agreed figure, platform shows estimated as reference
+- Total converting (principal + confirmed accrued interest)
+- Number of shares issued (calculated: total converting / conversion price)
+- Share class
+
+On confirmation:
+- cln_positions: status = 'converted', conversion_date, conversion_price, conversion_share_class_id populated
+- New buy transaction created: share class, shares issued, conversion price, conversion date as investment date, EIS qualifying = false
+- Transaction statement generated noting original principal, accrued interest converted, total converted, shares issued, price per share
+- Share certificate process begins
+
+**Repayment workflow:**
+If CLN is repaid rather than converted, repayment workflow is identical to straight loan note repayment in Section 6.1.
+
+---
+
+#### Part C: Display
+
+ASAs and CLNs appear on the client record under a Convertible Instruments section, separate from equity holdings and straight loan notes. Per position:
+- Type (ASA / CLN)
+- Company
+- Principal amount
+- Investment date
+- Discount rate and/or valuation cap if applicable
+- ASA: conversion deadline, days remaining, EIS status
+- CLN: interest rate, estimated accrued interest to date, maturity date, conversion triggers summary
+- Status (active / converted / repaid)
+- Conversion date and shares issued if converted
+
+Dashboard flags:
+- ASA approaching conversion deadline (within 30 days): flagged on main dashboard
+- ASA past conversion deadline and still active: flagged as overdue
+- CLN approaching maturity date (within 60 days): flagged on main dashboard
+
+Once converted, resulting equity appears in the standard equity section as a normal buy transaction. For ASA-derived equity, EIS start date = conversion date. Original ASA or CLN record retained with status 'converted' and link to resulting equity holding.
+
+---
+
+*End of Section 6. The transaction workflow specification is now complete. Build phases to follow.*
