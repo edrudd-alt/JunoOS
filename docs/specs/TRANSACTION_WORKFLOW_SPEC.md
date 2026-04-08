@@ -563,3 +563,290 @@ A follow-on may involve:
 ---
 
 *End of Section 3. Section 4 (sell and exit workflow) to follow.*
+
+## Section 4: Sell and Exit Workflow
+
+### 4.1 Overview
+
+A sell or exit workflow records the disposal of some or all shares held by investors in a portfolio company.
+
+**Disposal types:**
+- Partial exit — some or all investors sell some or all of their shares. Some investors may retain a remaining position. The buyer may be a third party or another Juno investor — this is a detail within the deal, not a separate type. Involves a bookbuild process.
+- Full exit — all investors sell all shares in a company. All investors are pre-populated. No bookbuild required.
+
+A sale can be initiated by the company, by one or more investors, or by a third party buyer approaching Juno.
+
+**Key principle:** All data entered at any stage must be editable before the deal is closed, without losing data or requiring the team to start again.
+
+**Workflow stages:**
+1. Deal setup — recording initial terms
+2. Bookbuild — building the seller list and allocating shares
+3. Documents and signatures — application forms and deal documents via Documenso
+4. Transaction recording — reconciliation and writing to the database
+5. Post-completion — transaction statements and deferred payment tracking
+
+---
+
+### 4.2 EIS and SEIS Warnings
+
+Before any sell or exit is recorded, the platform checks whether the investment being sold is EIS or SEIS qualifying and whether it is within the 3-year qualifying holding period.
+
+If within the qualifying period, the team is shown:
+
+"This investment is [EIS/SEIS]-qualifying and was made on [date]. The 3-year qualifying period ends on [date + 3 years]. Disposing of these shares before this date may result in clawback of [EIS/SEIS] relief for this investor. Do you want to continue?"
+
+The team must explicitly confirm before the workflow proceeds. The warning and confirmation are logged against the transaction. The platform does not calculate or advise on tax consequences — it flags the situation only.
+
+Where shares are sold within the qualifying period, the following drafted note is appended to the transaction statement for the team to review and edit before sending:
+
+"Note: This investment was disposed of before the end of the 3-year [EIS/SEIS] qualifying period. This may result in clawback of tax relief previously claimed. Please seek independent tax advice."
+
+---
+
+### 4.3 Stage 1: Deal Setup
+
+Initial deal information captured:
+- Disposal type (partial exit / full exit)
+- Company
+- Estimated completion date
+- Estimated price per share, per share class (can be updated at any point before close)
+- Total shares available for sale per share class (required for allocation-led mode)
+- Notes
+
+Note: the final price per share is often not known until the last moment due to deal fees, retentions, and adjustments. The wizard uses estimated prices for pro forma calculations throughout and updates them when final prices are confirmed.
+
+---
+
+### 4.4 Stage 2: Bookbuild
+
+The bookbuild builds the seller list and calculates allocations. It operates in one of two modes.
+
+#### Investor-led mode
+Used when investors decide individually how many shares they want to sell. The wizard pre-populates every investor's current holdings.
+
+For each investor the wizard shows:
+- Investor name and fund type
+- All share classes held in this company, with shares held per class
+- Total shares held across all classes
+- EIS/SEIS status per holding
+- Estimated gross proceeds (shares x estimated price)
+- Auto-calculated fee (see fee section below)
+- Estimated net proceeds
+
+The team can:
+- Mark as full exit — shares to sell pre-populated automatically with full holding per class
+- Enter a specific number of shares to sell per share class
+- Leave as not selling — investor excluded from this deal
+
+Bookbuild statuses: Interested / Confirmed / Rejected.
+
+#### Allocation-led mode
+Used when a fixed pool of shares is available for sale. The team enters the total available per share class and the wizard calculates each investor's pro rata allocation automatically.
+
+Pro rata calculation: each investor's total shares across all classes as a percentage of Juno's total shares across all classes, applied to the total pool available for sale.
+
+The team can override any individual allocation. An override requires an internal note. Remaining unallocated shares are shown in real time as overrides are made.
+
+Over/under indicator: for each investor, the wizard shows whether they are selling more or less than their pro rata percentage. Displayed as a red or green indicator with an arrow.
+
+Note: rounding will produce small discrepancies. The override mechanism is the intended way to resolve these.
+
+#### Fee auto-calculation
+Fees are calculated automatically per investor based on their fund type stored on the client record. The profit fee is calculated on total profit across all share classes combined, not per individual share class line. All calculations can be overridden — an override requires an internal note.
+
+Syndicate clients:
+- Fee = % of profit (gain on disposal)
+- Rate from client record
+- Profit = total net proceeds across all share classes minus total original cost basis (FIFO)
+
+Multi Manager clients:
+- Fee = accrued deferred management fee
+- Rate: 2% per annum on original cost
+- Accrual period: from investment date to disposal date
+- Cap: 10% of original cost
+- Calculated independently per investor using their investment date and original cost
+
+Each investor's fee calculation shows: gross proceeds, fee basis description, fee £, net proceeds.
+
+#### Bookbuild summary (always visible)
+- Total confirmed sellers — £ gross proceeds and number of investors
+- Total shares being sold per share class
+- Total estimated fees
+- Total estimated net proceeds
+- If allocation-led: shares allocated, shares unallocated, total available
+
+---
+
+### 4.5 Stage 3: Documents and Signatures
+
+Document requirements vary by deal. The team confirms which documents are required.
+
+Document types:
+- Application form to sell — pre-filled with investor details and shares being sold. Investor signs to authorise the sale. Template to be agreed before build.
+- Sale agreement or transfer form — sometimes required by lawyers instead of or in addition to the application form.
+- POA authority for this transaction — where Juno signs on behalf of the investor, specific authority may be required for this transaction.
+- Other documents as specified by lawyers.
+
+Signing:
+- Juno signs deal documents on behalf of investors via POA in most cases — configurable per investor per deal.
+- Where lawyers require direct investor signatures, documents are sent via Documenso.
+- Sometimes lawyers send documents directly to investors — Juno tracks receipt and confirmation on the platform.
+
+For partial exits in investor-led mode, investors confirm shares to sell on the application form. If sale demand exceeds supply, investors are allocated an amount which may differ from their application. The wizard tracks application vs allocation per investor.
+
+---
+
+### 4.6 Stage 4: Transaction Recording and Reconciliation
+
+Before transactions are written to the database, a reconciliation step confirms the final numbers are consistent.
+
+Reconciliation table — team enters final net proceeds per share class. Platform shows:
+- Share class
+- Total shares sold (from platform)
+- Net proceeds entered (£)
+- Calculated price per share (net proceeds / shares)
+- Estimated price per share (from deal setup)
+- Difference (£ and %)
+
+Errors flagged automatically:
+- Different prices per share for the same share class across investors
+- Total proceeds entered does not match sum of individual investor proceeds
+- Total shares different from bookbuild
+
+The team must resolve all errors or explicitly accept them with a note before the transaction can be completed.
+
+Share price confirmation — for each share class involved, the team confirms whether to update the current share price. Each share class may receive a different price per share.
+
+On completion:
+- Disposal written to investments table per investor
+- Holdings updated immediately — shares removed, proceeds recorded
+- Full exit: holding shown as exited, historical record preserved
+- Partial exit: remaining holding updated
+- Portfolio summary updated immediately
+- Updated cap table requested from company
+
+---
+
+### 4.7 Consideration Structure
+
+Recorded per deal. Applies to all investors in the deal.
+
+Consideration types:
+- All upfront — full proceeds received at or shortly after completion
+- Partial upfront with deferred payments — initial payment at completion plus one or more additional payments
+
+All upfront data:
+- Amount (£)
+- Payment date
+- Payment route per investor (direct to investor / via nominee)
+
+Deferred consideration — initial payment:
+- Amount (£)
+- Payment date
+- Payment route per investor (direct / nominee)
+
+Deferred consideration — for each deferred payment:
+- Expected amount (£) — can be marked as contingent if not fixed
+- Expected payment date — can be marked as estimated
+- Contingency description (free text)
+- Payment route per investor (direct / nominee)
+- Status: Expected / Received / Overdue / Waived
+
+Note: the platform does not calculate or advise on the tax treatment of deferred payments. It records and presents the information only.
+
+Fee calculation on deferred payments: fees apply only once cumulative proceeds (initial + deferred received to date) exceed the original cost basis. Pro forma fee estimates are shown on the transaction statement for each expected deferred payment. Updated as actual payments are received.
+
+New database table required — deferred_payments:
+- id
+- investment_id — FK to the sell transaction
+- deal_id
+- client_id
+- expected_amount
+- actual_amount — populated when received
+- expected_date
+- actual_date — populated when received
+- contingency_description — nullable
+- payment_route — 'direct' or 'nominee'
+- status — 'expected', 'received', 'overdue', 'waived'
+- created_at
+- updated_at
+
+---
+
+### 4.8 Stage 5: Post-completion
+
+#### Transaction statement
+Generated automatically per investor when the transaction is recorded. Sent to investor by email via Outlook. Filed to platform and OneDrive.
+
+Contents:
+- Juno branding and contact details
+- Investor name and address
+- Company name
+- Deal reference number
+- Disposal date
+- One row per share class: share class, number of shares sold, price per share, gross proceeds, fee basis description, fee %, fee £, net proceeds
+- Total gross proceeds
+- Total fees
+- Total net proceeds
+- Cost basis (FIFO)
+- Provisional gain/loss
+- EIS/SEIS status and whether qualifying period was met
+- If early disposal: drafted note re tax consequences, editable by team before sending
+
+If deferred consideration, three additional sections:
+1. Total proceeds received to date — aggregated with date received
+2. Current / next deferred payment — line by line per share class, subtotalled, with expected date, contingency note if applicable, pro forma fee estimate, pro forma net proceeds estimate
+3. Future expected deferred payments — estimated dates and estimated totals
+
+These three sections are updated each time a deferred payment is received.
+
+#### Deferred payment statement
+Generated each time a deferred payment is received and confirmed by the team. One statement per investor. Contains:
+- Juno branding
+- Investor name and address
+- Company name
+- Reference to original disposal date and deal reference
+- Payment number (e.g. Deferred Payment 1 of 2)
+- Amount received
+- Payment date
+- Payment route
+- Fee calculation on this payment (cumulative profit basis)
+- Fee £
+- Net amount received
+- Updated total proceeds received to date
+- Updated total fees to date
+- Updated provisional gain/loss
+- Remaining expected payments if any
+
+Sent to investor by email via Outlook. Filed to platform and OneDrive.
+
+#### Post-completion company actions
+Handled by the company, not Juno: cap table update, HMRC notification, share register update.
+
+Juno requests an updated cap table from the company after completion, processed via the cap table workflow in Section 2.7.
+
+---
+
+### 4.9 Secondary Sales and Transfers
+
+#### Secondary sales between Juno investors
+Where one Juno investor sells shares to another Juno investor:
+- Disposal recorded on the selling investor's record at the agreed price and date
+- New holding recorded on the buying investor's record as a buy at the same price and date
+
+#### Transfers
+Transfers (spousal, estate) are a separate workflow not covered in this section. In a transfer, the transferor's original buy details (price, date) pass to the recipient. Common scenarios: spousal transfers, estate transfers on death. To be specced separately.
+
+---
+
+### 4.10 Notes for Later
+
+1. Application form template for sell transactions — to be agreed and provided as an example before the sell wizard is built.
+2. Example sell transaction statement — to be provided from Juno's current process.
+3. Example deferred consideration statement — to be mocked up by Ed.
+4. Platform-wide OneDrive naming convention and file metadata — to be agreed as a separate task.
+5. Transfer workflow (spousal, estate) — to be specced separately.
+
+---
+
+*End of Section 4. Section 5 (transfer workflow) to follow.*
