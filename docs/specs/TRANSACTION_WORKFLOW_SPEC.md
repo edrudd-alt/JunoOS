@@ -218,3 +218,268 @@ This workflow writes to company_share_classes and share_class_ranking_history. I
 ---
 
 *End of Section 1. Section 2 (wizard flow) to follow.*
+
+## Section 2: New Investment Workflow
+
+### 2.1 Overview
+
+A new investment workflow has six stages:
+
+1. Bookbuild — tracking investor interest before the deal is finalised
+2. Application form — generating, sending, and processing signed forms
+3. Completion tracking — managing rolling completions and generating company documents
+4. Transaction recording — writing the deal to the database at completion
+5. Post-completion immediate — transaction statement and EIS confirmation
+6. Post-completion ongoing — legal documents, EIS certificates, cap table
+
+Each stage is described in detail below.
+
+---
+
+### 2.2 Stage 1: Bookbuild
+
+#### Purpose
+Track investor interest and commitment levels before the deal is finalised. Replaces the current spreadsheet. Each deal has exactly one bookbuild.
+
+#### Access
+Created automatically when a new deal is started. Accessible from the deal record.
+
+#### Data captured per investor entry
+- Investor (FK to clients)
+- Investing vehicle (which entity — own name, family member, corporate vehicle)
+- Indicative amount (£)
+- Status: Interested / Confirmed / Maybe / Rejected / Withdrawn
+- Notes (free text)
+- Last updated (timestamp)
+- Updated by (team member)
+
+#### Bookbuild summary (always visible)
+- Total confirmed (£ and number of investors)
+- Total interested (£ and number of investors)
+- Total including interested (£)
+- Target raise (£) — set when deal is created
+- % of target confirmed
+- % of target including interested
+
+#### Actions
+- Add investor to bookbuild
+- Change status of any investor
+- Edit indicative amount
+- Add note
+- Export bookbuild as CSV or PDF for sending to company
+
+#### Status rules
+- An investor can move between any statuses at any time
+- Only Confirmed investors proceed to application form stage
+- Rejected and Withdrawn investors are retained in the bookbuild for record but excluded from all totals except a separate excluded count
+
+#### Transition to Stage 2
+When the team is ready to send application forms, they select one or more Confirmed investors and trigger Send application forms. This can be done in batches — not all confirmed investors need to be sent forms at the same time.
+
+---
+
+### 2.3 Stage 2: Application Form
+
+#### Purpose
+Generate a pre-filled application form for each investor, send for e-signature via Documenso, process the returned signed form, and update the deal record if the investor has made changes.
+
+#### Application form content
+The form is a reusable template pre-filled with:
+- Investor full name and address
+- Investing vehicle (if different from own name)
+- Payment instructions: company or nominee bank details for investment amount, Juno bank details for fee
+- Investment table: amount (£), share price (£), number of shares (calculated), fee % (from client default), fee £ (calculated)
+- Reference to standing POA
+- Deal reference number
+- Company name and deal date
+
+Note: final share price may not be confirmed at this stage. If unconfirmed, the form is generated with the indicative price and flagged as indicative. When the final price is confirmed, affected forms are flagged for review and regeneration if not yet signed.
+
+#### Sending
+- One form per investor
+- Sent via Documenso
+- Juno signs on behalf of investor via POA in most cases — configurable per investor
+- Where POA not held, investor signs directly
+- Sending is logged against the deal and the investor record
+
+#### On return of signed form
+1. Documenso notifies the platform that a form has been signed
+2. Claude reads the signed PDF and compares it against the original sent version
+3. If no differences: form is filed automatically, investor status updated to Signed
+4. If differences detected: team is notified with a summary of what changed (amount, vehicle, other fields)
+5. Team reviews each difference and confirms whether to update the deal record
+6. On confirmation: deal record updated, change logged with timestamp and team member
+7. Signed form filed to: platform (deal record and client investment docs) and OneDrive (following naming convention)
+
+#### Tracking
+Per investor, per form:
+- Status: Not sent / Sent / Viewed / Signed / Changes detected / Confirmed
+- Sent date
+- Signed date
+- Whether changes were made and confirmed
+- Link to signed document
+
+#### Investor cash
+Cash receipt is tracked manually — team marks each investor as Paid when funds received. This is separate from the form signature and can happen before or after.
+
+---
+
+### 2.4 Stage 3: Completion Tracking
+
+#### Purpose
+Manage rolling completions. Some investors may complete earlier than others. Track who has completed, generate documents for the company, and manage the EIS confirmation process.
+
+#### Rolling completions
+- A deal can have multiple completion events
+- Each completion event has a date and a list of investors completing on that date
+- An investor appears in exactly one completion event
+- The deal remains open until all investors have completed or been withdrawn
+
+#### Completion checklist per investor
+- Application form signed — auto-ticked when Documenso confirms
+- Cash received — manually ticked by team
+- Completion — manually triggered by team when both above are true
+- Transaction statement sent — auto-ticked when generated and sent
+- Share certificate received — manually uploaded when received from company
+- EIS certificate received — manually uploaded when received (typically 2-8 weeks post-completion)
+- EIS certificate sent to investor — auto-ticked when sent
+
+#### Documents generated at completion stage
+
+**Shareholder list for company:**
+Generated on demand. Lists all investors who have completed or are confirmed, showing: investor name, address, investing vehicle, amount, shares, share class. Used by company lawyers for legal documents and HMRC EIS application. Can be regenerated at any time as the list changes.
+
+**EIS confirmation list:**
+Separate document listing only EIS-qualifying investors: name, address, amount invested. Sent to company for HMRC submission. Generated on demand.
+
+Both documents export as PDF and CSV.
+
+---
+
+### 2.5 Stage 4: Transaction Recording
+
+#### Purpose
+Write the completed investment to the database so it appears on the client record, portfolio, and all reports.
+
+#### When
+Triggered per investor when the team marks their completion checklist as complete (application signed and cash received).
+
+#### Data written to investments table
+All fields from Section 1.2 for an equity buy transaction, plus:
+- deal_id — FK to the deal record
+- completion_date — date of this investor's completion
+- bookbuild_id — FK to the bookbuild entry
+
+#### Share price confirmation step
+Before the transaction is written, the team is shown:
+
+This transaction will update the share price for [Company] to £[transaction price]. Is this correct?
+- Yes, update to £[transaction price]
+- No, keep the current price of £[current price]
+- Enter a different price manually
+
+The team's choice is recorded alongside the transaction. The valuations table is updated accordingly.
+
+#### On completion
+- Investment appears on client record immediately
+- Portfolio summary updated immediately
+- Deal marked as partially or fully complete depending on whether all investors have now completed
+
+---
+
+### 2.6 Stage 5: Post-completion (immediate)
+
+#### Purpose
+Generate and send the transaction statement to the investor. Send EIS confirmation to the company.
+
+#### Transaction statement
+Generated automatically when a transaction is recorded. Contains:
+- Juno branding and contact details
+- Investor name and address
+- Company name
+- Share class
+- Investment date (completion date)
+- Number of shares
+- Price per share
+- Total amount invested
+- Fee % and fee £
+- EIS status
+- Deal reference number
+- Footer: Juno Capital Partners LLP, address
+
+Sent to investor by email via Outlook. Filing:
+- Saved to platform (client investment docs tab, under company and year)
+- Saved to OneDrive (YYYY-MM-DD — Investor — Company — Transaction Statement.pdf)
+- Marked as sent in the investor's completion checklist
+
+#### EIS confirmation to company
+Sent once per completion event (not per investor). Lists all EIS-qualifying investors completing on that date: name, address, amount. Sent by email to company contact. Logged against the deal.
+
+#### Tracking
+Per investor:
+- Transaction statement: generated date, sent date, sent to (email address)
+Per completion event:
+- EIS confirmation: sent date, sent to (email address)
+
+---
+
+### 2.7 Stage 6: Post-completion (ongoing)
+
+#### Purpose
+Receive, store, and extract key information from legal documents. Manage EIS certificates. Maintain the cap table.
+
+#### Legal documents
+Received from company lawyers after completion. Documents include:
+- Share certificate
+- Articles of association
+- Subscription agreement
+- Investment agreement
+- Loan documents (if debt component)
+- Others as applicable
+
+Each document is uploaded to the deal record, filed to OneDrive, and stored against the company in the company documents tab.
+
+Claude extracts the following from legal documents automatically:
+- Share class and full rights including preference terms if applicable
+- Juno board seat (yes/no and any conditions)
+- Investor consent rights and majority thresholds
+- Board rights
+- Investor director rights
+
+Extracted terms are reviewed by the team before saving. On confirmation they are stored against the company share class record, updating company_share_classes. If preference terms are present, preference_multiple, participating, dividend_rate, dividend_cumulative, and dividend_payment are populated from extraction. Terms are also stored in a deal terms summary on the company page.
+
+Share certificates are stored on the platform and in OneDrive. They are not sent to investors.
+
+#### EIS certificates
+- Received from company (typically 2-8 weeks post-completion)
+- Uploaded to platform against the deal and the relevant investor
+- Copy sent to investor by email
+- Original retained on platform and OneDrive
+- Investor completion checklist updated automatically on upload and send
+- Platform tracks outstanding EIS certificates — any investor with EIS-qualifying investment and no certificate received is flagged on the deal record
+
+#### Cap table
+- Final cap table received from company after completion
+- Uploaded to company record
+- Claude reads cap table and identifies all share classes present, confirms or creates share class records, identifies preference stack and prompts team to confirm or update rankings in share_class_ranking_history, and flags any discrepancies between the cap table and the platform's recorded shareholdings
+- Team reviews and confirms before any changes are written
+- When a new funding round occurs even if Juno does not participate: team uploads updated cap table, Claude identifies new share classes and ranking changes, team confirms updates, share_class_ranking_history updated with effective date and reason
+
+---
+
+### 2.8 Outlook email integration
+
+All outbound emails from the workflow are sent via Microsoft Graph API connected to the relevant Juno Outlook mailbox. Covers:
+- Application form sending (with Documenso link)
+- Transaction statement sending
+- EIS certificate sending
+- EIS confirmation to company
+- Any other deal-related correspondence generated by the platform
+
+Each email sent is logged against the deal record with timestamp, recipient, and subject, stored as a sent item in the relevant Outlook mailbox, and linked to the investor record where applicable.
+
+Setup: one-time OAuth connection per mailbox in Settings.
+
+---
+
+*End of Section 2. Section 3 (follow-on investment workflow) to follow.*
