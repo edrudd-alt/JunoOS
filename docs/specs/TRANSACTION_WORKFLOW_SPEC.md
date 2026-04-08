@@ -483,3 +483,83 @@ Setup: one-time OAuth connection per mailbox in Settings.
 ---
 
 *End of Section 2. Section 3 (follow-on investment workflow) to follow.*
+
+## Section 3: Follow-on Investment Workflow
+
+### 3.1 Overview
+
+A follow-on investment is an additional investment into a company already in the portfolio. The company already exists on the platform. The workflow shares the same application form, completion, and post-completion stages as a new investment but differs significantly in the bookbuild stage.
+
+Stages:
+1. Bookbuild — starts from existing shareholdings, calculates pro rata entitlements
+2. Application form — same as new investment workflow
+3. Completion tracking — same as new investment workflow
+4. Transaction recording — same as new investment workflow
+5. Post-completion immediate — same as new investment workflow
+6. Post-completion ongoing — may involve updates to existing share class terms, new share classes, or ranking changes rather than full setup from scratch
+
+---
+
+### 3.2 Stage 1: Follow-on Bookbuild
+
+#### Purpose
+Build the subscription list for a follow-on round, starting from existing investor holdings and calculating pro rata entitlements. More involved than a new investment bookbuild because the starting position is known and the allocation logic is more complex.
+
+#### Starting position
+When a follow-on bookbuild is created, the platform automatically populates it with all existing investors in the company, showing for each:
+- Investor name
+- All share classes held
+- Number of shares per class
+- Original investment amount per class
+- Total amount invested in this company
+- Current % ownership of the company (by total shares, across all classes)
+- Pro rata entitlement for this round (calculated as: investor % ownership x total raise target)
+
+New investors not currently in the company can be added manually. They receive no pro rata entitlement by default — their allocation is set manually.
+
+#### Pro rata redistribution
+If an investor declines or takes less than their pro rata entitlement, the unallocated amount is redistributed pro rata among investors who have confirmed participation. Redistribution is recalculated automatically each time a status changes. The team can override any individual allocation manually.
+
+#### Share class for the follow-on
+The team specifies which share class the follow-on investment will be in. This may be:
+- An existing share class at a new price
+- A new share class (requires capital events workflow to be completed first — see Section 9)
+
+If a new share class is involved, the bookbuild can be started but application forms cannot be sent until the share class is defined and its ranking confirmed in share_class_ranking_history.
+
+#### Down round or complex terms
+Where the follow-on involves a down round or significantly dilutive terms, the platform provides a one-click export of the current holdings data to a clean spreadsheet (investor name, share class, shares held, original price, current valuation, % ownership, pro rata entitlement) for offline analysis. This export is available at any time from the bookbuild screen. The platform does not perform the waterfall or breakeven modelling itself at this stage — that is done offline using the exported data.
+
+#### Bookbuild statuses
+Same as new investment: Interested / Confirmed / Maybe / Rejected / Withdrawn.
+
+#### Bookbuild summary
+Same as new investment, plus:
+- Total existing investor allocation (£)
+- Total new investor allocation (£)
+- Unallocated from declined pro rata (£)
+- Redistribution applied (£)
+
+#### Transition to Stage 2
+Same as new investment — team selects Confirmed investors and triggers Send application forms.
+
+---
+
+### 3.3 Stages 2-5: Application, Completion, Recording, Post-completion immediate
+
+Identical to Sections 2.3 through 2.6. No differences.
+
+---
+
+### 3.4 Stage 6: Post-completion ongoing (follow-on specific differences)
+
+A follow-on may involve:
+- No new share class — existing class at new price. No share class setup required. Legal documents may include updated subscription agreement only.
+- New share class — requires share class record created and ranking confirmed before completion. Legal documents will include articles amendment or new class rights document. Claude extracts terms as per Section 2.7.
+- Changes to existing share class terms — e.g. a new round negotiates changes to existing preference terms or adds/removes board rights. Claude extracts changes from legal documents and prompts team to confirm updates to existing company_share_classes records.
+- Ranking changes — existing preference classes may be demoted by a new class. Team is prompted to update share_class_ranking_history with effective date and reason.
+- Updated cap table — received from company after completion. Processed as per Section 2.7.
+
+---
+
+*End of Section 3. Section 4 (sell and exit workflow) to follow.*
