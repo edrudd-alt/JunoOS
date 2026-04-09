@@ -20,7 +20,6 @@ interface Props {
 const STATUS_OPTIONS = [
   { value: 'interested', label: 'Interested' },
   { value: 'confirmed',  label: 'Confirmed'  },
-  { value: 'maybe',      label: 'Maybe'      },
   { value: 'rejected',   label: 'Rejected'   },
   { value: 'withdrawn',  label: 'Withdrawn'  },
 ]

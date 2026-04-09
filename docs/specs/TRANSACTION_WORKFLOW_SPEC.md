@@ -248,7 +248,7 @@ Created automatically when a new deal is started. Accessible from the deal recor
 - Investor (FK to clients)
 - Investing vehicle (which entity — own name, family member, corporate vehicle)
 - Indicative amount (£)
-- Status: Interested / Confirmed / Maybe / Rejected / Withdrawn
+- Status: Interested / Confirmed / Rejected / Withdrawn
 - Notes (free text)
 - Last updated (timestamp)
 - Updated by (team member)
@@ -531,7 +531,7 @@ If a new share class is involved, the bookbuild can be started but application f
 Where the follow-on involves a down round or significantly dilutive terms, the platform provides a one-click export of the current holdings data to a clean spreadsheet (investor name, share class, shares held, original price, current valuation, % ownership, pro rata entitlement) for offline analysis. This export is available at any time from the bookbuild screen. The platform does not perform the waterfall or breakeven modelling itself at this stage — that is done offline using the exported data.
 
 #### Bookbuild statuses
-Same as new investment: Interested / Confirmed / Maybe / Rejected / Withdrawn.
+Same as new investment: Interested / Confirmed / Rejected / Withdrawn.
 
 #### Bookbuild summary
 Same as new investment, plus:
@@ -638,7 +638,7 @@ The team can:
 - Enter a specific number of shares to sell per share class
 - Leave as not selling — investor excluded from this deal
 
-Bookbuild statuses: Interested / Confirmed / Rejected.
+Bookbuild statuses: Interested / Confirmed / Rejected / Withdrawn.
 
 #### Allocation-led mode
 Used when a fixed pool of shares is available for sale. The team enters the total available per share class and the wizard calculates each investor's pro rata allocation automatically.
