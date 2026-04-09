@@ -2,9 +2,11 @@
 
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
+import { generateTransactionStatement } from '@/lib/services/statementGenerator'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,40 +107,48 @@ export default function InvestmentCockpit({
   const documents   = documentsRaw   as unknown as Document[]
 
   const supabase = createClient()
+  const router   = useRouter()
 
   const clientId = investment.client_id
   const isEis    = investment.eis_status === 'yes' || investment.eis_status === 'tbc'
 
   // Initialise checklist from deal.completion_checklist.per_investor[clientId]
-  const [checklist, setChecklist] = useState<Record<string, boolean>>(() => {
+  const [checklist,    setChecklist]    = useState<Record<string, boolean>>(() => {
     if (!deal?.completion_checklist) return {}
     const perInvestor = (deal.completion_checklist.per_investor ?? {}) as Record<string, Record<string, boolean>>
     return perInvestor[clientId] ?? {}
   })
-  const [saving, setSaving] = useState(false)
-  const [saved,  setSaved]  = useState(false)
-  const [toast,  setToast]  = useState(false)
+  const [saving,       setSaving]       = useState(false)
+  const [saved,        setSaved]        = useState(false)
+  const [generating,   setGenerating]   = useState(false)
+  const [statementUrl, setStatementUrl] = useState<string | null>(null)
+  const [genError,     setGenError]     = useState<string | null>(null)
 
-  const saveChecklist = useCallback(async (updated: Record<string, boolean>) => {
+  // Shared helper — merges updated per-investor checklist into deals.completion_checklist
+  const persistChecklist = useCallback(async (updated: Record<string, boolean>) => {
     if (!deal) return
-    setSaving(true)
     const { data: dealRow } = await supabase
       .from('deals')
       .select('completion_checklist')
       .eq('id', deal.id)
       .single()
-    const existing       = (dealRow?.completion_checklist ?? {}) as Record<string, unknown>
-    const perInvestor    = (existing.per_investor ?? {}) as Record<string, unknown>
+    const existing    = (dealRow?.completion_checklist ?? {}) as Record<string, unknown>
+    const perInvestor = (existing.per_investor ?? {}) as Record<string, unknown>
     await supabase.from('deals').update({
       completion_checklist: {
         ...existing,
         per_investor: { ...perInvestor, [clientId]: updated },
       },
     }).eq('id', deal.id)
+  }, [deal, clientId, supabase])
+
+  const saveChecklist = useCallback(async (updated: Record<string, boolean>) => {
+    setSaving(true)
+    await persistChecklist(updated)
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [deal, clientId, supabase])
+  }, [persistChecklist])
 
   function toggleItem(key: string) {
     const updated = { ...checklist, [key]: !checklist[key] }
@@ -146,9 +156,68 @@ export default function InvestmentCockpit({
     saveChecklist(updated)
   }
 
-  function showToast() {
-    setToast(true)
-    setTimeout(() => setToast(false), 2500)
+  async function handleGenerateStatement() {
+    if (!deal || !company || !client) return
+    setGenerating(true)
+    setGenError(null)
+    try {
+      const eisLabel =
+        investment.eis_status === 'yes' ? 'EIS qualifying' :
+        investment.eis_status === 'no'  ? 'Non-EIS' :
+        'EIS TBC'
+
+      const blob = await generateTransactionStatement({
+        investorName:    clientName,
+        companyName,
+        eisStatus:       eisLabel,
+        investmentDate:  formatDate(investment.investment_date),
+        shareClass:      investment.share_class,
+        purchasePrice:   formatPrice(investment.original_share_price),
+        sharesPurchased: investment.shares_purchased.toLocaleString(undefined, { maximumFractionDigits: 0 }),
+        sumSubscribed:   formatCurrency(investment.sum_subscribed),
+        junoFee:         investment.fee_amount != null ? formatCurrency(investment.fee_amount) : '—',
+        totalCost:       formatCurrency(investment.sum_subscribed + (investment.fee_amount ?? 0)),
+      })
+
+      const today        = new Date().toISOString().slice(0, 10)
+      const companySlug  = companyName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const investorSlug = clientName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const filename     = `${today} — ${clientName} — ${companyName} — Transaction Statement.pdf`
+      const storagePath  = `${companySlug}/${investorSlug}/${filename}`
+
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, blob, { contentType: 'application/pdf', upsert: true })
+
+      if (uploadError) throw new Error(uploadError.message)
+
+      const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(storagePath)
+
+      const { data: { user } } = await supabase.auth.getUser()
+
+      await supabase.from('documents').insert({
+        type:          'transaction_statement',
+        company_id:    investment.company_id,
+        client_id:     clientId,
+        deal_id:       investment.deal_id,
+        filename,
+        storage_url:   publicUrl,
+        document_date: today,
+        uploaded_by:   user?.id ?? null,
+      })
+
+      // Mark statement_sent in the checklist
+      const updatedChecklist = { ...checklist, statement_sent: true }
+      setChecklist(updatedChecklist)
+      await persistChecklist(updatedChecklist)
+
+      setStatementUrl(publicUrl)
+      router.refresh()
+    } catch (err) {
+      setGenError(err instanceof Error ? err.message : 'Failed to generate statement')
+    } finally {
+      setGenerating(false)
+    }
   }
 
   // Derived values
@@ -302,16 +371,39 @@ export default function InvestmentCockpit({
               />
             )}
           </div>
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 16, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: 12 }}
+              onClick={handleGenerateStatement}
+              disabled={generating}
+            >
+              {generating ? 'Generating…' : statementUrl ? '✓ Statement generated' : 'Generate transaction statement'}
+            </button>
+            {statementUrl && (
+              <a
+                href={statementUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 12, color: '#185fa5', textDecoration: 'underline' }}
+              >
+                Download PDF
+              </a>
+            )}
             <button
               type="button"
               className="btn btn-secondary"
-              style={{ fontSize: 12 }}
-              onClick={showToast}
+              style={{ fontSize: 12, opacity: 0.5, cursor: 'not-allowed' }}
+              disabled
+              title="Email integration coming soon"
             >
-              Generate transaction statement
+              Send to investor
             </button>
           </div>
+          {genError && (
+            <p style={{ fontSize: 12, color: '#a32d2d', marginTop: 8 }}>{genError}</p>
+          )}
         </div>
       )}
 
@@ -356,17 +448,7 @@ export default function InvestmentCockpit({
         )}
       </div>
 
-      {/* Coming soon toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 500,
-          padding: '10px 20px', borderRadius: 6, zIndex: 2000,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
-        }}>
-          Coming soon
-        </div>
-      )}
+
     </div>
   )
 }
