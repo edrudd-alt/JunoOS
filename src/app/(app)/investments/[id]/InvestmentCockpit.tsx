@@ -196,7 +196,7 @@ export default function InvestmentCockpit({
 
       const { data: { user } } = await supabase.auth.getUser()
 
-      await supabase.from('documents').insert({
+      const { error: docError } = await supabase.from('documents').insert({
         type:          'transaction_statement',
         company_id:    investment.company_id,
         client_id:     clientId,
@@ -206,6 +206,17 @@ export default function InvestmentCockpit({
         document_date: today,
         uploaded_by:   user?.id ?? null,
       })
+      if (docError) {
+        console.error('documents insert failed:', {
+          code:    docError.code,
+          message: docError.message,
+          details: docError.details,
+          hint:    docError.hint,
+          full:    docError,
+        })
+      } else {
+        console.log('documents insert succeeded')
+      }
 
       // Mark statement_sent in the checklist
       const updatedChecklist = { ...checklist, statement_sent: true }
