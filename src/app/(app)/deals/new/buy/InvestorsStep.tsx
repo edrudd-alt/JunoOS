@@ -108,6 +108,10 @@ export function InvestorsStep({
 
   const [confirmRemove, setConfirmRemove] = useState<{ uid: string; name: string } | null>(null)
 
+  const [priceConfirm, setPriceConfirm] = useState<{ latestPrice: number | null } | null>(null)
+  const [priceChoice,  setPriceChoice]  = useState<'updated' | 'kept' | 'custom'>('kept')
+  const [customPrice,  setCustomPrice]  = useState('')
+
   // Group active investments by company → client
   const holdingsByCompany = useMemo(() => {
     const map = new Map<string, Map<string, { shares: number; cost: number; shareClass: string }>>()
@@ -297,10 +301,40 @@ export function InvestorsStep({
 
   async function handleSave() {
     setError('')
-    if (rows.length === 0)                                { setError('Add at least one investor'); return }
-    if (rows.some(r => !(parseFloat(r.shares) > 0)))     { setError('Enter shares for all investors'); return }
+    if (rows.length === 0)                            { setError('Add at least one investor'); return }
+    if (rows.some(r => !(parseFloat(r.shares) > 0))) { setError('Enter shares for all investors'); return }
 
+    // Edit mode: no price confirmation needed
+    if (isEditMode) {
+      await doSave(sharePriceNum, null)
+      return
+    }
+
+    // Create mode: fetch latest valuation then show confirmation modal
     setSaving(true)
+    const { data: latestVal } = await supabase
+      .from('valuations')
+      .select('share_price')
+      .eq('company_id', setupData.companyId)
+      .order('valuation_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    setSaving(false)
+
+    const latestPrice = latestVal ? parseFloat(String(latestVal.share_price)) : null
+    setPriceConfirm({ latestPrice })
+    setPriceChoice('kept')
+    setCustomPrice('')
+  }
+
+  async function doSave(finalPrice: number, choice: 'updated' | 'kept' | 'custom' | null) {
+    setPriceConfirm(null)
+    setSaving(true)
+
+    // Recompute investment amount totals using finalPrice
+    const totalInvestmentAmount = rows.reduce((sum, row) => {
+      return sum + (parseFloat(row.shares) || 0) * finalPrice
+    }, 0)
 
     const investorData: Record<string, unknown> = {}
     for (const row of rows) {
@@ -321,8 +355,9 @@ export function InvestorsStep({
         .from('deals')
         .update({
           share_class:          setupData.shareClass || null,
-          share_price:          sharePriceNum,
-          investment_amount:    totals.cost || null,
+          share_class_id:       setupData.shareClassId || null,
+          share_price:          finalPrice,
+          investment_amount:    totalInvestmentAmount || null,
           investment_date:      setupData.investmentDate,
           eis_qualifying:       setupData.eisQualifying,
           completion_checklist: { investor_data: investorData },
@@ -343,7 +378,7 @@ export function InvestorsStep({
         rows.map(row => ({
           deal_id:        existingDealId,
           client_id:      row.clientId,
-          amount:         computeRow(row).cost || null,
+          amount:         (parseFloat(row.shares) || 0) * finalPrice || null,
           poa_held:       row.poaHeld,
           signing_status: 'pending',
         })),
@@ -363,19 +398,23 @@ export function InvestorsStep({
         .eq('status', 'pending')
 
       for (const row of rows) {
-        const { sharesNum, eisStatus, sc } = computeRow(row)
+        const { sharesNum, eisStatus, sc, feePct, feePayable } = computeRow(row)
         await supabase.from('investments').insert({
           client_id:            row.clientId,
           company_id:           setupData.companyId,
           share_class:          sc || null,
+          share_class_id:       row.shareClassOverride ? null : (setupData.shareClassId || null),
           investment_date:      setupData.investmentDate,
-          original_share_price: sharePriceNum,
+          original_share_price: finalPrice,
           shares_purchased:     sharesNum,
-          sum_subscribed:       sharesNum * sharePriceNum,
+          sum_subscribed:       sharesNum * finalPrice,
           eis_status:           eisStatus,
           holding_location:     'direct',
           status:               'pending',
           fund_type:            row.fundType ?? 'syndicate',
+          transaction_category: 'equity',
+          fee_rate:             feePct,
+          fee_amount:           feePayable,
         })
       }
 
@@ -385,19 +424,33 @@ export function InvestorsStep({
 
     // ── Create mode ────────────────────────────────────────────────────────────
 
+    // If price was updated or custom, record a new valuation
+    if (choice === 'updated' || choice === 'custom') {
+      await supabase.from('valuations').insert({
+        company_id:     setupData.companyId,
+        share_price:    finalPrice,
+        valuation_date: setupData.investmentDate,
+        updated_by:     user?.id ?? null,
+        notes:          `Price confirmed at deal setup (${choice})`,
+      })
+    }
+
     const { data: deal, error: dealErr } = await supabase
       .from('deals')
       .insert({
-        deal_type:            dealType,
-        company_id:           setupData.companyId,
-        share_class:          setupData.shareClass || null,
-        share_price:          sharePriceNum,
-        investment_amount:    totals.cost || null,
-        investment_date:      setupData.investmentDate,
-        eis_qualifying:       setupData.eisQualifying,
-        status:               'draft',
-        completion_checklist: { investor_data: investorData },
-        created_by:           user?.id ?? null,
+        deal_type:                  dealType,
+        company_id:                 setupData.companyId,
+        share_class:                setupData.shareClass || null,
+        share_class_id:             setupData.shareClassId || null,
+        share_price:                finalPrice,
+        investment_amount:          totalInvestmentAmount || null,
+        investment_date:            setupData.investmentDate,
+        eis_qualifying:             setupData.eisQualifying,
+        status:                     'draft',
+        completion_checklist:       { investor_data: investorData },
+        created_by:                 user?.id ?? null,
+        price_confirmed_at_setup:   choice !== null,
+        price_confirmation_choice:  choice,
       })
       .select('id')
       .single()
@@ -412,7 +465,7 @@ export function InvestorsStep({
       rows.map(row => ({
         deal_id:        deal.id,
         client_id:      row.clientId,
-        amount:         computeRow(row).cost || null,
+        amount:         (parseFloat(row.shares) || 0) * finalPrice || null,
         poa_held:       row.poaHeld,
         signing_status: 'pending',
       })),
@@ -424,19 +477,23 @@ export function InvestorsStep({
     }
 
     for (const row of rows) {
-      const { sharesNum, eisStatus, sc } = computeRow(row)
+      const { sharesNum, eisStatus, sc, feePct, feePayable } = computeRow(row)
       await supabase.from('investments').insert({
         client_id:            row.clientId,
         company_id:           setupData.companyId,
         share_class:          sc || null,
+        share_class_id:       row.shareClassOverride ? null : (setupData.shareClassId || null),
         investment_date:      setupData.investmentDate,
-        original_share_price: sharePriceNum,
+        original_share_price: finalPrice,
         shares_purchased:     sharesNum,
-        sum_subscribed:       sharesNum * sharePriceNum,
+        sum_subscribed:       sharesNum * finalPrice,
         eis_status:           eisStatus,
         holding_location:     'direct',
         status:               'pending',
         fund_type:            row.fundType ?? 'syndicate',
+        transaction_category: 'equity',
+        fee_rate:             feePct,
+        fee_amount:           feePayable,
       })
     }
 
@@ -681,6 +738,90 @@ export function InvestorsStep({
                 style={{ fontSize: 12, background: '#a32d2d' }}
               >
                 Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Price confirmation modal */}
+      {priceConfirm && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div className="card" style={{ width: 420, padding: 24 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f2744', marginBottom: 4 }}>Confirm share price</div>
+            <p style={{ fontSize: 12, color: '#555', margin: '0 0 16px' }}>
+              Entered price: <strong>£{parseFloat(setupData.sharePrice || '0').toFixed(4)}</strong>
+              {priceConfirm.latestPrice != null && (
+                <> &nbsp;·&nbsp; Latest valuation: <strong>£{priceConfirm.latestPrice.toFixed(4)}</strong></>
+              )}
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', border: `0.5px solid ${priceChoice === 'kept' ? '#185fa5' : '#e8e7e0'}`, borderRadius: 6, background: priceChoice === 'kept' ? '#f0f6ff' : '#fff' }}>
+                <input type="radio" name="priceChoice" value="kept" checked={priceChoice === 'kept'} onChange={() => setPriceChoice('kept')} style={{ marginTop: 2 }} />
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>Keep entered price</div>
+                  <div style={{ fontSize: 11, color: '#888' }}>Use £{parseFloat(setupData.sharePrice || '0').toFixed(4)} as entered in deal setup</div>
+                </div>
+              </label>
+
+              {priceConfirm.latestPrice != null && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', border: `0.5px solid ${priceChoice === 'updated' ? '#185fa5' : '#e8e7e0'}`, borderRadius: 6, background: priceChoice === 'updated' ? '#f0f6ff' : '#fff' }}>
+                  <input type="radio" name="priceChoice" value="updated" checked={priceChoice === 'updated'} onChange={() => setPriceChoice('updated')} style={{ marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>Use latest valuation price</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>Update to £{priceConfirm.latestPrice.toFixed(4)} and record as new valuation</div>
+                  </div>
+                </label>
+              )}
+
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', border: `0.5px solid ${priceChoice === 'custom' ? '#185fa5' : '#e8e7e0'}`, borderRadius: 6, background: priceChoice === 'custom' ? '#f0f6ff' : '#fff' }}>
+                <input type="radio" name="priceChoice" value="custom" checked={priceChoice === 'custom'} onChange={() => setPriceChoice('custom')} style={{ marginTop: 2 }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>Enter a different price</div>
+                  {priceChoice === 'custom' && (
+                    <div style={{ position: 'relative', marginTop: 6 }}>
+                      <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.0001"
+                        value={customPrice}
+                        onChange={e => setCustomPrice(e.target.value)}
+                        placeholder="0.0000"
+                        style={{ ...inputSt, paddingLeft: 22, width: 140, fontSize: 12 }}
+                        autoFocus
+                      />
+                    </div>
+                  )}
+                </div>
+              </label>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setPriceConfirm(null)}
+                className="btn btn-secondary"
+                style={{ fontSize: 12 }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  let finalPrice = sharePriceNum
+                  if (priceChoice === 'updated' && priceConfirm.latestPrice != null) {
+                    finalPrice = priceConfirm.latestPrice
+                  } else if (priceChoice === 'custom') {
+                    const p = parseFloat(customPrice)
+                    if (!(p > 0)) return
+                    finalPrice = p
+                  }
+                  doSave(finalPrice, priceChoice)
+                }}
+                className="btn btn-primary"
+                style={{ fontSize: 12 }}
+              >
+                Confirm &amp; save deal →
               </button>
             </div>
           </div>

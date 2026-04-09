@@ -1,14 +1,19 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import type { BuyDealType, EisStatus, SetupData } from './buyWizardTypes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Company {
-  id:            string
-  name:          string
-  share_classes: { name: string; type?: string }[] | null
+  id:   string
+  name: string
+}
+
+interface ShareClassOption {
+  id:   string
+  name: string
 }
 
 interface Props {
@@ -40,19 +45,24 @@ const errSt: React.CSSProperties = {
 
 export function SetupStep({ dealType, companies, initialData, onContinue, onBack }: Props) {
   const isFollowOn = dealType === 'follow_on'
+  const supabase   = createClient()
 
   // Company search/select
-  const [companyId,        setCompanyId]        = useState(initialData?.companyId   ?? '')
-  const [companyName,      setCompanyName]       = useState(initialData?.companyName ?? '')
-  const [companySearch,    setCompanySearch]     = useState('')
-  const [showCompanyDrop,  setShowCompanyDrop]   = useState(false)
+  const [companyId,       setCompanyId]       = useState(initialData?.companyId   ?? '')
+  const [companyName,     setCompanyName]      = useState(initialData?.companyName ?? '')
+  const [companySearch,   setCompanySearch]    = useState('')
+  const [showCompanyDrop, setShowCompanyDrop]  = useState(false)
   const companyInputRef = useRef<HTMLInputElement>(null)
 
-  // Deal fields
-  const [shareClass,       setShareClass]       = useState(initialData?.shareClass     ?? '')
-  const [shareClassCustom, setShareClassCustom] = useState('')
-  const [sharePrice,       setSharePrice]       = useState(initialData?.sharePrice     ?? '')
-  const [investmentDate,   setInvestmentDate]   = useState(
+  // Share class — fetched from company_share_classes when company is selected
+  const [shareClassId,      setShareClassId]      = useState(initialData?.shareClassId ?? '')
+  const [shareClass,        setShareClass]         = useState(initialData?.shareClass  ?? '')
+  const [shareClassOptions, setShareClassOptions]  = useState<ShareClassOption[]>([])
+  const [loadingClasses,    setLoadingClasses]     = useState(false)
+
+  // Other deal fields
+  const [sharePrice,     setSharePrice]     = useState(initialData?.sharePrice     ?? '')
+  const [investmentDate, setInvestmentDate] = useState(
     initialData?.investmentDate ?? new Date().toISOString().slice(0, 10),
   )
   const [eisQualifying, setEisQualifying] = useState<EisStatus>(
@@ -60,23 +70,28 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
   )
   const [error, setError] = useState('')
 
-  const selectedCompany = companies.find(c => c.id === companyId) ?? null
-  const shareClasses: { name: string }[] = Array.isArray(selectedCompany?.share_classes)
-    ? (selectedCompany!.share_classes as { name: string }[])
-    : []
-
   const filteredCompanies = companies.filter(c =>
     c.name.toLowerCase().includes(companySearch.toLowerCase()),
   )
 
-  // Effective share class — 'custom' means user typed their own value
-  const effectiveShareClass = shareClass === '_custom' ? shareClassCustom : shareClass
-
-  // When company changes, reset share class
+  // Fetch share classes from company_share_classes whenever company changes
   useEffect(() => {
+    setShareClassId('')
     setShareClass('')
-    setShareClassCustom('')
-  }, [companyId])
+    setShareClassOptions([])
+    if (!companyId) return
+
+    setLoadingClasses(true)
+    supabase
+      .from('company_share_classes')
+      .select('id, name')
+      .eq('company_id', companyId)
+      .order('name')
+      .then(({ data }) => {
+        setShareClassOptions(data ?? [])
+        setLoadingClasses(false)
+      })
+  }, [companyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectCompany(c: Company) {
     setCompanyId(c.id)
@@ -89,22 +104,24 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
     setCompanyId('')
     setCompanyName('')
     setCompanySearch('')
+    setShareClassId('')
     setShareClass('')
-    setShareClassCustom('')
+    setShareClassOptions([])
     setTimeout(() => companyInputRef.current?.focus(), 0)
   }
 
   function handleContinue() {
     setError('')
-    if (!companyId)                                         { setError('Please select a company'); return }
-    if (!sharePrice || parseFloat(sharePrice) <= 0)         { setError('Please enter a valid share price'); return }
-    if (!investmentDate)                                    { setError('Please select an investment date'); return }
-    if (shareClass === '_custom' && !shareClassCustom.trim()) { setError('Please enter a share class name'); return }
+    if (!companyId)                               { setError('Please select a company'); return }
+    if (!shareClassId)                            { setError('Please select a share class'); return }
+    if (!sharePrice || parseFloat(sharePrice) <= 0) { setError('Please enter a valid share price'); return }
+    if (!investmentDate)                          { setError('Please select an investment date'); return }
 
     onContinue({
       companyId,
       companyName,
-      shareClass:     effectiveShareClass,
+      shareClassId,
+      shareClass,
       sharePrice,
       investmentDate,
       eisQualifying,
@@ -134,7 +151,6 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
           <div>
             <label style={labelSt}>Company *</label>
             {companyId ? (
-              /* Selected state */
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8,
                 padding: '7px 10px', border: '0.5px solid #d0d0c8',
@@ -152,7 +168,6 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
                 </button>
               </div>
             ) : (
-              /* Search state */
               <div style={{ position: 'relative' }}>
                 <input
                   ref={companyInputRef}
@@ -203,42 +218,38 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
             )}
           </div>
 
-          {/* Share class */}
+          {/* Share class — from company_share_classes */}
           <div>
-            <label style={labelSt}>Share class</label>
-            {shareClasses.length > 0 ? (
-              <>
-                <select
-                  value={shareClass}
-                  onChange={e => setShareClass(e.target.value)}
-                  style={inputSt}
-                  disabled={!companyId}
-                >
-                  <option value="">— Select —</option>
-                  {shareClasses.map(sc => (
-                    <option key={sc.name} value={sc.name}>{sc.name}</option>
-                  ))}
-                  <option value="_custom">Other (type below)…</option>
-                </select>
-                {shareClass === '_custom' && (
-                  <input
-                    type="text"
-                    value={shareClassCustom}
-                    onChange={e => setShareClassCustom(e.target.value)}
-                    placeholder="e.g. Preference"
-                    style={{ ...inputSt, marginTop: 6 }}
-                  />
-                )}
-              </>
+            <label style={labelSt}>Share class *</label>
+            {!companyId ? (
+              <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa', cursor: 'not-allowed' }}>
+                Select a company first
+              </div>
+            ) : loadingClasses ? (
+              <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa' }}>
+                Loading…
+              </div>
+            ) : shareClassOptions.length === 0 ? (
+              <div style={{ padding: '7px 10px', border: '0.5px solid #f0c674', borderRadius: 5, background: '#fffbf0', fontSize: 12, color: '#78500a' }}>
+                No share classes found. Add share classes in the{' '}
+                <strong>Share classes</strong> tab on the company page first.
+              </div>
             ) : (
-              <input
-                type="text"
-                value={shareClass}
-                onChange={e => setShareClass(e.target.value)}
-                placeholder={companyId ? 'e.g. Ordinary, Preference…' : 'Select a company first'}
-                style={{ ...inputSt, background: companyId ? '#fff' : '#f9f9f7' }}
-                disabled={!companyId}
-              />
+              <select
+                value={shareClassId}
+                onChange={e => {
+                  const id     = e.target.value
+                  const option = shareClassOptions.find(sc => sc.id === id)
+                  setShareClassId(id)
+                  setShareClass(option?.name ?? '')
+                }}
+                style={inputSt}
+              >
+                <option value="">— Select —</option>
+                {shareClassOptions.map(sc => (
+                  <option key={sc.id} value={sc.id}>{sc.name}</option>
+                ))}
+              </select>
             )}
           </div>
         </div>

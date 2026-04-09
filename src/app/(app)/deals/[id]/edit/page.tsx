@@ -10,7 +10,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
 
   const { data: deal } = await supabase
     .from('deals')
-    .select('id, deal_type, status, company_id, share_price, share_class, investment_date, eis_qualifying, completion_checklist, notes, companies(id, name)')
+    .select('id, deal_type, status, company_id, share_price, share_class, share_class_id, investment_date, eis_qualifying, completion_checklist, notes, companies(id, name)')
     .eq('id', id)
     .maybeSingle()
 
@@ -49,9 +49,10 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
 
   if (isBuyDeal) {
     const setupData: SetupData = {
-      companyId:      deal.company_id   ?? '',
+      companyId:      deal.company_id    ?? '',
       companyName,
-      shareClass:     deal.share_class  ?? '',
+      shareClassId:   deal.share_class_id ?? '',
+      shareClass:     deal.share_class   ?? '',
       sharePrice:     String(deal.share_price ?? ''),
       investmentDate: deal.investment_date ?? '',
       eisQualifying:  (deal.eis_qualifying as 'yes' | 'no' | 'tbc') ?? 'tbc',

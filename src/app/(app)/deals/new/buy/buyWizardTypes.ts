@@ -6,7 +6,8 @@ export type EisStatus   = 'yes' | 'no' | 'tbc'
 export interface SetupData {
   companyId:      string
   companyName:    string
-  shareClass:     string
+  shareClassId:   string    // UUID from company_share_classes
+  shareClass:     string    // display name cached from company_share_classes.name
   sharePrice:     string    // kept as string for input binding; parsed on save
   investmentDate: string    // YYYY-MM-DD
   eisQualifying:  EisStatus
