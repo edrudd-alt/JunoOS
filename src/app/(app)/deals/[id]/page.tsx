@@ -9,7 +9,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   // Fetch deal without joins
   const { data: rawDeal, error: dealError } = await supabase
     .from('deals')
-    .select('id, deal_type, status, created_at, investment_amount, share_price, share_class, completion_checklist, company_id')
+    .select('id, deal_type, status, created_at, investment_amount, share_price, share_class, share_class_id, investment_date, eis_qualifying, completion_checklist, company_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -38,7 +38,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
     supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
     supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
-    supabase.from('clients').select('id, full_name, email').order('full_name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type').order('full_name'),
   ])
 
   // Build a map from allClientsData for all name lookups

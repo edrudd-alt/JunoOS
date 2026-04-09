@@ -25,9 +25,22 @@ interface Deal {
   investment_amount: number | null
   share_price: number | null
   share_class: string | null
+  share_class_id: string | null
+  investment_date: string | null
+  eis_qualifying: string | null
   completion_checklist: CompletionChecklist | null
   companies: { id: string; name: string } | null
   deal_investors: DealInvestor[]
+}
+
+export interface DealInfo {
+  id:             string
+  companyId:      string
+  shareClassId:   string | null
+  shareClass:     string | null
+  sharePrice:     number | null
+  investmentDate: string | null
+  eisQualifying:  string | null
 }
 
 interface Document {
@@ -111,7 +124,7 @@ export default function DealDetail({
   const documents  = documentsRaw as unknown as Document[]
   const invoices   = invoicesRaw  as unknown as Invoice[]
   const bookbuild  = bookbuildRaw as unknown as Bookbuild | null
-  const allClients = allClientsRaw as unknown as { id: string; full_name: string; email: string | null }[]
+  const allClients = allClientsRaw as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null }[]
 
   const router   = useRouter()
   const supabase = createClient()
@@ -517,6 +530,16 @@ export default function DealDetail({
               companyId={deal.companies?.id ?? ''}
               bookbuild={bookbuild}
               allClients={allClients}
+              dealInfo={{
+                id:             deal.id,
+                companyId:      deal.companies?.id ?? '',
+                shareClassId:   deal.share_class_id ?? null,
+                shareClass:     deal.share_class ?? null,
+                sharePrice:     deal.share_price ?? null,
+                investmentDate: deal.investment_date ?? null,
+                eisQualifying:  deal.eis_qualifying ?? null,
+              }}
+              completionChecklist={deal.completion_checklist}
             />
           )}
 

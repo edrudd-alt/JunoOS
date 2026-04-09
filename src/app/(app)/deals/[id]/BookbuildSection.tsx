@@ -5,13 +5,16 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { AddBookbuildEntryModal } from './AddBookbuildEntryModal'
+import type { DealInfo } from './DealDetail'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Client {
-  id:         string
-  full_name:  string
-  email:      string | null
+  id:               string
+  full_name:        string
+  email:            string | null
+  default_fee_rate: number | null
+  fund_type:        string | null
 }
 
 export interface BookbuildEntry {
@@ -37,10 +40,12 @@ export interface Bookbuild {
 }
 
 interface Props {
-  dealId:     string
-  companyId:  string
-  bookbuild:  Bookbuild | null
-  allClients: Client[]
+  dealId:              string
+  companyId:           string
+  bookbuild:           Bookbuild | null
+  allClients:          Client[]
+  dealInfo:            DealInfo
+  completionChecklist: Record<string, unknown> | null
 }
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -67,7 +72,7 @@ const tdSt: React.CSSProperties = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BookbuildSection({ dealId, companyId, bookbuild, allClients }: Props) {
+export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dealInfo, completionChecklist }: Props) {
   const router   = useRouter()
   const supabase = createClient()
 
@@ -301,6 +306,8 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients }: P
           companyId={companyId}
           clients={allClients}
           existingClientIds={bookbuild.entries.map(e => e.client_id)}
+          dealInfo={dealInfo}
+          completionChecklist={completionChecklist}
           entry={modalEntry === 'new' ? undefined : modalEntry}
           onClose={() => setModalEntry(null)}
           onSaved={() => { setModalEntry(null); router.refresh() }}

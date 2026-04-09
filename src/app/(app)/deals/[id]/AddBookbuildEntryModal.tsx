@@ -3,17 +3,20 @@
 import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, BookbuildEntry } from './BookbuildSection'
+import type { DealInfo } from './DealDetail'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  bookbuildId:      string
-  companyId:        string
-  clients:          Client[]
-  existingClientIds: string[]   // client_ids already in the bookbuild (add mode duplicate check)
-  entry?:           BookbuildEntry    // undefined = add mode
-  onClose:          () => void
-  onSaved:          () => void
+  bookbuildId:         string
+  companyId:           string
+  clients:             Client[]
+  existingClientIds:   string[]
+  dealInfo:            DealInfo
+  completionChecklist: Record<string, unknown> | null
+  entry?:              BookbuildEntry
+  onClose:             () => void
+  onSaved:             () => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -27,9 +30,10 @@ const STATUS_OPTIONS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existingClientIds, entry, onClose, onSaved }: Props) {
-  const isEditMode = !!entry
-  const supabase   = createClient()
+export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existingClientIds, dealInfo, completionChecklist, entry, onClose, onSaved }: Props) {
+  const isEditMode     = !!entry
+  const previousStatus = entry?.status ?? 'interested'   // status at modal open — for direction detection
+  const supabase       = createClient()
 
   // Investor (locked in edit mode)
   const [clientId,       setClientId]       = useState(entry?.client_id ?? '')
@@ -53,8 +57,10 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
   )
   const [status,  setStatus]  = useState(entry?.status ?? 'interested')
   const [notes,   setNotes]   = useState(entry?.notes ?? '')
-  const [saving,  setSaving]  = useState(false)
-  const [error,   setError]   = useState('')
+  const [saving,           setSaving]           = useState(false)
+  const [error,            setError]            = useState('')
+  const [unconfirmWarning, setUnconfirmWarning] = useState(false)
+  const [pendingSave,      setPendingSave]      = useState(false)
 
   // In edit mode, fetch linked vehicles for the pre-selected investor on mount
   useEffect(() => {
@@ -64,11 +70,19 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // After user confirms the un-confirm warning, re-trigger the save
+  useEffect(() => {
+    if (pendingSave) {
+      handleSubmit({ preventDefault: () => {} } as React.FormEvent)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSave])
+
   async function fetchLinkedVehicles(investorId: string) {
     setLoadingVehicles(true)
     const { data } = await supabase
       .from('clients')
-      .select('id, full_name, email')
+      .select('id, full_name, email, default_fee_rate, fund_type')
       .eq('lead_investor_id', investorId)
       .order('full_name')
     setLinkedVehicles(data ?? [])
@@ -108,6 +122,17 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     setError('')
     if (!clientId) { setError('Please select an investor'); return }
 
+    // Un-confirm guard: if moving away from 'confirmed', check app_signed
+    if (isEditMode && previousStatus === 'confirmed' && status !== 'confirmed') {
+      const perInvestor = (completionChecklist?.per_investor ?? {}) as Record<string, Record<string, boolean>>
+      const appSigned   = perInvestor[clientId]?.app_signed === true
+      if (appSigned && !pendingSave) {
+        setUnconfirmWarning(true)
+        return
+      }
+    }
+
+    setPendingSave(false)
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     const amount = indicativeAmount ? parseFloat(indicativeAmount) : null
@@ -142,6 +167,67 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
         })
 
       if (dbErr) { setError(dbErr.message); setSaving(false); return }
+    }
+
+    // ── Side-effects based on status transition ────────────────────────────────
+
+    const isConfirming   = status === 'confirmed' && previousStatus !== 'confirmed'
+    const isUnconfirming = previousStatus === 'confirmed' && status !== 'confirmed'
+
+    if (isConfirming) {
+      const client       = clients.find(c => c.id === clientId)
+      const feeRate      = client?.default_fee_rate ?? 0
+      const sumSubscribed = amount ?? 0
+      const feeAmount    = sumSubscribed * feeRate / 100
+      const sharePrice   = dealInfo.sharePrice ?? 0
+      const sharesPurchased = sharePrice > 0 ? sumSubscribed / sharePrice : 0
+
+      // Upsert deal_investors — safe on re-confirm
+      await supabase
+        .from('deal_investors')
+        .upsert(
+          { deal_id: dealInfo.id, client_id: clientId, poa_held: false, signing_status: 'pending' },
+          { onConflict: 'deal_id,client_id', ignoreDuplicates: true },
+        )
+
+      // Insert pending investment
+      await supabase.from('investments').insert({
+        client_id:            clientId,
+        company_id:           dealInfo.companyId,
+        deal_id:              dealInfo.id,
+        bookbuild_id:         bookbuildId,
+        share_class_id:       dealInfo.shareClassId || null,
+        share_class:          dealInfo.shareClass   || null,
+        original_share_price: sharePrice,
+        investment_date:      dealInfo.investmentDate || null,
+        sum_subscribed:       sumSubscribed,
+        shares_purchased:     sharesPurchased,
+        eis_status:           dealInfo.eisQualifying  || 'tbc',
+        transaction_type:     'buy',
+        transaction_category: 'equity',
+        status:               'pending',
+        fund_type:            client?.fund_type ?? 'syndicate',
+        fee_rate:             feeRate,
+        fee_amount:           feeAmount,
+        holding_location:     'direct',
+      })
+    }
+
+    if (isUnconfirming) {
+      // Remove deal_investors row
+      await supabase
+        .from('deal_investors')
+        .delete()
+        .eq('deal_id', dealInfo.id)
+        .eq('client_id', clientId)
+
+      // Remove pending investment
+      await supabase
+        .from('investments')
+        .delete()
+        .eq('deal_id', dealInfo.id)
+        .eq('client_id', clientId)
+        .eq('status', 'pending')
     }
 
     onSaved()
@@ -375,6 +461,40 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           </div>
         </form>
       </div>
+
+      {/* Un-confirm warning dialog */}
+      {unconfirmWarning && (
+        <div style={{
+          position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, borderRadius: 8,
+        }}>
+          <div className="card" style={{ width: 360, padding: '24px 28px' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f2744', marginBottom: 10 }}>
+              Application form already signed
+            </div>
+            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.5, marginBottom: 20 }}>
+              An application form has already been signed for this investor. To change their status, a new application form will be required.
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setUnconfirmWarning(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: '#a32d2d', borderColor: '#a32d2d' }}
+                onClick={() => { setUnconfirmWarning(false); setPendingSave(true) }}
+              >
+                Proceed anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
