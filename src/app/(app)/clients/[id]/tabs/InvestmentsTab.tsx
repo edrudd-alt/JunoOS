@@ -66,13 +66,6 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
   const [eisFilter, setEisFilter] = useState('all')
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set())
   const [showExitHistory, setShowExitHistory] = useState(false)
-  const [docsToast, setDocsToast] = useState(false)
-
-  function showDocToast() {
-    setDocsToast(true)
-    setTimeout(() => setDocsToast(false), 2500)
-  }
-
   const inv = investments as unknown as Investment[]
   const vals = valuations as unknown as Valuation[]
 
@@ -335,12 +328,13 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
                         <td style={{ padding: '8px 12px', fontSize: 11 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <span>{tx.share_class}</span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); showDocToast() }}
-                              style={{ fontSize: 10, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                            <Link
+                              href={`/investments/${tx.id}`}
+                              onClick={e => e.stopPropagation()}
+                              style={{ fontSize: 10, color: '#185fa5', textDecoration: 'underline', whiteSpace: 'nowrap' }}
                             >
-                              Docs →
-                            </button>
+                              View →
+                            </Link>
                           </div>
                         </td>
                       </tr>
@@ -352,17 +346,6 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
           </tbody>
         </table>
       </div>
-
-      {docsToast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 500,
-          padding: '10px 20px', borderRadius: 6, zIndex: 2000,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)', whiteSpace: 'nowrap',
-        }}>
-          Documents coming soon
-        </div>
-      )}
 
       {/* Exit history toggle */}
       {sellRows.length > 0 && (
