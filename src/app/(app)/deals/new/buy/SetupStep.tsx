@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { BuyDealType, EisStatus, SetupData } from './buyWizardTypes'
 
@@ -19,8 +20,7 @@ interface ShareClassOption {
 interface Props {
   dealType:     BuyDealType
   companies:    Company[]
-  initialData?: SetupData    // pre-fill when navigating back from step 2
-  onContinue:   (data: SetupData) => void
+  initialData?: SetupData
   onBack:       () => void
 }
 
@@ -43,9 +43,10 @@ const errSt: React.CSSProperties = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function SetupStep({ dealType, companies, initialData, onContinue, onBack }: Props) {
+export function SetupStep({ dealType, companies, initialData, onBack }: Props) {
   const isFollowOn = dealType === 'follow_on'
   const supabase   = createClient()
+  const router     = useRouter()
 
   // Company search/select
   const [companyId,       setCompanyId]       = useState(initialData?.companyId   ?? '')
@@ -68,7 +69,8 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
   const [eisQualifying, setEisQualifying] = useState<EisStatus>(
     initialData?.eisQualifying ?? 'tbc',
   )
-  const [error, setError] = useState('')
+  const [error,  setError]  = useState('')
+  const [saving, setSaving] = useState(false)
 
   const filteredCompanies = companies.filter(c =>
     c.name.toLowerCase().includes(companySearch.toLowerCase()),
@@ -110,22 +112,47 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
     setTimeout(() => companyInputRef.current?.focus(), 0)
   }
 
-  function handleContinue() {
+  async function handleSave() {
     setError('')
-    if (!companyId)                               { setError('Please select a company'); return }
-    if (!shareClassId)                            { setError('Please select a share class'); return }
+    if (!companyId)                                { setError('Please select a company'); return }
+    if (!shareClassId)                             { setError('Please select a share class'); return }
     if (!sharePrice || parseFloat(sharePrice) <= 0) { setError('Please enter a valid share price'); return }
-    if (!investmentDate)                          { setError('Please select an investment date'); return }
+    if (!investmentDate)                           { setError('Please select an investment date'); return }
 
-    onContinue({
-      companyId,
-      companyName,
-      shareClassId,
-      shareClass,
-      sharePrice,
-      investmentDate,
-      eisQualifying,
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const { data: deal, error: dealErr } = await supabase
+      .from('deals')
+      .insert({
+        deal_type:                 dealType,
+        company_id:                companyId,
+        share_class_id:            shareClassId,
+        share_class:               shareClass,
+        share_price:               parseFloat(sharePrice),
+        investment_date:           investmentDate,
+        eis_qualifying:            eisQualifying,
+        status:                    'draft',
+        price_confirmed_at_setup:  false,
+        created_by:                user?.id ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (dealErr || !deal) {
+      setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
+      setSaving(false)
+      return
+    }
+
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId,
+      update_type: 'deal',
+      description: `Deal created: ${isFollowOn ? 'Follow-on investment' : 'New investment'} — ${companyName}`,
+      created_by:  user?.id ?? null,
     })
+
+    router.push(`/deals/${deal.id}`)
   }
 
   return (
@@ -307,9 +334,9 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
         {error && <p style={errSt}>{error}</p>}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 20, paddingTop: 16, borderTop: '0.5px solid #f0f0ec' }}>
-          <button onClick={onBack} className="btn btn-secondary">← Back</button>
-          <button onClick={handleContinue} className="btn btn-primary">
-            Continue → Investors
+          <button onClick={onBack} className="btn btn-secondary" disabled={saving}>← Back</button>
+          <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
+            {saving ? 'Creating deal…' : 'Create deal'}
           </button>
         </div>
       </div>

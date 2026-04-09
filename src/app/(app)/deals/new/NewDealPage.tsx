@@ -91,8 +91,6 @@ export default function NewDealPage({ companies, clients, investments }: Props) 
       <BuyDealWizard
         dealType={selectedType}
         companies={companies}
-        clients={clients}
-        investments={investments}
         onBack={() => setSelectedType(null)}
       />
     )
