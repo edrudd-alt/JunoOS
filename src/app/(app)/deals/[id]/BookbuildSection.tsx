@@ -71,8 +71,21 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients }: P
   const router   = useRouter()
   const supabase = createClient()
 
-  const [starting,   setStarting]   = useState(false)
-  const [modalEntry, setModalEntry] = useState<BookbuildEntry | 'new' | null>(null)
+  const [starting,       setStarting]       = useState(false)
+  const [modalEntry,     setModalEntry]     = useState<BookbuildEntry | 'new' | null>(null)
+  const [editingTarget,  setEditingTarget]  = useState(false)
+  const [targetInput,    setTargetInput]    = useState(bookbuild?.target_raise != null ? String(bookbuild.target_raise) : '')
+  const [savingTarget,   setSavingTarget]   = useState(false)
+
+  async function saveTarget() {
+    if (!bookbuild) return
+    setSavingTarget(true)
+    const parsed = targetInput.trim() ? parseFloat(targetInput) : null
+    await supabase.from('bookbuilds').update({ target_raise: parsed }).eq('id', bookbuild.id)
+    setSavingTarget(false)
+    setEditingTarget(false)
+    router.refresh()
+  }
 
   async function startBookbuild() {
     setStarting(true)
@@ -166,11 +179,56 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients }: P
           value={totalAmount > 0 ? formatCurrency(totalAmount) : '—'}
           sub={pctIncl != null ? `${pctIncl}% of target` : undefined}
         />
-        <SummaryCell
-          label="Target raise"
-          value={bookbuild.target_raise ? formatCurrency(bookbuild.target_raise) : '—'}
-          sub={pctConfirmed != null ? `${pctConfirmed}% confirmed` : undefined}
-        />
+        {/* Target raise — inline editable */}
+        <div style={{ padding: '10px 16px' }}>
+          <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 2 }}>
+            Target raise
+          </div>
+          {editingTarget ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 13, color: '#888' }}>£</span>
+              <input
+                type="number"
+                min="0"
+                step="1000"
+                autoFocus
+                value={targetInput}
+                onChange={e => setTargetInput(e.target.value)}
+                onBlur={saveTarget}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); saveTarget() }
+                  if (e.key === 'Escape') { setEditingTarget(false); setTargetInput(bookbuild.target_raise != null ? String(bookbuild.target_raise) : '') }
+                }}
+                disabled={savingTarget}
+                style={{
+                  width: 110, padding: '3px 6px', fontSize: 13, fontWeight: 600,
+                  border: '0.5px solid #b0c4de', borderRadius: 4,
+                  outline: 'none', fontFamily: 'inherit', color: '#0f2744',
+                }}
+              />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span
+                style={{ fontSize: 14, fontWeight: 600, color: bookbuild.target_raise ? '#0f2744' : '#aaa', cursor: 'pointer' }}
+                onClick={() => setEditingTarget(true)}
+                title="Click to edit"
+              >
+                {bookbuild.target_raise ? formatCurrency(bookbuild.target_raise) : 'Set target'}
+              </span>
+              <button
+                onClick={() => setEditingTarget(true)}
+                title="Edit target raise"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', padding: 0, lineHeight: 1, fontSize: 12 }}
+              >
+                ✎
+              </button>
+            </div>
+          )}
+          {pctConfirmed != null && !editingTarget && (
+            <div style={{ fontSize: 10, color: '#aaa', marginTop: 1 }}>{pctConfirmed}% confirmed</div>
+          )}
+        </div>
       </div>
 
       {/* Investor table */}

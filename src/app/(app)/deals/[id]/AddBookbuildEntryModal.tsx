@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client, BookbuildEntry } from './BookbuildSection'
 
@@ -42,6 +42,8 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
   const [vehicleName,     setVehicleName]      = useState(entry?.investing_vehicle_name ?? '')
   const [vehicleSearch,   setVehicleSearch]    = useState('')
   const [showVehicleDrop, setShowVehicleDrop]  = useState(false)
+  const [linkedVehicles,  setLinkedVehicles]   = useState<Client[]>([])
+  const [loadingVehicles, setLoadingVehicles]  = useState(false)
 
   // Other fields
   const [indicativeAmount, setIndicativeAmount] = useState(
@@ -52,10 +54,29 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
 
+  // In edit mode, fetch linked vehicles for the pre-selected investor on mount
+  useEffect(() => {
+    if (isEditMode && entry?.client_id) {
+      fetchLinkedVehicles(entry.client_id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function fetchLinkedVehicles(investorId: string) {
+    setLoadingVehicles(true)
+    const { data } = await supabase
+      .from('clients')
+      .select('id, full_name, email')
+      .eq('lead_investor_id', investorId)
+      .order('full_name')
+    setLinkedVehicles(data ?? [])
+    setLoadingVehicles(false)
+  }
+
   const filteredClients  = clients.filter(c =>
     c.full_name.toLowerCase().includes(clientSearch.toLowerCase()),
   )
-  const filteredVehicles = clients.filter(c =>
+  const filteredVehicles = linkedVehicles.filter(c =>
     c.full_name.toLowerCase().includes(vehicleSearch.toLowerCase()),
   )
 
@@ -64,6 +85,11 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
     setClientName(c.full_name)
     setClientSearch('')
     setShowClientDrop(false)
+    // Reset vehicle and fetch linked entities for this investor
+    setVehicleId('')
+    setVehicleName('')
+    setVehicleSearch('')
+    fetchLinkedVehicles(c.id)
   }
 
   function clearClient() {
@@ -199,73 +225,78 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
             )}
           </div>
 
-          {/* Investing vehicle */}
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>
-              Investing vehicle{' '}
-              <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
-            </label>
-            {vehicleId ? (
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '7px 10px', border: '0.5px solid #d0d0c8',
-                borderRadius: 5, background: '#f9f9f7',
-              }}>
-                <span style={{ flex: 1, fontSize: 13, color: '#0f2744', fontWeight: 500 }}>{vehicleName}</span>
-                <button
-                  type="button"
-                  onClick={() => { setVehicleId(''); setVehicleName(''); setVehicleSearch('') }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 16, padding: 0, lineHeight: 1 }}
-                >
-                  ×
-                </button>
-              </div>
-            ) : (
-              <div style={{ position: 'relative' }}>
-                <input
-                  type="text"
-                  placeholder="Search clients…"
-                  value={vehicleSearch}
-                  onChange={e => { setVehicleSearch(e.target.value); setShowVehicleDrop(true) }}
-                  onFocus={() => setShowVehicleDrop(true)}
-                  onBlur={() => setTimeout(() => setShowVehicleDrop(false), 150)}
-                  style={inputSt}
-                  autoComplete="off"
-                />
-                {showVehicleDrop && vehicleSearch && filteredVehicles.length > 0 && (
-                  <div style={{
-                    position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0,
-                    background: '#fff', border: '0.5px solid #e8e7e0', borderRadius: 5,
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100,
-                    maxHeight: 200, overflowY: 'auto',
-                  }}>
-                    {filteredVehicles.slice(0, 20).map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onMouseDown={() => {
-                          setVehicleId(c.id)
-                          setVehicleName(c.full_name)
-                          setVehicleSearch('')
-                          setShowVehicleDrop(false)
-                        }}
-                        style={{
-                          display: 'block', width: '100%', textAlign: 'left',
-                          padding: '8px 12px', fontSize: 13, background: 'none',
-                          border: 'none', borderBottom: '0.5px solid #f5f5f2',
-                          cursor: 'pointer', color: '#333', fontFamily: 'inherit',
-                        }}
-                        onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
-                        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-                      >
-                        {c.full_name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          {/* Investing vehicle — only shown when the selected investor has linked entities */}
+          {loadingVehicles && (
+            <div style={{ marginBottom: 14, fontSize: 12, color: '#aaa' }}>Loading vehicles…</div>
+          )}
+          {!loadingVehicles && linkedVehicles.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <label style={labelSt}>
+                Investing vehicle{' '}
+                <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+              </label>
+              {vehicleId ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 10px', border: '0.5px solid #d0d0c8',
+                  borderRadius: 5, background: '#f9f9f7',
+                }}>
+                  <span style={{ flex: 1, fontSize: 13, color: '#0f2744', fontWeight: 500 }}>{vehicleName}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setVehicleId(''); setVehicleName(''); setVehicleSearch('') }}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 16, padding: 0, lineHeight: 1 }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ) : (
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type="text"
+                    placeholder="Search vehicles…"
+                    value={vehicleSearch}
+                    onChange={e => { setVehicleSearch(e.target.value); setShowVehicleDrop(true) }}
+                    onFocus={() => setShowVehicleDrop(true)}
+                    onBlur={() => setTimeout(() => setShowVehicleDrop(false), 150)}
+                    style={inputSt}
+                    autoComplete="off"
+                  />
+                  {showVehicleDrop && filteredVehicles.length > 0 && (
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0,
+                      background: '#fff', border: '0.5px solid #e8e7e0', borderRadius: 5,
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100,
+                      maxHeight: 200, overflowY: 'auto',
+                    }}>
+                      {filteredVehicles.slice(0, 20).map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setVehicleId(c.id)
+                            setVehicleName(c.full_name)
+                            setVehicleSearch('')
+                            setShowVehicleDrop(false)
+                          }}
+                          style={{
+                            display: 'block', width: '100%', textAlign: 'left',
+                            padding: '8px 12px', fontSize: 13, background: 'none',
+                            border: 'none', borderBottom: '0.5px solid #f5f5f2',
+                            cursor: 'pointer', color: '#333', fontFamily: 'inherit',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                        >
+                          {c.full_name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Amount + Status */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>

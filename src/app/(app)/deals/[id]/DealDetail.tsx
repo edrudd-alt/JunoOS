@@ -69,11 +69,10 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
 }
 
 const BUY_ITEMS = [
-  { key: 'app_form_received',   label: 'App form received' },
-  { key: 'agreement_signed',    label: 'Agreement signed' },
-  { key: 'cash_received',       label: 'Cash received' },
-  { key: 'statement_sent',      label: 'Transaction statement sent' },
-  { key: 'share_cert_received', label: 'Share certificate received' },
+  { key: 'app_sent',      label: 'Application form sent'   },
+  { key: 'app_signed',    label: 'Application form signed' },
+  { key: 'cash_received', label: 'Cash received'           },
+  { key: 'docs_signed',   label: 'Documents signed'        },
 ]
 
 const EIS_ITEMS = [
@@ -444,7 +443,7 @@ export default function DealDetail({
                 className="btn btn-secondary"
                 style={{ fontSize: 13 }}
               >
-                Edit investors
+                Edit setup
               </Link>
             )}
             {/* Buy deals: fallback bulk button — only after first per-investor completion */}
