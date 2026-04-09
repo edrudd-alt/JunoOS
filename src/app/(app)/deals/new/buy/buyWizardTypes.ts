@@ -30,11 +30,12 @@ export interface InvestorRow {
 }
 
 export const BUY_STEPS = [
-  { key: 'setup',     label: 'Setup'    },
+  { key: 'setup',     label: 'Setup'     },
   { key: 'investors', label: 'Investors' },
-  { key: 'review',    label: 'Review'   },
-  { key: 'send',      label: 'Send'     },
-  { key: 'track',     label: 'Track'    },
-  { key: 'complete',  label: 'Complete' },
+  { key: 'bookbuild', label: 'Bookbuild' },
+  { key: 'review',    label: 'Review'    },
+  { key: 'send',      label: 'Send'      },
+  { key: 'track',     label: 'Track'     },
+  { key: 'complete',  label: 'Complete'  },
   { key: 'post_deal', label: 'Post-deal' },
 ] as const

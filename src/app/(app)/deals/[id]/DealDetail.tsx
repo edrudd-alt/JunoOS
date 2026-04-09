@@ -114,14 +114,14 @@ export default function DealDetail({
   const isSaleDeal      = deal.deal_type === 'full_exit' || deal.deal_type === 'partial_exit'
   const isNewDealFormat = !!(deal.completion_checklist?.investor_data)
 
-  // Map deal status to step bar index (steps 0–1 are wizard-only; DealDetail starts at step 2)
+  // Map deal status to step bar index (steps 0–1 are wizard-only; step 2 = Bookbuild; DealDetail starts at step 2)
   const buyStepIndex = (() => {
     switch (deal.status) {
       case 'draft':            return 2
-      case 'sent':             return 3
-      case 'partially_signed': return 4
-      case 'fully_signed':     return 5
-      case 'complete':         return 6
+      case 'sent':             return 4
+      case 'partially_signed': return 5
+      case 'fully_signed':     return 6
+      case 'complete':         return 7
       default:                 return 2
     }
   })()
