@@ -84,10 +84,8 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
 }
 
 const BUY_ITEMS = [
-  { key: 'app_sent',      label: 'Application form sent'   },
-  { key: 'app_signed',    label: 'Application form signed' },
-  { key: 'cash_received', label: 'Cash received'           },
-  { key: 'docs_signed',   label: 'Documents signed'        },
+  { key: 'cash_received', label: 'Cash received'   },
+  { key: 'docs_signed',   label: 'Documents signed' },
 ]
 
 const EIS_ITEMS = [
@@ -213,9 +211,17 @@ export default function DealDetail({
   )
 
   // Whether a given investor has all required checklist items ticked
+  const clientToSigningStatus = new Map<string, string>(
+    investors.map(di => [
+      di.clients?.id ?? '',
+      signingStatuses[di.id] ?? di.signing_status ?? 'not_sent',
+    ])
+  )
+
   function isInvestorDone(clientId: string): boolean {
-    const checks = perInvestor[clientId] ?? {}
-    return perInvestorItems.every(i => checks[i.key])
+    const checks    = perInvestor[clientId] ?? {}
+    const appSigned = clientToSigningStatus.get(clientId) === 'signed'
+    return appSigned && perInvestorItems.every(i => checks[i.key])
   }
 
   // Whether at least one investor has been individually completed
@@ -575,6 +581,7 @@ export default function DealDetail({
               saving={saving}
               saved={saved}
               onSave={saveChecklist}
+              signingStatuses={clientToSigningStatus}
               completedInvestors={completedInvestors}
               onCompleteInvestor={completeInvestor}
               completingInvestor={completingInvestor}

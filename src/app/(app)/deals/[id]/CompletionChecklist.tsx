@@ -3,6 +3,18 @@
 import { formatCurrency } from '@/lib/utils'
 import type { DealInvestor, InvestorData } from './dealDetailTypes'
 
+const SIGNING_BADGE: Record<string, { label: string; cls: string }> = {
+  not_sent: { label: 'Not sent', cls: 'pill-grey'  },
+  sent:     { label: 'Sent',     cls: 'pill-amber' },
+  viewed:   { label: 'Viewed',   cls: 'pill-blue'  },
+  signed:   { label: 'Signed',   cls: 'pill-green' },
+}
+
+function SigningBadge({ status }: { status: string }) {
+  const cfg = SIGNING_BADGE[status] ?? SIGNING_BADGE['not_sent']
+  return <span className={`pill ${cfg.cls}`} style={{ fontSize: 10 }}>{cfg.label}</span>
+}
+
 const thSt: React.CSSProperties = {
   padding: '8px 10px', fontSize: 10, fontWeight: 500, color: '#888',
   textAlign: 'left', whiteSpace: 'nowrap', borderBottom: '0.5px solid #e8e7e0',
@@ -25,8 +37,7 @@ interface Props {
   saved:                boolean
   onSave:               () => void
   // Per-investor completion (buy deals)
-  showEisItems?:        boolean
-  eisItems?:            { key: string; label: string }[]
+  signingStatuses:      Map<string, string>       // clientId → signing_status
   completedInvestors:   Record<string, string>   // clientId → completion_date string
   onCompleteInvestor:   (clientId: string) => void
   completingInvestor:   string | null
@@ -36,14 +47,14 @@ interface Props {
 export function CompletionChecklist({
   investors, isBuyDeal, isSaleDeal, isNewDealFormat, investorData,
   perInvestor, perInvestorItems, onSetInvestorItem, dealStatus, saving, saved, onSave,
-  showEisItems = false, eisItems = [], completedInvestors, onCompleteInvestor, completingInvestor, isInvestorDone,
+  signingStatuses, completedInvestors, onCompleteInvestor, completingInvestor, isInvestorDone,
 }: Props) {
   return (
     <div className="card" style={{ padding: 0 }}>
       <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ fontSize: 13, fontWeight: 600 }}>Completion checklist</div>
         <div style={{ fontSize: 11, color: '#888' }}>
-          {perInvestorItems.map(i => i.label).join(' · ')}
+          Application form · Cash received · Documents signed
         </div>
       </div>
 
@@ -63,16 +74,11 @@ export function CompletionChecklist({
                 <th style={thSt}>P&amp;L</th>
                 <th style={thSt}>Net proceeds</th>
               </>}
-              {perInvestorItems.map(item => (
-                <th key={item.key} style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>
-                  {item.label}
-                </th>
-              ))}
-              {showEisItems && eisItems.map(item => (
-                <th key={item.key} style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap', color: '#5a7a9a' }}>
-                  {item.label}
-                </th>
-              ))}
+              {isBuyDeal && (
+                <th style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>Application form</th>
+              )}
+              <th style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>Cash received</th>
+              <th style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>Documents signed</th>
               {isBuyDeal && (
                 <th style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>Complete</th>
               )}
@@ -83,7 +89,6 @@ export function CompletionChecklist({
               const clientId    = di.clients?.id ?? ''
               const iData       = clientId ? investorData[clientId] : null
               const rowChecks   = perInvestor[clientId] ?? {}
-              const isEis       = ['yes', 'tbc'].includes(iData?.eis ?? '')
               const isCompleted = !!completedInvestors[clientId]
               const isDone      = isBuyDeal ? isInvestorDone(clientId) : perInvestorItems.every(i => rowChecks[i.key])
               const isDisabled  = dealStatus === 'complete' || isCompleted
@@ -133,35 +138,34 @@ export function CompletionChecklist({
                     </td>
                   </>}
 
-                  {/* Per-investor checklist checkboxes */}
-                  {perInvestorItems.map(item => (
-                    <td key={item.key} style={{ ...tdSt, textAlign: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={rowChecks[item.key] ?? false}
-                        onChange={e => onSetInvestorItem(clientId, item.key, e.target.checked)}
-                        disabled={isDisabled}
-                        style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
-                      />
+                  {/* Application form — read-only signing status badge */}
+                  {isBuyDeal && (
+                    <td style={{ ...tdSt, textAlign: 'center' }}>
+                      <SigningBadge status={signingStatuses.get(clientId) ?? 'not_sent'} />
                     </td>
-                  ))}
+                  )}
 
-                  {/* EIS checklist checkboxes — only for EIS-qualifying investors */}
-                  {showEisItems && eisItems.map(item => (
-                    <td key={item.key} style={{ ...tdSt, textAlign: 'center' }}>
-                      {isEis ? (
-                        <input
-                          type="checkbox"
-                          checked={rowChecks[item.key] ?? false}
-                          onChange={e => onSetInvestorItem(clientId, item.key, e.target.checked)}
-                          disabled={isDisabled}
-                          style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
-                        />
-                      ) : (
-                        <span style={{ color: '#ddd', fontSize: 11 }}>—</span>
-                      )}
-                    </td>
-                  ))}
+                  {/* Cash received — checkbox */}
+                  <td style={{ ...tdSt, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={rowChecks['cash_received'] ?? false}
+                      onChange={e => onSetInvestorItem(clientId, 'cash_received', e.target.checked)}
+                      disabled={isDisabled}
+                      style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
+                    />
+                  </td>
+
+                  {/* Documents signed — checkbox */}
+                  <td style={{ ...tdSt, textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={rowChecks['docs_signed'] ?? false}
+                      onChange={e => onSetInvestorItem(clientId, 'docs_signed', e.target.checked)}
+                      disabled={isDisabled}
+                      style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
+                    />
+                  </td>
 
                   {/* Per-investor Complete button (buy deals only) */}
                   {isBuyDeal && (
