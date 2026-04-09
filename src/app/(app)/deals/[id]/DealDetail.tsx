@@ -12,6 +12,8 @@ import { CompletionChecklist as CompletionChecklistComponent } from './Completio
 import { GenericChecklist } from './GenericChecklist'
 import { BookbuildSection } from './BookbuildSection'
 import type { Bookbuild }   from './BookbuildSection'
+import { PostDealTab }      from './PostDealTab'
+import type { DealInvestmentRow } from './PostDealTab'
 import { StepBar }     from '../new/buy/StepBar'
 import { SellStepBar } from '../new/sell/SellStepBar'
 
@@ -113,18 +115,21 @@ export default function DealDetail({
   invoices: invoicesRaw,
   bookbuild: bookbuildRaw,
   allClients: allClientsRaw,
+  dealInvestments: dealInvestmentsRaw,
 }: {
-  deal:       Record<string, unknown>
-  documents:  Record<string, unknown>[]
-  invoices:   Record<string, unknown>[]
-  bookbuild:  Record<string, unknown> | null
-  allClients: Record<string, unknown>[]
+  deal:            Record<string, unknown>
+  documents:       Record<string, unknown>[]
+  invoices:        Record<string, unknown>[]
+  bookbuild:       Record<string, unknown> | null
+  allClients:      Record<string, unknown>[]
+  dealInvestments: Record<string, unknown>[]
 }) {
-  const deal       = dealRaw      as unknown as Deal
-  const documents  = documentsRaw as unknown as Document[]
-  const invoices   = invoicesRaw  as unknown as Invoice[]
-  const bookbuild  = bookbuildRaw as unknown as Bookbuild | null
-  const allClients = allClientsRaw as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null }[]
+  const deal            = dealRaw           as unknown as Deal
+  const documents       = documentsRaw      as unknown as Document[]
+  const invoices        = invoicesRaw       as unknown as Invoice[]
+  const bookbuild       = bookbuildRaw      as unknown as Bookbuild | null
+  const allClients      = allClientsRaw     as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null }[]
+  const dealInvestments = dealInvestmentsRaw as unknown as DealInvestmentRow[]
 
   const router   = useRouter()
   const supabase = createClient()
@@ -184,7 +189,7 @@ export default function DealDetail({
   const [completing,         setCompleting]         = useState(false)
   const [confirmComplete,    setConfirmComplete]    = useState(false)
   const [completingInvestor, setCompletingInvestor] = useState<string | null>(null)
-  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices'>('overview')
+  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices' | 'post_deal'>('overview')
 
   const [completedInvestors, setCompletedInvestors] = useState<Record<string, string>>(
     () => (deal.completion_checklist?.completed_investors as Record<string, string>) ?? {},
@@ -502,7 +507,7 @@ export default function DealDetail({
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e4', marginBottom: 20 }}>
-        {(['overview', 'documents', 'invoices'] as const).map(tab => (
+        {(['overview', 'documents', 'invoices', ...(isBuyDeal || isSaleDeal ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -514,7 +519,7 @@ export default function DealDetail({
               textTransform: 'capitalize',
             }}
           >
-            {tab}
+            {tab === 'post_deal' ? 'Post-deal' : tab.charAt(0).toUpperCase() + tab.slice(1)}
             {tab === 'documents' && documents.length > 0 ? ` (${documents.length})` : ''}
             {tab === 'invoices'  && invoices.length  > 0 ? ` (${invoices.length})`  : ''}
           </button>
@@ -655,6 +660,18 @@ export default function DealDetail({
             </table>
           )}
         </div>
+      )}
+
+      {/* Post-deal tab */}
+      {activeTab === 'post_deal' && (
+        <PostDealTab
+          investors={investors}
+          investorData={investorData}
+          perInvestor={perInvestor}
+          completedInvestors={completedInvestors}
+          dealInvestments={dealInvestments}
+          showEisItems={showEisItems}
+        />
       )}
 
       {/* Mark complete confirmation modal */}
