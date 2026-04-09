@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import DealDetail from './DealDetail'
@@ -144,13 +145,15 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   }
 
   return (
-    <DealDetail
-      deal={deal as Record<string, unknown>}
-      documents={(documents ?? []) as Record<string, unknown>[]}
-      invoices={mergedInvoices as Record<string, unknown>[]}
-      bookbuild={bookbuild}
-      allClients={(allClientsData ?? []) as Record<string, unknown>[]}
-      dealInvestments={(dealInvestmentsData ?? []) as Record<string, unknown>[]}
-    />
+    <Suspense>
+      <DealDetail
+        deal={deal as Record<string, unknown>}
+        documents={(documents ?? []) as Record<string, unknown>[]}
+        invoices={mergedInvoices as Record<string, unknown>[]}
+        bookbuild={bookbuild}
+        allClients={(allClientsData ?? []) as Record<string, unknown>[]}
+        dealInvestments={(dealInvestmentsData ?? []) as Record<string, unknown>[]}
+      />
+    </Suspense>
   )
 }

@@ -189,6 +189,15 @@ export default function InvestmentCockpit({
             </div>
             <span className={`pill ${status.cls}`}>{status.label}</span>
           </div>
+          {deal && (
+            <Link
+              href={`/deals/${deal.id}?tab=post_deal`}
+              className="btn btn-secondary"
+              style={{ fontSize: 12, whiteSpace: 'nowrap' }}
+            >
+              ← Back to deal
+            </Link>
+          )}
         </div>
       </div>
 

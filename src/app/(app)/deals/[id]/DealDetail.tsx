@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Breadcrumb } from '@/components/Breadcrumb'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
 import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDetailTypes'
@@ -189,7 +189,14 @@ export default function DealDetail({
   const [completing,         setCompleting]         = useState(false)
   const [confirmComplete,    setConfirmComplete]    = useState(false)
   const [completingInvestor, setCompletingInvestor] = useState<string | null>(null)
-  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices' | 'post_deal'>('overview')
+  const searchParams = useSearchParams()
+  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices' | 'post_deal'>(() => {
+    const tabParam            = searchParams.get('tab')
+    const initialCompleted    = (deal.completion_checklist?.completed_investors as Record<string, string>) ?? {}
+    const postDealAvailable   = Object.keys(initialCompleted).length > 0
+    if (tabParam === 'post_deal' && postDealAvailable) return 'post_deal'
+    return 'overview'
+  })
 
   const [completedInvestors, setCompletedInvestors] = useState<Record<string, string>>(
     () => (deal.completion_checklist?.completed_investors as Record<string, string>) ?? {},
