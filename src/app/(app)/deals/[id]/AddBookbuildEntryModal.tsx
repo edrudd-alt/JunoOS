@@ -281,7 +281,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
       }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="card" style={{ width: 440, padding: '24px 28px' }}>
+      <div className="card" style={{ width: 560, padding: '24px 28px' }}>
         <h2 style={{ fontSize: 15, fontWeight: 600, margin: '0 0 20px' }}>
           {isEditMode ? `Edit — ${entry.client_name}` : 'Add investor to bookbuild'}
         </h2>
@@ -429,7 +429,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           )}
 
           {/* Amount + Shares + Status */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={labelSt}>
                 Amount <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
