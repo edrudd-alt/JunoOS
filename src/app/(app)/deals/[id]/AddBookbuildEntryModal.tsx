@@ -59,23 +59,37 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     entry?.indicative_amount != null ? String(entry.indicative_amount) : '',
   )
   const [indicativeShares, setIndicativeShares] = useState(
-    entry?.indicative_shares != null ? String(entry.indicative_shares) : '',
+    entry?.indicative_shares != null ? String(Math.round(entry.indicative_shares)) : '',
   )
 
   function handleAmountChange(val: string) {
     setIndicativeAmount(val)
     if (hasSharePrice && val) {
-      const shares = parseFloat(val) / sharePrice
-      setIndicativeShares(isNaN(shares) ? '' : shares.toFixed(4))
+      const shares = Math.round(parseFloat(val) / sharePrice)
+      setIndicativeShares(isNaN(shares) ? '' : String(shares))
     } else {
       setIndicativeShares('')
     }
   }
 
+  function handleAmountBlur() {
+    const num = parseFloat(indicativeAmount)
+    if (!isNaN(num)) {
+      setIndicativeAmount(num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
+    }
+  }
+
+  function handleAmountFocus() {
+    // Strip formatting so the user edits the raw number
+    const stripped = indicativeAmount.replace(/,/g, '')
+    setIndicativeAmount(stripped)
+  }
+
   function handleSharesChange(val: string) {
-    setIndicativeShares(val)
-    if (hasSharePrice && val) {
-      const amount = parseFloat(val) * sharePrice
+    const rounded = val ? String(Math.round(parseFloat(val))) : ''
+    setIndicativeShares(isNaN(parseInt(rounded)) ? '' : rounded)
+    if (hasSharePrice && rounded) {
+      const amount = parseInt(rounded) * sharePrice
       setIndicativeAmount(isNaN(amount) ? '' : amount.toFixed(2))
     } else {
       setIndicativeAmount('')
@@ -440,12 +454,13 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
                   fontSize: 13, color: '#888', pointerEvents: 'none',
                 }}>£</span>
                 <input
-                  type="number"
-                  min="0"
-                  step="1000"
+                  type="text"
+                  inputMode="decimal"
                   value={indicativeAmount}
-                  onChange={e => handleAmountChange(e.target.value)}
-                  placeholder="0"
+                  onChange={e => handleAmountChange(e.target.value.replace(/,/g, ''))}
+                  onBlur={handleAmountBlur}
+                  onFocus={handleAmountFocus}
+                  placeholder="0.00"
                   style={{ ...inputSt, paddingLeft: 24 }}
                 />
               </div>
@@ -463,6 +478,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
                   onChange={e => handleSharesChange(e.target.value)}
                   placeholder="0"
                   style={inputSt}
+                  onKeyDown={e => { if (e.key === '.') e.preventDefault() }}
                 />
               ) : (
                 <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa', fontSize: 11, cursor: 'not-allowed' }}>

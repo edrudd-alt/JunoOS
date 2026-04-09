@@ -276,7 +276,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
                     </td>
                     <td style={{ ...tdSt, textAlign: 'right' }}>
                       {entry.indicative_shares != null
-                        ? entry.indicative_shares.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                        ? entry.indicative_shares.toLocaleString(undefined, { maximumFractionDigits: 0 })
                         : <span style={{ color: '#ccc' }}>—</span>}
                     </td>
                     <td style={tdSt}>
