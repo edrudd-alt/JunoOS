@@ -7,12 +7,13 @@ import type { Client, BookbuildEntry } from './BookbuildSection'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  bookbuildId: string
-  companyId:   string
-  clients:     Client[]
-  entry?:      BookbuildEntry    // undefined = add mode
-  onClose:     () => void
-  onSaved:     () => void
+  bookbuildId:      string
+  companyId:        string
+  clients:          Client[]
+  existingClientIds: string[]   // client_ids already in the bookbuild (add mode duplicate check)
+  entry?:           BookbuildEntry    // undefined = add mode
+  onClose:          () => void
+  onSaved:          () => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -26,7 +27,7 @@ const STATUS_OPTIONS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry, onClose, onSaved }: Props) {
+export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existingClientIds, entry, onClose, onSaved }: Props) {
   const isEditMode = !!entry
   const supabase   = createClient()
 
@@ -35,6 +36,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
   const [clientName,     setClientName]      = useState(entry?.client_name ?? '')
   const [clientSearch,   setClientSearch]    = useState('')
   const [showClientDrop, setShowClientDrop]  = useState(false)
+  const [dupError,       setDupError]        = useState(false)
   const clientInputRef = useRef<HTMLInputElement>(null)
 
   // Investing vehicle
@@ -85,6 +87,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
     setClientName(c.full_name)
     setClientSearch('')
     setShowClientDrop(false)
+    setDupError(existingClientIds.includes(c.id))
     // Reset vehicle and fetch linked entities for this investor
     setVehicleId('')
     setVehicleName('')
@@ -96,6 +99,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
     setClientId('')
     setClientName('')
     setClientSearch('')
+    setDupError(false)
     setTimeout(() => clientInputRef.current?.focus(), 0)
   }
 
@@ -352,6 +356,11 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
             />
           </div>
 
+          {dupError && (
+            <p style={{ fontSize: 12, color: '#a32d2d', marginBottom: 14 }}>
+              This investor is already in the bookbuild. Use the Edit button on their row to update their details.
+            </p>
+          )}
           {error && (
             <p style={{ fontSize: 12, color: '#a32d2d', marginBottom: 14 }}>{error}</p>
           )}
@@ -360,7 +369,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, entry,
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={saving || dupError}>
               {saving ? 'Saving…' : isEditMode ? 'Save changes' : 'Add investor'}
             </button>
           </div>

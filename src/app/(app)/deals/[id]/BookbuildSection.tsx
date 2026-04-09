@@ -300,6 +300,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients }: P
           bookbuildId={bookbuild.id}
           companyId={companyId}
           clients={allClients}
+          existingClientIds={bookbuild.entries.map(e => e.client_id)}
           entry={modalEntry === 'new' ? undefined : modalEntry}
           onClose={() => setModalEntry(null)}
           onSaved={() => { setModalEntry(null); router.refresh() }}
