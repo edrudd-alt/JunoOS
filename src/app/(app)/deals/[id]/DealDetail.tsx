@@ -507,7 +507,7 @@ export default function DealDetail({
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e4', marginBottom: 20 }}>
-        {(['overview', 'documents', 'invoices', ...(isBuyDeal || isSaleDeal ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
+        {(['overview', 'documents', 'invoices', ...(Object.keys(completedInvestors).length > 0 ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
