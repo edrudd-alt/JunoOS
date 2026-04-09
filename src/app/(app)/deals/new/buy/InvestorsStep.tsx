@@ -748,20 +748,17 @@ export function InvestorsStep({
       {priceConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div className="card" style={{ width: 420, padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f2744', marginBottom: 4 }}>Confirm share price</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: '#0f2744', marginBottom: 4 }}>Update share price for {setupData.companyName}?</div>
             <p style={{ fontSize: 12, color: '#555', margin: '0 0 16px' }}>
-              Entered price: <strong>£{parseFloat(setupData.sharePrice || '0').toFixed(4)}</strong>
-              {priceConfirm.latestPrice != null && (
-                <> &nbsp;·&nbsp; Latest valuation: <strong>£{priceConfirm.latestPrice.toFixed(4)}</strong></>
-              )}
+              You are completing a deal at <strong>£{parseFloat(setupData.sharePrice || '0').toFixed(4)}</strong> per share. The platform uses the latest share price to calculate portfolio valuations for all investors in this company.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', border: `0.5px solid ${priceChoice === 'kept' ? '#185fa5' : '#e8e7e0'}`, borderRadius: 6, background: priceChoice === 'kept' ? '#f0f6ff' : '#fff' }}>
                 <input type="radio" name="priceChoice" value="kept" checked={priceChoice === 'kept'} onChange={() => setPriceChoice('kept')} style={{ marginTop: 2 }} />
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600 }}>Keep entered price</div>
-                  <div style={{ fontSize: 11, color: '#888' }}>Use £{parseFloat(setupData.sharePrice || '0').toFixed(4)} as entered in deal setup</div>
+                  <div style={{ fontSize: 12, fontWeight: 600 }}>Update to £{parseFloat(setupData.sharePrice || '0').toFixed(4)} — recommended</div>
+                  <div style={{ fontSize: 11, color: '#888' }}>Sets the current share price to the deal price. All portfolio valuations will reflect this price.</div>
                 </div>
               </label>
 
@@ -769,8 +766,8 @@ export function InvestorsStep({
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '10px 12px', border: `0.5px solid ${priceChoice === 'updated' ? '#185fa5' : '#e8e7e0'}`, borderRadius: 6, background: priceChoice === 'updated' ? '#f0f6ff' : '#fff' }}>
                   <input type="radio" name="priceChoice" value="updated" checked={priceChoice === 'updated'} onChange={() => setPriceChoice('updated')} style={{ marginTop: 2 }} />
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 600 }}>Use latest valuation price</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>Update to £{priceConfirm.latestPrice.toFixed(4)} and record as new valuation</div>
+                    <div style={{ fontSize: 12, fontWeight: 600 }}>Keep current price of £{priceConfirm.latestPrice.toFixed(4)}</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>Use this if the deal price is not representative of the company&apos;s current value — for example, an unusual transaction or a small follow-on at a historic price.</div>
                   </div>
                 </label>
               )}
@@ -779,6 +776,7 @@ export function InvestorsStep({
                 <input type="radio" name="priceChoice" value="custom" checked={priceChoice === 'custom'} onChange={() => setPriceChoice('custom')} style={{ marginTop: 2 }} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 12, fontWeight: 600 }}>Enter a different price</div>
+                  <div style={{ fontSize: 11, color: '#888' }}>Use this if the correct current valuation price differs from both the deal price and the previously recorded price.</div>
                   {priceChoice === 'custom' && (
                     <div style={{ position: 'relative', marginTop: 6 }}>
                       <span style={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
