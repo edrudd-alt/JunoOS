@@ -69,9 +69,16 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
 }
 
 const BUY_ITEMS = [
-  { key: 'app_form_received', label: 'App form received' },
-  { key: 'agreement_signed',  label: 'Agreement signed' },
-  { key: 'cash_received',     label: 'Cash received' },
+  { key: 'app_form_received',   label: 'App form received' },
+  { key: 'agreement_signed',    label: 'Agreement signed' },
+  { key: 'cash_received',       label: 'Cash received' },
+  { key: 'statement_sent',      label: 'Transaction statement sent' },
+  { key: 'share_cert_received', label: 'Share certificate received' },
+]
+
+const EIS_ITEMS = [
+  { key: 'eis_cert_received', label: 'EIS certificate received' },
+  { key: 'eis_cert_sent',     label: 'EIS certificate sent to investor' },
 ]
 const SALE_ITEMS = [
   { key: 'poa_confirmed',         label: 'PoA confirmed' },
@@ -160,16 +167,39 @@ export default function DealDetail({
     return result
   })
 
-  const [saving,          setSaving]          = useState(false)
-  const [saved,           setSaved]           = useState(false)
-  const [completing,      setCompleting]      = useState(false)
-  const [confirmComplete, setConfirmComplete] = useState(false)
-  const [activeTab,       setActiveTab]       = useState<'overview' | 'documents' | 'invoices'>('overview')
+  const [saving,             setSaving]             = useState(false)
+  const [saved,              setSaved]              = useState(false)
+  const [completing,         setCompleting]         = useState(false)
+  const [confirmComplete,    setConfirmComplete]    = useState(false)
+  const [completingInvestor, setCompletingInvestor] = useState<string | null>(null)
+  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices'>('overview')
+
+  const [completedInvestors, setCompletedInvestors] = useState<Record<string, string>>(
+    () => (deal.completion_checklist?.completed_investors as Record<string, string>) ?? {},
+  )
 
   const status    = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
   const investors = deal.deal_investors ?? []
 
   const investorData = (deal.completion_checklist?.investor_data ?? {}) as Record<string, InvestorData>
+
+  // Per-investor EIS check: show EIS columns if any buy deal investor is EIS qualifying
+  const showEisItems = isBuyDeal && investors.some(di => {
+    const eis = investorData[di.clients?.id ?? '']?.eis ?? ''
+    return eis === 'yes' || eis === 'tbc'
+  })
+
+  // Whether a given investor has all required checklist items ticked
+  function isInvestorDone(clientId: string): boolean {
+    const checks = perInvestor[clientId] ?? {}
+    const baseOk = perInvestorItems.every(i => checks[i.key])
+    const isEis  = ['yes', 'tbc'].includes(investorData[clientId]?.eis ?? '')
+    const eisOk  = !showEisItems || !isEis || EIS_ITEMS.every(i => checks[i.key])
+    return baseOk && eisOk
+  }
+
+  // Whether at least one investor has been individually completed
+  const anyInvestorCompleted = investors.some(di => !!completedInvestors[di.clients?.id ?? ''])
 
   const allPerInvestorDone = useCallback(() => {
     if (perInvestorItems.length === 0) {
@@ -230,22 +260,94 @@ export default function DealDetail({
     setTimeout(() => setSaved(false), 2000)
   }
 
+  // Per-investor completion (buy deals)
+  async function completeInvestor(clientId: string) {
+    setCompletingInvestor(clientId)
+    const companyId   = deal.companies?.id
+    const today       = new Date().toISOString().split('T')[0]
+    const bookbuildId = bookbuild?.id ?? null
+
+    if (companyId) {
+      await supabase.from('investments')
+        .update({
+          status:          'active',
+          deal_id:         deal.id,
+          completion_date: today,
+          bookbuild_id:    bookbuildId,
+        })
+        .eq('client_id', clientId)
+        .eq('company_id', companyId)
+        .eq('status', 'pending')
+    }
+
+    const newCompleted = { ...completedInvestors, [clientId]: today }
+    const allDone = investors.every(di => {
+      const cid = di.clients?.id
+      return !cid || !!newCompleted[cid]
+    })
+
+    const updated = {
+      ...deal.completion_checklist,
+      per_investor:        perInvestor,
+      completed_investors: newCompleted,
+    }
+    await supabase.from('deals').update({
+      completion_checklist: updated,
+      ...(allDone ? { status: 'complete', updated_at: new Date().toISOString() } : {}),
+    }).eq('id', deal.id)
+
+    setCompletedInvestors(newCompleted)
+    setCompletingInvestor(null)
+    router.refresh()
+  }
+
+  // Bulk completion fallback — completes all remaining uncompleted investors (buy deals)
+  async function markAllComplete() {
+    setCompleting(true)
+    const companyId   = deal.companies?.id
+    const today       = new Date().toISOString().split('T')[0]
+    const bookbuildId = bookbuild?.id ?? null
+
+    const newCompleted = { ...completedInvestors }
+
+    for (const di of investors) {
+      const clientId = di.clients?.id
+      if (!clientId || newCompleted[clientId]) continue
+      if (companyId) {
+        await supabase.from('investments')
+          .update({
+            status:          'active',
+            deal_id:         deal.id,
+            completion_date: today,
+            bookbuild_id:    bookbuildId,
+          })
+          .eq('client_id', clientId)
+          .eq('company_id', companyId)
+          .eq('status', 'pending')
+      }
+      newCompleted[clientId] = today
+    }
+
+    const updated = {
+      ...deal.completion_checklist,
+      per_investor:        perInvestor,
+      completed_investors: newCompleted,
+    }
+    await supabase.from('deals').update({
+      status:               'complete',
+      completion_checklist: updated,
+      updated_at:           new Date().toISOString(),
+    }).eq('id', deal.id)
+
+    setCompleting(false)
+    router.refresh()
+  }
+
   async function markComplete() {
     setCompleting(true)
     const companyId = deal.companies?.id
 
-    if (isBuyDeal) {
-      for (const di of investors) {
-        if (di.clients?.id) {
-          let q = supabase.from('investments')
-            .update({ status: 'active' })
-            .eq('client_id', di.clients.id)
-            .eq('status', 'pending')
-          if (companyId) q = q.eq('company_id', companyId)
-          await q
-        }
-      }
-    } else if (isSaleDeal) {
+    if (isSaleDeal) {
       for (const di of investors) {
         if (!di.clients?.id || !companyId) continue
         const iData = di.clients.id ? investorData[di.clients.id] : null
@@ -345,14 +447,27 @@ export default function DealDetail({
                 Edit investors
               </Link>
             )}
-            <button
-              className="btn btn-primary"
-              onClick={() => setConfirmComplete(true)}
-              disabled={completing || !canComplete}
-              title={!canComplete ? 'Complete all checklist items first' : undefined}
-            >
-              {completing ? 'Completing…' : 'Mark complete'}
-            </button>
+            {/* Buy deals: fallback bulk button — only after first per-investor completion */}
+            {isBuyDeal && anyInvestorCompleted && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setConfirmComplete(true)}
+                disabled={completing}
+              >
+                {completing ? 'Completing…' : 'Mark all complete'}
+              </button>
+            )}
+            {/* Sell / generic deals: deal-level complete button */}
+            {!isBuyDeal && (
+              <button
+                className="btn btn-primary"
+                onClick={() => setConfirmComplete(true)}
+                disabled={completing || !canComplete}
+                title={!canComplete ? 'Complete all checklist items first' : undefined}
+              >
+                {completing ? 'Completing…' : 'Mark complete'}
+              </button>
+            )}
           </div>
         ) : (
           <span className="pill pill-green">✓ Completed</span>
@@ -429,8 +544,13 @@ export default function DealDetail({
               dealStatus={deal.status}
               saving={saving}
               saved={saved}
-              canComplete={canComplete}
               onSave={saveChecklist}
+              showEisItems={showEisItems}
+              eisItems={EIS_ITEMS}
+              completedInvestors={completedInvestors}
+              onCompleteInvestor={completeInvestor}
+              completingInvestor={completingInvestor}
+              isInvestorDone={isInvestorDone}
             />
           )}
 
@@ -523,11 +643,11 @@ export default function DealDetail({
         }}>
           <div className="card" style={{ width: 400, padding: '28px 24px' }}>
             <h2 style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', margin: '0 0 8px' }}>
-              Mark this deal as complete?
+              {isBuyDeal ? 'Mark all remaining investors complete?' : 'Mark this deal as complete?'}
             </h2>
             <p style={{ fontSize: 12, color: '#555', margin: '0 0 6px' }}>
               {isBuyDeal
-                ? 'This will activate all pending investments for the investors in this deal.'
+                ? 'This will activate pending investments for all investors not yet individually completed.'
                 : isSaleDeal
                 ? 'This will process the exit and update all investor holdings accordingly.'
                 : 'This will mark the deal as complete.'}
@@ -544,12 +664,12 @@ export default function DealDetail({
                 Cancel
               </button>
               <button
-                onClick={() => { setConfirmComplete(false); markComplete() }}
+                onClick={() => { setConfirmComplete(false); isBuyDeal ? markAllComplete() : markComplete() }}
                 className="btn btn-primary"
                 style={{ fontSize: 12 }}
                 disabled={completing}
               >
-                Mark complete
+                {isBuyDeal ? 'Mark all complete' : 'Mark complete'}
               </button>
             </div>
           </div>

@@ -12,24 +12,31 @@ const tdSt: React.CSSProperties = {
 }
 
 interface Props {
-  investors: DealInvestor[]
-  isBuyDeal: boolean
-  isSaleDeal: boolean
-  isNewDealFormat: boolean
-  investorData: Record<string, InvestorData>
-  perInvestor: Record<string, Record<string, boolean>>
-  perInvestorItems: { key: string; label: string }[]
-  onSetInvestorItem: (clientId: string, itemKey: string, value: boolean) => void
-  dealStatus: string
-  saving: boolean
-  saved: boolean
-  canComplete: boolean
-  onSave: () => void
+  investors:            DealInvestor[]
+  isBuyDeal:            boolean
+  isSaleDeal:           boolean
+  isNewDealFormat:      boolean
+  investorData:         Record<string, InvestorData>
+  perInvestor:          Record<string, Record<string, boolean>>
+  perInvestorItems:     { key: string; label: string }[]
+  onSetInvestorItem:    (clientId: string, itemKey: string, value: boolean) => void
+  dealStatus:           string
+  saving:               boolean
+  saved:                boolean
+  onSave:               () => void
+  // Per-investor completion (buy deals)
+  showEisItems:         boolean
+  eisItems:             { key: string; label: string }[]
+  completedInvestors:   Record<string, string>   // clientId → completion_date string
+  onCompleteInvestor:   (clientId: string) => void
+  completingInvestor:   string | null
+  isInvestorDone:       (clientId: string) => boolean
 }
 
 export function CompletionChecklist({
   investors, isBuyDeal, isSaleDeal, isNewDealFormat, investorData,
-  perInvestor, perInvestorItems, onSetInvestorItem, dealStatus, saving, saved, canComplete, onSave,
+  perInvestor, perInvestorItems, onSetInvestorItem, dealStatus, saving, saved, onSave,
+  showEisItems, eisItems, completedInvestors, onCompleteInvestor, completingInvestor, isInvestorDone,
 }: Props) {
   return (
     <div className="card" style={{ padding: 0 }}>
@@ -61,20 +68,36 @@ export function CompletionChecklist({
                   {item.label}
                 </th>
               ))}
+              {showEisItems && eisItems.map(item => (
+                <th key={item.key} style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap', color: '#5a7a9a' }}>
+                  {item.label}
+                </th>
+              ))}
+              {isBuyDeal && (
+                <th style={{ ...thSt, textAlign: 'center', whiteSpace: 'nowrap' }}>Complete</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {investors.map(di => {
-              const clientId  = di.clients?.id ?? ''
-              const iData     = clientId ? investorData[clientId] : null
-              const rowChecks = perInvestor[clientId] ?? {}
-              const allChecked = perInvestorItems.every(i => rowChecks[i.key])
+              const clientId    = di.clients?.id ?? ''
+              const iData       = clientId ? investorData[clientId] : null
+              const rowChecks   = perInvestor[clientId] ?? {}
+              const isEis       = ['yes', 'tbc'].includes(iData?.eis ?? '')
+              const isCompleted = !!completedInvestors[clientId]
+              const isDone      = isBuyDeal ? isInvestorDone(clientId) : perInvestorItems.every(i => rowChecks[i.key])
+              const isDisabled  = dealStatus === 'complete' || isCompleted
 
               return (
-                <tr key={di.id} style={{ background: allChecked ? '#f0faf6' : undefined }}>
+                <tr key={di.id} style={{ background: isCompleted ? '#f0faf6' : undefined }}>
                   <td style={tdSt}>
                     <div style={{ fontWeight: 500 }}>{di.clients?.full_name ?? '—'}</div>
                     {di.clients?.email && <div style={{ fontSize: 10, color: '#aaa' }}>{di.clients.email}</div>}
+                    {isCompleted && (
+                      <div style={{ fontSize: 10, color: '#1d9e75', marginTop: 2 }}>
+                        Completed {completedInvestors[clientId]}
+                      </div>
+                    )}
                   </td>
 
                   {/* Buy deal investor data */}
@@ -110,18 +133,60 @@ export function CompletionChecklist({
                     </td>
                   </>}
 
-                  {/* Checklist checkboxes */}
+                  {/* Per-investor checklist checkboxes */}
                   {perInvestorItems.map(item => (
                     <td key={item.key} style={{ ...tdSt, textAlign: 'center' }}>
                       <input
                         type="checkbox"
                         checked={rowChecks[item.key] ?? false}
                         onChange={e => onSetInvestorItem(clientId, item.key, e.target.checked)}
-                        disabled={dealStatus === 'complete'}
-                        style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: 'pointer' }}
+                        disabled={isDisabled}
+                        style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
                       />
                     </td>
                   ))}
+
+                  {/* EIS checklist checkboxes — only for EIS-qualifying investors */}
+                  {showEisItems && eisItems.map(item => (
+                    <td key={item.key} style={{ ...tdSt, textAlign: 'center' }}>
+                      {isEis ? (
+                        <input
+                          type="checkbox"
+                          checked={rowChecks[item.key] ?? false}
+                          onChange={e => onSetInvestorItem(clientId, item.key, e.target.checked)}
+                          disabled={isDisabled}
+                          style={{ accentColor: '#1d9e75', width: 15, height: 15, cursor: isDisabled ? 'default' : 'pointer' }}
+                        />
+                      ) : (
+                        <span style={{ color: '#ddd', fontSize: 11 }}>—</span>
+                      )}
+                    </td>
+                  ))}
+
+                  {/* Per-investor Complete button (buy deals only) */}
+                  {isBuyDeal && (
+                    <td style={{ ...tdSt, textAlign: 'center' }}>
+                      {isCompleted ? (
+                        <span style={{ fontSize: 11, color: '#1d9e75', fontWeight: 600 }}>✓</span>
+                      ) : (
+                        <button
+                          onClick={() => onCompleteInvestor(clientId)}
+                          disabled={!isDone || completingInvestor === clientId || dealStatus === 'complete'}
+                          title={!isDone ? 'Complete all checklist items first' : undefined}
+                          style={{
+                            fontSize: 11, padding: '3px 10px', borderRadius: 4,
+                            background: isDone ? '#0f2744' : '#f5f5f2',
+                            color: isDone ? '#fff' : '#bbb',
+                            border: `0.5px solid ${isDone ? '#0f2744' : '#e0e0d8'}`,
+                            cursor: isDone ? 'pointer' : 'not-allowed',
+                            fontFamily: 'inherit', fontWeight: 500,
+                          }}
+                        >
+                          {completingInvestor === clientId ? '…' : 'Complete'}
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               )
             })}
@@ -139,11 +204,6 @@ export function CompletionChecklist({
           >
             {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save'}
           </button>
-          {!canComplete && (
-            <span style={{ fontSize: 11, color: '#888' }}>
-              Complete all items above to enable &quot;Mark complete&quot;
-            </span>
-          )}
         </div>
       )}
     </div>
