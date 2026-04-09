@@ -208,10 +208,9 @@ export default function DealDetail({
   const investorData = (deal.completion_checklist?.investor_data ?? {}) as Record<string, InvestorData>
 
   // Per-investor EIS check: show EIS columns if any buy deal investor is EIS qualifying
-  const showEisItems = isBuyDeal && investors.some(di => {
-    const eis = investorData[di.clients?.id ?? '']?.eis ?? ''
-    return eis === 'yes' || eis === 'tbc'
-  })
+  const showEisItems = isBuyDeal && dealInvestments.some(inv =>
+    inv.eis_status === 'yes' || inv.eis_status === 'tbc'
+  )
 
   // Whether a given investor has all required checklist items ticked
   function isInvestorDone(clientId: string): boolean {

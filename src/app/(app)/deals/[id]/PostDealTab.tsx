@@ -13,6 +13,7 @@ export interface DealInvestmentRow {
   shares_purchased: number | null
   status:           string
   completion_date:  string | null
+  eis_status:       string | null
 }
 
 interface Props {
