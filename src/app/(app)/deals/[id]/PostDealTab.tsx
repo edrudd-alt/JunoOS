@@ -48,19 +48,15 @@ export function PostDealTab({
     if (!invMap.has(inv.client_id)) invMap.set(inv.client_id, inv)
   }
 
-  if (investors.length === 0) {
-    return (
-      <div className="card" style={{ padding: '28px', textAlign: 'center', color: '#888', fontSize: 13 }}>
-        No investors on this deal
-      </div>
-    )
-  }
+  const completedInvestorsList = investors.filter(di => {
+    const clientId = di.clients?.id ?? ''
+    return !!completedInvestors[clientId]
+  })
 
-  const anyCompleted = Object.keys(completedInvestors).length > 0
-  if (!anyCompleted) {
+  if (completedInvestorsList.length === 0) {
     return (
       <div className="card" style={{ padding: '28px', textAlign: 'center', color: '#888', fontSize: 13 }}>
-        No investors have completed yet. The post-deal checklist will appear here once an investor is marked as complete.
+        No investors have been completed yet. Complete an investor using the checklist above to see their post-deal status here.
       </div>
     )
   }
@@ -88,7 +84,7 @@ export function PostDealTab({
             </tr>
           </thead>
           <tbody>
-            {investors.map(di => {
+            {completedInvestorsList.map(di => {
               const clientId       = di.clients?.id ?? ''
               const checks         = perInvestor[clientId] ?? {}
               const iData          = clientId ? investorData[clientId] : null
