@@ -29,6 +29,8 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
     { data: news },
     { data: openDealsRaw },
     { data: companyDocs },
+    { data: rawShareClasses },
+    { data: rankingHistory },
   ] = await Promise.all([
     // Valuations — include new methodology + source columns
     supabase
@@ -85,6 +87,20 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
       .eq('company_id', id)
       .order('document_date', { ascending: false })
       .limit(30),
+
+    // Share classes
+    supabase
+      .from('company_share_classes')
+      .select('*')
+      .eq('company_id', id)
+      .order('name'),
+
+    // Ranking history — newest first
+    supabase
+      .from('share_class_ranking_history')
+      .select('*')
+      .eq('company_id', id)
+      .order('effective_from', { ascending: false }),
   ])
 
   // Fetch client details separately and merge
@@ -124,6 +140,22 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
 
   const currentValuation = valuations?.[0] ?? null
 
+  // Merge current rank onto each share class.
+  // The ranking history is ordered newest-first, so the first row per
+  // share_class_id is the current rank.
+  const currentRankMap = new Map<string, number | null>()
+  for (const row of (rankingHistory ?? [])) {
+    const r = row as Record<string, unknown>
+    const scId = r.share_class_id as string
+    if (!currentRankMap.has(scId)) {
+      currentRankMap.set(scId, r.preference_rank as number | null)
+    }
+  }
+  const shareClasses = (rawShareClasses ?? []).map(sc => ({
+    ...(sc as Record<string, unknown>),
+    current_rank: currentRankMap.get((sc as Record<string, unknown>).id as string) ?? null,
+  }))
+
   return (
     <CompanyPage
       company={company}
@@ -135,6 +167,8 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
       news={(news ?? []) as Record<string, unknown>[]}
       openDeals={openDeals as Record<string, unknown>[]}
       companyDocs={(companyDocs ?? []) as Record<string, unknown>[]}
+      shareClasses={shareClasses}
+      rankingHistory={(rankingHistory ?? []) as Record<string, unknown>[]}
       initialAction={action ?? null}
     />
   )

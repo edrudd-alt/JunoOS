@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { getInitials } from '@/lib/utils'
 import UpdateValuationModal from './UpdateValuationModal'
-import CompanyOverviewTab   from './tabs/CompanyOverviewTab'
-import CompanyInvestorsTab  from './tabs/CompanyInvestorsTab'
-import CompanyValuationsTab from './tabs/CompanyValuationsTab'
+import CompanyOverviewTab     from './tabs/CompanyOverviewTab'
+import CompanyInvestorsTab    from './tabs/CompanyInvestorsTab'
+import CompanyValuationsTab   from './tabs/CompanyValuationsTab'
+import CompanyShareClassesTab from './tabs/CompanyShareClassesTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ interface Investment {
   clients: { id: string; full_name: string; lead_investor_id: string | null } | null
 }
 
-type Tab = 'overview' | 'investors' | 'valuations' | 'performance' | 'documents' | 'updates' | 'legal'
+type Tab = 'overview' | 'investors' | 'valuations' | 'share_classes' | 'performance' | 'documents' | 'updates' | 'legal'
 
 interface Props {
   company: Company
@@ -42,6 +43,8 @@ interface Props {
   news: Record<string, unknown>[]
   openDeals: Record<string, unknown>[]
   companyDocs: Record<string, unknown>[]
+  shareClasses: Record<string, unknown>[]
+  rankingHistory: Record<string, unknown>[]
   initialAction: string | null
 }
 
@@ -75,18 +78,20 @@ function StagePill({ stage }: { stage: string | null }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview',     label: 'Overview'    },
-  { key: 'investors',    label: 'Investors'   },
-  { key: 'valuations',   label: 'Valuations'  },
-  { key: 'performance',  label: 'Performance' },
-  { key: 'documents',    label: 'Documents'   },
-  { key: 'updates',      label: 'Updates'     },
-  { key: 'legal',        label: 'Legal'       },
+  { key: 'overview',       label: 'Overview'       },
+  { key: 'investors',      label: 'Investors'      },
+  { key: 'valuations',     label: 'Valuations'     },
+  { key: 'share_classes',  label: 'Share classes'  },
+  { key: 'performance',    label: 'Performance'    },
+  { key: 'documents',      label: 'Documents'      },
+  { key: 'updates',        label: 'Updates'        },
+  { key: 'legal',          label: 'Legal'          },
 ]
 
 export default function CompanyPage({
   company, valuations, currentValuation, investments,
-  kpiData, internalUpdates, news, openDeals, companyDocs, initialAction,
+  kpiData, internalUpdates, news, openDeals, companyDocs,
+  shareClasses, rankingHistory, initialAction,
 }: Props) {
   const [activeTab,          setActiveTab]          = useState<Tab>('overview')
   const [showValuationModal, setShowValuationModal] = useState(initialAction === 'update_valuation')
@@ -209,6 +214,14 @@ export default function CompanyPage({
           valuations={valuations}
           investments={investments}
           onOpenModal={() => setShowValuationModal(true)}
+        />
+      )}
+
+      {activeTab === 'share_classes' && (
+        <CompanyShareClassesTab
+          companyId={company.id}
+          shareClasses={shareClasses}
+          rankingHistory={rankingHistory}
         />
       )}
 
