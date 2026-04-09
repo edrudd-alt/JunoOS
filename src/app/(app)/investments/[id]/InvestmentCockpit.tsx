@@ -182,8 +182,9 @@ export default function InvestmentCockpit({
       const today        = new Date().toISOString().slice(0, 10)
       const companySlug  = companyName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
       const investorSlug = clientName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+      const fileSlug     = `${today}-${investorSlug}-${companySlug}-transaction-statement.pdf`
       const filename     = `${today} — ${clientName} — ${companyName} — Transaction Statement.pdf`
-      const storagePath  = `${companySlug}/${investorSlug}/${filename}`
+      const storagePath  = `${companySlug}/${investorSlug}/${fileSlug}`
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
