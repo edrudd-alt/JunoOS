@@ -51,10 +51,37 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
   const [linkedVehicles,  setLinkedVehicles]   = useState<Client[]>([])
   const [loadingVehicles, setLoadingVehicles]  = useState(false)
 
-  // Other fields
+  // Amount + shares (bidirectional)
+  const sharePrice = dealInfo.sharePrice ?? 0
+  const hasSharePrice = sharePrice > 0
+
   const [indicativeAmount, setIndicativeAmount] = useState(
     entry?.indicative_amount != null ? String(entry.indicative_amount) : '',
   )
+  const [indicativeShares, setIndicativeShares] = useState(
+    entry?.indicative_shares != null ? String(entry.indicative_shares) : '',
+  )
+
+  function handleAmountChange(val: string) {
+    setIndicativeAmount(val)
+    if (hasSharePrice && val) {
+      const shares = parseFloat(val) / sharePrice
+      setIndicativeShares(isNaN(shares) ? '' : shares.toFixed(4))
+    } else {
+      setIndicativeShares('')
+    }
+  }
+
+  function handleSharesChange(val: string) {
+    setIndicativeShares(val)
+    if (hasSharePrice && val) {
+      const amount = parseFloat(val) * sharePrice
+      setIndicativeAmount(isNaN(amount) ? '' : amount.toFixed(2))
+    } else {
+      setIndicativeAmount('')
+    }
+  }
+
   const [status,  setStatus]  = useState(entry?.status ?? 'interested')
   const [notes,   setNotes]   = useState(entry?.notes ?? '')
   const [saving,           setSaving]           = useState(false)
@@ -122,20 +149,30 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     setError('')
     if (!clientId) { setError('Please select an investor'); return }
 
-    // Un-confirm guard: if moving away from 'confirmed', check app_signed
+    const perInvestor = (completionChecklist?.per_investor ?? {}) as Record<string, Record<string, boolean>>
+    const appSigned   = perInvestor[clientId]?.app_signed === true
+
+    // Un-confirm guard: moving away from 'confirmed'
     if (isEditMode && previousStatus === 'confirmed' && status !== 'confirmed') {
-      const perInvestor = (completionChecklist?.per_investor ?? {}) as Record<string, Record<string, boolean>>
-      const appSigned   = perInvestor[clientId]?.app_signed === true
       if (appSigned && !pendingSave) {
         setUnconfirmWarning(true)
         return
       }
     }
 
+    // Amount-change guard: staying 'confirmed' but amount/shares changed
+    const amount  = indicativeAmount ? parseFloat(indicativeAmount) : null
+    const shares  = indicativeShares ? parseFloat(indicativeShares) : null
+    const isAmountChanging = isEditMode && previousStatus === 'confirmed' && status === 'confirmed'
+      && (amount !== (entry?.indicative_amount ?? null) || shares !== (entry?.indicative_shares ?? null))
+    if (isAmountChanging && appSigned && !pendingSave) {
+      setUnconfirmWarning(true)
+      return
+    }
+
     setPendingSave(false)
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
-    const amount = indicativeAmount ? parseFloat(indicativeAmount) : null
 
     if (isEditMode && entry) {
       const { error: dbErr } = await supabase
@@ -143,6 +180,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
         .update({
           investing_vehicle_id: vehicleId || null,
           indicative_amount:    amount,
+          indicative_shares:    shares,
           status,
           notes:                notes.trim() || null,
           updated_by:           user?.id ?? null,
@@ -160,6 +198,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           client_id:            clientId,
           investing_vehicle_id: vehicleId || null,
           indicative_amount:    amount,
+          indicative_shares:    shares,
           status,
           notes:                notes.trim() || null,
           created_by:           user?.id ?? null,
@@ -175,12 +214,11 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     const isUnconfirming = previousStatus === 'confirmed' && status !== 'confirmed'
 
     if (isConfirming) {
-      const client       = clients.find(c => c.id === clientId)
-      const feeRate      = client?.default_fee_rate ?? 0
-      const sumSubscribed = amount ?? 0
-      const feeAmount    = sumSubscribed * feeRate / 100
-      const sharePrice   = dealInfo.sharePrice ?? 0
-      const sharesPurchased = sharePrice > 0 ? sumSubscribed / sharePrice : 0
+      const client          = clients.find(c => c.id === clientId)
+      const feeRate         = client?.default_fee_rate ?? 0
+      const sumSubscribed   = amount ?? 0
+      const feeAmount       = sumSubscribed * feeRate / 100
+      const sharesPurchased = shares ?? (sharePrice > 0 ? sumSubscribed / sharePrice : 0)
 
       // Upsert deal_investors — safe on re-confirm
       await supabase
@@ -196,8 +234,8 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
         company_id:           dealInfo.companyId,
         deal_id:              dealInfo.id,
         bookbuild_id:         bookbuildId,
-        share_class_id:       dealInfo.shareClassId || null,
-        share_class:          dealInfo.shareClass   || null,
+        share_class_id:       dealInfo.shareClassId  || null,
+        share_class:          dealInfo.shareClass     || null,
         original_share_price: sharePrice,
         investment_date:      dealInfo.investmentDate || null,
         sum_subscribed:       sumSubscribed,
@@ -214,17 +252,19 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     }
 
     if (isUnconfirming) {
-      // Remove deal_investors row
-      await supabase
-        .from('deal_investors')
-        .delete()
-        .eq('deal_id', dealInfo.id)
-        .eq('client_id', clientId)
+      await supabase.from('deal_investors').delete()
+        .eq('deal_id', dealInfo.id).eq('client_id', clientId)
+      await supabase.from('investments').delete()
+        .eq('deal_id', dealInfo.id).eq('client_id', clientId).eq('status', 'pending')
+    }
 
-      // Remove pending investment
-      await supabase
-        .from('investments')
-        .delete()
+    if (isAmountChanging) {
+      // Update the pending investment's amount and shares to match the new bookbuild figures
+      await supabase.from('investments')
+        .update({
+          sum_subscribed:   amount ?? 0,
+          shares_purchased: shares ?? (sharePrice > 0 ? (amount ?? 0) / sharePrice : 0),
+        })
         .eq('deal_id', dealInfo.id)
         .eq('client_id', clientId)
         .eq('status', 'pending')
@@ -388,30 +428,47 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
             </div>
           )}
 
-          {/* Amount + Status */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          {/* Amount + Shares + Status */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={labelSt}>
-                Indicative amount{' '}
-                <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+                Amount <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <span style={{
                   position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
                   fontSize: 13, color: '#888', pointerEvents: 'none',
-                }}>
-                  £
-                </span>
+                }}>£</span>
                 <input
                   type="number"
                   min="0"
                   step="1000"
                   value={indicativeAmount}
-                  onChange={e => setIndicativeAmount(e.target.value)}
+                  onChange={e => handleAmountChange(e.target.value)}
                   placeholder="0"
                   style={{ ...inputSt, paddingLeft: 24 }}
                 />
               </div>
+            </div>
+            <div>
+              <label style={labelSt}>
+                Shares <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+              </label>
+              {hasSharePrice ? (
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={indicativeShares}
+                  onChange={e => handleSharesChange(e.target.value)}
+                  placeholder="0"
+                  style={inputSt}
+                />
+              ) : (
+                <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa', fontSize: 11, cursor: 'not-allowed' }}>
+                  Share price not set
+                </div>
+              )}
             </div>
             <div>
               <label style={labelSt}>Status *</label>

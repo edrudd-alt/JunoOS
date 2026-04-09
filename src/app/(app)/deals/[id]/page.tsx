@@ -96,7 +96,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   if (rawBookbuild) {
     const { data: entries } = await supabase
       .from('bookbuild_entries')
-      .select('id, bookbuild_id, client_id, investing_vehicle_id, indicative_amount, status, notes, updated_at')
+      .select('id, bookbuild_id, client_id, investing_vehicle_id, indicative_amount, indicative_shares, status, notes, updated_at')
       .eq('bookbuild_id', (rawBookbuild as Record<string, unknown>).id as string)
       .order('created_at')
     rawEntries = (entries ?? []) as Record<string, unknown>[]

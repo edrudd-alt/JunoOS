@@ -25,6 +25,7 @@ export interface BookbuildEntry {
   investing_vehicle_id:    string | null
   investing_vehicle_name:  string | null
   indicative_amount:       number | null
+  indicative_shares:       number | null
   status:                  string
   notes:                   string | null
   updated_at:              string
@@ -248,7 +249,8 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
               <tr style={{ background: '#f9f9f7' }}>
                 <th style={thSt}>Investor</th>
                 <th style={thSt}>Vehicle</th>
-                <th style={{ ...thSt, textAlign: 'right' }}>Indicative amount</th>
+                <th style={{ ...thSt, textAlign: 'right' }}>Amount</th>
+                <th style={{ ...thSt, textAlign: 'right' }}>Shares</th>
                 <th style={thSt}>Status</th>
                 <th style={thSt}>Notes</th>
                 <th style={{ ...thSt, width: 40 }} />
@@ -270,6 +272,11 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
                     <td style={{ ...tdSt, textAlign: 'right' }}>
                       {entry.indicative_amount != null
                         ? formatCurrency(entry.indicative_amount)
+                        : <span style={{ color: '#ccc' }}>—</span>}
+                    </td>
+                    <td style={{ ...tdSt, textAlign: 'right' }}>
+                      {entry.indicative_shares != null
+                        ? entry.indicative_shares.toLocaleString(undefined, { maximumFractionDigits: 2 })
                         : <span style={{ color: '#ccc' }}>—</span>}
                     </td>
                     <td style={tdSt}>
