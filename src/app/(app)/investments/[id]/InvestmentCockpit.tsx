@@ -186,6 +186,13 @@ export default function InvestmentCockpit({
       const filename     = `${today} — ${clientName} — ${companyName} — Transaction Statement.pdf`
       const storagePath  = `${companySlug}/${investorSlug}/${fileSlug}`
 
+      const { data: { session } } = await supabase.auth.getSession()
+      console.log('Session at upload time:', {
+        hasSession:   !!session,
+        hasToken:     !!session?.access_token,
+        tokenPreview: session?.access_token?.slice(0, 20),
+      })
+
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(storagePath, blob, { contentType: 'application/pdf', upsert: true })
