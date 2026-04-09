@@ -2,14 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import BuyDealWizard from './BuyDealWizard'
+import { Breadcrumb } from '@/components/Breadcrumb'
+import { StepBar }    from './buy/StepBar'
+import { SetupStep }  from './buy/SetupStep'
 import SellDealWizard from './SellDealWizard'
 import NewDealWizard from './NewDealWizard'
+import type { BuyDealType } from './buy/buyWizardTypes'
 
-type DealTypeValue =
-  | 'new_investment' | 'follow_on'
-  | 'full_exit' | 'partial_exit'
-  | 'kyc' | 'side_letter' | 'membership'
+type DealTypeValue = BuyDealType | 'full_exit' | 'partial_exit' | 'kyc' | 'side_letter' | 'membership'
 
 interface DealTypeConfig {
   value: DealTypeValue
@@ -87,12 +87,26 @@ export default function NewDealPage({ companies, clients, investments }: Props) 
   const [selectedType, setSelectedType] = useState<DealTypeValue | null>(null)
 
   if (selectedType === 'new_investment' || selectedType === 'follow_on') {
+    const isFollowOn = selectedType === 'follow_on'
+    const title      = isFollowOn ? 'Follow-on Investment' : 'New Investment'
     return (
-      <BuyDealWizard
-        dealType={selectedType}
-        companies={companies}
-        onBack={() => setSelectedType(null)}
-      />
+      <div style={{ maxWidth: 1100 }}>
+        <Breadcrumb items={[
+          { label: 'Deals', href: '/deals' },
+          { label: 'New deal', onClick: () => setSelectedType(null) },
+          { label: title },
+        ]} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <h1 style={{ fontSize: 17, fontWeight: 500, margin: 0 }}>{title}</h1>
+          <Link href="/deals" className="btn btn-secondary" style={{ fontSize: 12 }}>Cancel</Link>
+        </div>
+        <StepBar activeStep={0} />
+        <SetupStep
+          dealType={selectedType}
+          companies={companies as unknown as Parameters<typeof SetupStep>[0]['companies']}
+          onBack={() => setSelectedType(null)}
+        />
+      </div>
     )
   }
 
