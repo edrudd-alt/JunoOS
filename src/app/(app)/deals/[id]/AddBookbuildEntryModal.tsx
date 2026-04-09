@@ -257,6 +257,23 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           { onConflict: 'deal_id,client_id', ignoreDuplicates: true },
         )
 
+      // Reset per-investor checklist so it starts fresh on re-confirmation
+      const { data: dealRow } = await supabase
+        .from('deals')
+        .select('completion_checklist')
+        .eq('id', dealInfo.id)
+        .single()
+      if (dealRow) {
+        const existing = (dealRow.completion_checklist ?? {}) as Record<string, unknown>
+        const existingPerInvestor = (existing.per_investor ?? {}) as Record<string, unknown>
+        await supabase.from('deals').update({
+          completion_checklist: {
+            ...existing,
+            per_investor: { ...existingPerInvestor, [clientId]: {} },
+          },
+        }).eq('id', dealInfo.id)
+      }
+
       // Insert pending investment
       await supabase.from('investments').insert({
         client_id:            clientId,

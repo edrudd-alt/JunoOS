@@ -44,7 +44,6 @@ export function PostDealTab({
   // Build a map from client_id → investment row for quick lookup
   const invMap = new Map<string, DealInvestmentRow>()
   for (const inv of dealInvestments) {
-    // Prefer active/completed rows; don't overwrite if already set
     if (!invMap.has(inv.client_id)) invMap.set(inv.client_id, inv)
   }
 
@@ -68,13 +67,12 @@ export function PostDealTab({
             <tr style={{ background: '#f9f9f7' }}>
               <th style={thSt}>Investor</th>
               <th style={{ ...thSt, textAlign: 'right' }}>Amount</th>
+              <th style={{ ...thSt, textAlign: 'right' }}>Shares</th>
               <th style={thSt}>Completed</th>
               <th style={{ ...thSt, textAlign: 'center' }}>Statement</th>
-              <th style={{ ...thSt, textAlign: 'center' }}>Share cert</th>
-              {showEisItems && <>
-                <th style={{ ...thSt, textAlign: 'center', color: '#5a7a9a' }}>EIS cert recv'd</th>
-                <th style={{ ...thSt, textAlign: 'center', color: '#5a7a9a' }}>EIS cert sent</th>
-              </>}
+              {showEisItems && (
+                <th style={{ ...thSt, textAlign: 'center', color: '#5a7a9a' }}>EIS certificate</th>
+              )}
               <th style={{ ...thSt, textAlign: 'center' }}>Status</th>
               <th style={{ ...thSt, width: 50 }} />
             </tr>
@@ -88,13 +86,25 @@ export function PostDealTab({
               const completionDate = completedInvestors[clientId] ?? null
               const investment     = clientId ? invMap.get(clientId) : null
 
-              const statementSent      = checks.statement_sent      === true
-              const shareCertReceived  = checks.share_cert_received  === true
-              const eisCertReceived    = checks.eis_cert_received    === true
-              const eisCertSent        = checks.eis_cert_sent        === true
+              const statementSent  = checks.statement_sent  === true
+              const eisCertReceived = checks.eis_cert_received === true
+              const eisCertSent     = checks.eis_cert_sent    === true
 
-              const allDone = statementSent && shareCertReceived
-                && (!showEisItems || !isEis || (eisCertReceived && eisCertSent))
+              const allDone = statementSent && (!isEis || eisCertSent)
+
+              // Derive EIS certificate display state
+              let eisCell: React.ReactNode = null
+              if (showEisItems) {
+                if (!isEis) {
+                  eisCell = <span style={{ color: '#ccc', fontSize: 11 }}>N/A</span>
+                } else if (eisCertReceived && eisCertSent) {
+                  eisCell = <span className="pill pill-green" style={{ fontSize: 11 }}>Sent</span>
+                } else if (eisCertReceived) {
+                  eisCell = <span className="pill pill-blue" style={{ fontSize: 11 }}>Received</span>
+                } else {
+                  eisCell = <span className="pill pill-amber" style={{ fontSize: 11 }}>Outstanding</span>
+                }
+              }
 
               return (
                 <tr key={di.id}>
@@ -111,6 +121,12 @@ export function PostDealTab({
                       : '—'}
                   </td>
 
+                  <td style={{ ...tdSt, textAlign: 'right' }}>
+                    {investment?.shares_purchased != null
+                      ? investment.shares_purchased.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                      : '—'}
+                  </td>
+
                   <td style={tdSt}>
                     {completionDate
                       ? <span style={{ color: '#1d9e75', fontWeight: 500 }}>{formatDate(completionDate)}</span>
@@ -121,22 +137,9 @@ export function PostDealTab({
                     <StatusBadge done={statementSent} doneLabel="Sent" pendingLabel="Not sent" />
                   </td>
 
-                  <td style={{ ...tdSt, textAlign: 'center' }}>
-                    <StatusBadge done={shareCertReceived} doneLabel="Received" pendingLabel="Outstanding" />
-                  </td>
-
-                  {showEisItems && <>
-                    <td style={{ ...tdSt, textAlign: 'center' }}>
-                      {isEis
-                        ? <StatusBadge done={eisCertReceived} doneLabel="Received" pendingLabel="Outstanding" />
-                        : <span style={{ color: '#ccc', fontSize: 11 }}>N/A</span>}
-                    </td>
-                    <td style={{ ...tdSt, textAlign: 'center' }}>
-                      {isEis
-                        ? <StatusBadge done={eisCertSent} doneLabel="Sent" pendingLabel="Outstanding" />
-                        : <span style={{ color: '#ccc', fontSize: 11 }}>N/A</span>}
-                    </td>
-                  </>}
+                  {showEisItems && (
+                    <td style={{ ...tdSt, textAlign: 'center' }}>{eisCell}</td>
+                  )}
 
                   <td style={{ ...tdSt, textAlign: 'center' }}>
                     {allDone
