@@ -28,7 +28,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     { data: companyData },
     { data: documents },
     { data: rawInvoices },
-    { data: rawBookbuild },
+    { data: rawBookbuildInitial },
     { data: allClientsData },
   ] = await Promise.all([
     supabase.from('deal_investors').select('id, amount, signing_status, poa_held, client_id').eq('deal_id', id),
@@ -46,6 +46,51 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     ((allClientsData ?? []) as { id: string; full_name: string; email: string | null }[]).map(c => [c.id, c]),
   )
 
+  // Auto-populate bookbuild for follow-on deals with no bookbuild yet
+  let rawBookbuild = rawBookbuildInitial
+  if (rawDeal.deal_type === 'follow_on' && !rawBookbuild && rawDeal.company_id) {
+    try {
+      // Fetch active investments for this company to get existing investors
+      const { data: existingInvs } = await supabase
+        .from('investments')
+        .select('client_id, sum_subscribed, investment_date')
+        .eq('company_id', rawDeal.company_id)
+        .eq('status', 'active')
+        .order('investment_date', { ascending: false })
+
+      // De-duplicate by client_id — keep most recent investment per client
+      const byClient = new Map<string, { client_id: string; sum_subscribed: number }>()
+      for (const inv of existingInvs ?? []) {
+        if (!byClient.has(inv.client_id)) {
+          byClient.set(inv.client_id, { client_id: inv.client_id, sum_subscribed: inv.sum_subscribed ?? 0 })
+        }
+      }
+
+      // Create the bookbuild record
+      const { data: newBookbuild } = await supabase
+        .from('bookbuilds')
+        .insert({ deal_id: id, company_id: rawDeal.company_id, status: 'open' })
+        .select('id, deal_id, company_id, target_raise, status')
+        .single()
+
+      if (newBookbuild && byClient.size > 0) {
+        await supabase.from('bookbuild_entries').insert(
+          [...byClient.values()].map(inv => ({
+            bookbuild_id:      newBookbuild.id,
+            company_id:        rawDeal.company_id,
+            client_id:         inv.client_id,
+            indicative_amount: inv.sum_subscribed || null,
+            status:            'interested',
+          })),
+        )
+      }
+
+      rawBookbuild = newBookbuild
+    } catch (e) {
+      console.error('Auto-populate bookbuild failed:', e)
+    }
+  }
+
   // Bookbuild entries (sequential — needs bookbuild id)
   let rawEntries: Record<string, unknown>[] = []
   if (rawBookbuild) {
@@ -59,7 +104,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
 
   const mergedEntries = rawEntries.map(e => ({
     ...e,
-    client_name:           allClientsMap.get(e.client_id as string)?.full_name ?? 'Unknown',
+    client_name:            allClientsMap.get(e.client_id as string)?.full_name ?? 'Unknown',
     investing_vehicle_name: e.investing_vehicle_id
       ? (allClientsMap.get(e.investing_vehicle_id as string)?.full_name ?? null)
       : null,
