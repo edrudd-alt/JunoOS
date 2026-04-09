@@ -195,6 +195,7 @@ export default function InvestmentCockpit({
       const { data: { publicUrl } } = supabase.storage.from('documents').getPublicUrl(storagePath)
 
       const { data: { user } } = await supabase.auth.getUser()
+      console.log('auth.getUser at insert time:', { userId: user?.id ?? null, userNull: user === null })
 
       const { error: docError } = await supabase.from('documents').insert({
         type:          'transaction_statement',
