@@ -25,8 +25,8 @@ interface Props {
   saved:                boolean
   onSave:               () => void
   // Per-investor completion (buy deals)
-  showEisItems:         boolean
-  eisItems:             { key: string; label: string }[]
+  showEisItems?:        boolean
+  eisItems?:            { key: string; label: string }[]
   completedInvestors:   Record<string, string>   // clientId → completion_date string
   onCompleteInvestor:   (clientId: string) => void
   completingInvestor:   string | null
@@ -36,7 +36,7 @@ interface Props {
 export function CompletionChecklist({
   investors, isBuyDeal, isSaleDeal, isNewDealFormat, investorData,
   perInvestor, perInvestorItems, onSetInvestorItem, dealStatus, saving, saved, onSave,
-  showEisItems, eisItems, completedInvestors, onCompleteInvestor, completingInvestor, isInvestorDone,
+  showEisItems = false, eisItems = [], completedInvestors, onCompleteInvestor, completingInvestor, isInvestorDone,
 }: Props) {
   return (
     <div className="card" style={{ padding: 0 }}>

@@ -215,10 +215,7 @@ export default function DealDetail({
   // Whether a given investor has all required checklist items ticked
   function isInvestorDone(clientId: string): boolean {
     const checks = perInvestor[clientId] ?? {}
-    const baseOk = perInvestorItems.every(i => checks[i.key])
-    const isEis  = ['yes', 'tbc'].includes(investorData[clientId]?.eis ?? '')
-    const eisOk  = !showEisItems || !isEis || EIS_ITEMS.every(i => checks[i.key])
-    return baseOk && eisOk
+    return perInvestorItems.every(i => checks[i.key])
   }
 
   // Whether at least one investor has been individually completed
@@ -513,7 +510,7 @@ export default function DealDetail({
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e4', marginBottom: 20 }}>
-        {(['overview', 'documents', 'invoices', ...(Object.keys(completedInvestors).length > 0 ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
+        {(['overview', 'documents', 'invoices', ...(isBuyDeal ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -578,8 +575,6 @@ export default function DealDetail({
               saving={saving}
               saved={saved}
               onSave={saveChecklist}
-              showEisItems={showEisItems}
-              eisItems={EIS_ITEMS}
               completedInvestors={completedInvestors}
               onCompleteInvestor={completeInvestor}
               completingInvestor={completingInvestor}

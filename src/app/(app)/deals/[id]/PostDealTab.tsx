@@ -56,6 +56,15 @@ export function PostDealTab({
     )
   }
 
+  const anyCompleted = Object.keys(completedInvestors).length > 0
+  if (!anyCompleted) {
+    return (
+      <div className="card" style={{ padding: '28px', textAlign: 'center', color: '#888', fontSize: 13 }}>
+        No investors have completed yet. The post-deal checklist will appear here once an investor is marked as complete.
+      </div>
+    )
+  }
+
   return (
     <div className="card" style={{ padding: 0 }}>
       <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0' }}>
