@@ -62,10 +62,24 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     entry?.indicative_shares != null ? String(Math.round(entry.indicative_shares)) : '',
   )
 
+  function snapToWholeShares(rawAmount: string): { amount: string; shares: string } {
+    if (!rawAmount || !hasSharePrice) return { amount: rawAmount, shares: '' }
+    const num = parseFloat(rawAmount.replace(/,/g, ''))
+    if (isNaN(num)) return { amount: rawAmount, shares: '' }
+    const wholeShares   = Math.round(num / sharePrice)
+    const canonicalAmt  = wholeShares * sharePrice
+    return {
+      amount: canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      shares: String(wholeShares),
+    }
+  }
+
   function handleAmountChange(val: string) {
+    // While typing, just store the raw value — recalculate shares live but don't snap yet
     setIndicativeAmount(val)
     if (hasSharePrice && val) {
-      const shares = Math.round(parseFloat(val) / sharePrice)
+      const num    = parseFloat(val.replace(/,/g, ''))
+      const shares = Math.round(num / sharePrice)
       setIndicativeShares(isNaN(shares) ? '' : String(shares))
     } else {
       setIndicativeShares('')
@@ -73,27 +87,28 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
   }
 
   function handleAmountBlur() {
-    const num = parseFloat(indicativeAmount)
-    if (!isNaN(num)) {
-      setIndicativeAmount(num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))
-    }
+    // Snap to canonical whole-share amount on blur
+    const { amount, shares } = snapToWholeShares(indicativeAmount)
+    setIndicativeAmount(amount)
+    if (shares) setIndicativeShares(shares)
   }
 
   function handleAmountFocus() {
-    // Strip formatting so the user edits the raw number
-    const stripped = indicativeAmount.replace(/,/g, '')
-    setIndicativeAmount(stripped)
+    // Strip formatting so the user can edit the raw number
+    setIndicativeAmount(indicativeAmount.replace(/,/g, ''))
   }
 
   function handleSharesChange(val: string) {
-    const rounded = val ? String(Math.round(parseFloat(val))) : ''
-    setIndicativeShares(isNaN(parseInt(rounded)) ? '' : rounded)
-    if (hasSharePrice && rounded) {
-      const amount = parseInt(rounded) * sharePrice
-      setIndicativeAmount(isNaN(amount) ? '' : amount.toFixed(2))
-    } else {
-      setIndicativeAmount('')
-    }
+    if (!val) { setIndicativeShares(''); setIndicativeAmount(''); return }
+    const wholeShares  = Math.round(parseFloat(val))
+    if (isNaN(wholeShares)) { setIndicativeShares(''); setIndicativeAmount(''); return }
+    const canonicalAmt = wholeShares * sharePrice
+    setIndicativeShares(String(wholeShares))
+    setIndicativeAmount(
+      hasSharePrice
+        ? canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : '',
+    )
   }
 
   const [status,  setStatus]  = useState(entry?.status ?? 'interested')
@@ -175,8 +190,8 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     }
 
     // Amount-change guard: staying 'confirmed' but amount/shares changed
-    const amount  = indicativeAmount ? parseFloat(indicativeAmount) : null
-    const shares  = indicativeShares ? parseFloat(indicativeShares) : null
+    const amount  = indicativeAmount ? parseFloat(indicativeAmount.replace(/,/g, '')) : null
+    const shares  = indicativeShares ? Math.round(parseFloat(indicativeShares))       : null
     const isAmountChanging = isEditMode && previousStatus === 'confirmed' && status === 'confirmed'
       && (amount !== (entry?.indicative_amount ?? null) || shares !== (entry?.indicative_shares ?? null))
     if (isAmountChanging && appSigned && !pendingSave) {
