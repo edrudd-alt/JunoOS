@@ -28,6 +28,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     { data: companyData },
     { data: documents },
     { data: rawInvoices },
+    { data: rawBookbuild },
+    { data: allClientsData },
   ] = await Promise.all([
     supabase.from('deal_investors').select('id, amount, signing_status, poa_held, client_id').eq('deal_id', id),
     rawDeal.company_id
@@ -35,18 +37,47 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       : { data: null },
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
     supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
+    supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
+    supabase.from('clients').select('id, full_name, email').order('full_name'),
   ])
 
-  // Collect all client IDs needed (deal_investors + invoices)
+  // Build a map from allClientsData for all name lookups
+  const allClientsMap = new Map(
+    ((allClientsData ?? []) as { id: string; full_name: string; email: string | null }[]).map(c => [c.id, c]),
+  )
+
+  // Bookbuild entries (sequential — needs bookbuild id)
+  let rawEntries: Record<string, unknown>[] = []
+  if (rawBookbuild) {
+    const { data: entries } = await supabase
+      .from('bookbuild_entries')
+      .select('id, bookbuild_id, client_id, investing_vehicle_id, indicative_amount, status, notes, updated_at')
+      .eq('bookbuild_id', (rawBookbuild as Record<string, unknown>).id as string)
+      .order('created_at')
+    rawEntries = (entries ?? []) as Record<string, unknown>[]
+  }
+
+  const mergedEntries = rawEntries.map(e => ({
+    ...e,
+    client_name:           allClientsMap.get(e.client_id as string)?.full_name ?? 'Unknown',
+    investing_vehicle_name: e.investing_vehicle_id
+      ? (allClientsMap.get(e.investing_vehicle_id as string)?.full_name ?? null)
+      : null,
+  }))
+
+  const bookbuild = rawBookbuild
+    ? { ...(rawBookbuild as Record<string, unknown>), entries: mergedEntries }
+    : null
+
+  // Collect client IDs needed for deal_investors + invoices merges
   const diClientIds      = [...new Set((dealInvestors ?? []).map(di => di.client_id).filter(Boolean))]
   const invoiceClientIds = [...new Set((rawInvoices ?? []).map(inv => inv.client_id).filter(Boolean))]
   const allClientIds     = [...new Set([...diClientIds, ...invoiceClientIds])]
 
-  const { data: clientsData } = allClientIds.length > 0
-    ? await supabase.from('clients').select('id, full_name, email').in('id', allClientIds)
-    : { data: [] as { id: string; full_name: string; email: string | null }[] }
-
-  const clientMap = new Map((clientsData ?? []).map(c => [c.id, c]))
+  // Re-use allClientsMap to avoid a second query
+  const clientMap = new Map(
+    allClientIds.map(cid => [cid, allClientsMap.get(cid)]).filter((pair): pair is [string, { id: string; full_name: string; email: string | null }] => !!pair[1]),
+  )
 
   // Merge
   const mergedDealInvestors = (dealInvestors ?? []).map(di => ({
@@ -70,6 +101,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       deal={deal as Record<string, unknown>}
       documents={(documents ?? []) as Record<string, unknown>[]}
       invoices={mergedInvoices as Record<string, unknown>[]}
+      bookbuild={bookbuild}
+      allClients={(allClientsData ?? []) as Record<string, unknown>[]}
     />
   )
 }

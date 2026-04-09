@@ -10,6 +10,8 @@ import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDeta
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
+import { BookbuildSection } from './BookbuildSection'
+import type { Bookbuild }   from './BookbuildSection'
 import { StepBar }     from '../new/buy/StepBar'
 import { SellStepBar } from '../new/sell/SellStepBar'
 
@@ -90,14 +92,20 @@ export default function DealDetail({
   deal: dealRaw,
   documents: documentsRaw,
   invoices: invoicesRaw,
+  bookbuild: bookbuildRaw,
+  allClients: allClientsRaw,
 }: {
-  deal: Record<string, unknown>
-  documents: Record<string, unknown>[]
-  invoices: Record<string, unknown>[]
+  deal:       Record<string, unknown>
+  documents:  Record<string, unknown>[]
+  invoices:   Record<string, unknown>[]
+  bookbuild:  Record<string, unknown> | null
+  allClients: Record<string, unknown>[]
 }) {
-  const deal      = dealRaw      as unknown as Deal
-  const documents = documentsRaw as unknown as Document[]
-  const invoices  = invoicesRaw  as unknown as Invoice[]
+  const deal       = dealRaw      as unknown as Deal
+  const documents  = documentsRaw as unknown as Document[]
+  const invoices   = invoicesRaw  as unknown as Invoice[]
+  const bookbuild  = bookbuildRaw as unknown as Bookbuild | null
+  const allClients = allClientsRaw as unknown as { id: string; full_name: string; email: string | null }[]
 
   const router   = useRouter()
   const supabase = createClient()
@@ -389,6 +397,15 @@ export default function DealDetail({
       {/* ── Overview tab ── */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {isBuyDeal && (
+            <BookbuildSection
+              dealId={deal.id}
+              companyId={deal.companies?.id ?? ''}
+              bookbuild={bookbuild}
+              allClients={allClients}
+            />
+          )}
+
           <SignatureTracking
             investors={investors}
             dealStatus={deal.status}
