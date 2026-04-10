@@ -64,12 +64,13 @@ interface Props {
   followUpNotes: Record<string, unknown>[]
   lastActivity: string | null
   relationships: Record<string, unknown>[]
+  feeSchedules: { id: string; name: string }[]
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
-  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships,
+  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -241,6 +242,7 @@ export default function ClientRecord({
             lastActivity={lastActivity}
             investments={investments}
             relationships={relationships}
+            feeSchedules={feeSchedules}
           />
         )}
         {tab === 'investment_docs' && (

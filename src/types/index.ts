@@ -37,6 +37,7 @@ export interface Client {
   notes: string | null
   fund_type: string
   active_fund_type: string | null
+  fee_schedule_id: string | null
 }
 
 /**

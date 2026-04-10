@@ -64,9 +64,10 @@ interface Props {
   lastActivity: string | null
   investments?: Record<string, unknown>[]
   relationships?: Record<string, unknown>[]
+  feeSchedules?: { id: string; name: string }[]
 }
 
-export default function DetailsTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity, investments: investmentsRaw, relationships: relationshipsRaw }: Props) {
+export default function DetailsTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity, investments: investmentsRaw, relationships: relationshipsRaw, feeSchedules }: Props) {
   const investments   = (investmentsRaw   ?? []) as unknown as InvestmentRow[]
   const relationships = (relationshipsRaw ?? []) as unknown as RelationshipRow[]
   const isLead        = !client.lead_investor_id
@@ -75,6 +76,17 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
   const supabase = createClient()
 
   const [showAddModal, setShowAddModal] = useState(false)
+  const [changingFeeSchedule,  setChangingFeeSchedule]  = useState(false)
+  const [pendingFeeScheduleId, setPendingFeeScheduleId] = useState(client.fee_schedule_id ?? '')
+
+  async function handleFeeScheduleSave() {
+    await supabase
+      .from('clients')
+      .update({ fee_schedule_id: pendingFeeScheduleId || null })
+      .eq('id', client.id)
+    setChangingFeeSchedule(false)
+    router.refresh()
+  }
 
   async function handleDeactivate(relationshipId: string) {
     if (!window.confirm('Mark this relationship as inactive?')) return
@@ -120,6 +132,45 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
             <dt style={{ color: '#888' }}>Fund type</dt>
             <dd style={{ margin: 0 }}>
               <FundTypeDisplay fundType={client.fund_type ?? 'syndicate'} activeFundType={client.active_fund_type ?? null} />
+            </dd>
+            <dt style={{ color: '#888' }}>Fee schedule</dt>
+            <dd style={{ margin: 0 }}>
+              {changingFeeSchedule ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <select
+                    value={pendingFeeScheduleId}
+                    onChange={e => setPendingFeeScheduleId(e.target.value)}
+                    style={{ padding: '3px 6px', fontSize: 12, border: '0.5px solid #d0d0c8', borderRadius: 4, fontFamily: 'inherit', outline: 'none' }}
+                  >
+                    <option value="">None assigned</option>
+                    {(feeSchedules ?? []).map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleFeeScheduleSave}
+                    style={{ fontSize: 11, color: '#fff', background: '#0f2744', border: 'none', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontFamily: 'inherit' }}
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => { setChangingFeeSchedule(false); setPendingFeeScheduleId(client.fee_schedule_id ?? '') }}
+                    style={{ fontSize: 11, color: '#555', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  {(feeSchedules ?? []).find(s => s.id === client.fee_schedule_id)?.name ?? 'None assigned'}
+                  <button
+                    onClick={() => { setPendingFeeScheduleId(client.fee_schedule_id ?? ''); setChangingFeeSchedule(true) }}
+                    style={{ fontSize: 11, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+                  >
+                    Change
+                  </button>
+                </span>
+              )}
             </dd>
           </dl>
 

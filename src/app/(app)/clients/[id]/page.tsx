@@ -44,6 +44,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: followUpNotes },
     { data: lastActivityRow },
     { data: relationshipRows },
+    { data: feeSchedulesData },
   ] = await Promise.all([
     // Portfolio data per entity
     supabase
@@ -128,6 +129,13 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('id, client_id, related_client_id, relationship_type, active, notes')
       .or(`client_id.eq.${id},related_client_id.eq.${id}`)
       .order('active', { ascending: false }),
+
+    // Active fee schedules for assignment UI
+    supabase
+      .from('fee_schedules')
+      .select('id, name')
+      .eq('active', true)
+      .order('name'),
   ])
 
   // Resolve names for related clients
@@ -256,6 +264,7 @@ export default async function ClientRecordPage({ params }: Props) {
       followUpNotes={(followUpNotes ?? []) as Record<string, unknown>[]}
       lastActivity={lastActivity}
       relationships={relationships as Record<string, unknown>[]}
+      feeSchedules={(feeSchedulesData ?? []) as { id: string; name: string }[]}
     />
   )
 }

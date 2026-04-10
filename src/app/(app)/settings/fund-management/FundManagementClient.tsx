@@ -670,10 +670,16 @@ function AddEditFeeScheduleItemModal({
                 <option value="percentage_of_proceeds">% of proceeds</option>
                 <option value="fixed">Fixed amount</option>
               </select>
+              <div style={{ fontSize: 10, color: '#888', marginTop: 3, lineHeight: '1.4' }}>
+                % of profit = applied to proceeds minus original cost. % of cost = applied to original investment amount. % of proceeds = applied to total sale proceeds. Fixed = a fixed £ amount.
+              </div>
             </div>
             <div>
               <label style={labelSt}>Rate * {basis === 'fixed' ? '(£)' : '(%)'}</label>
               <input type="number" step="0.0001" value={rate} onChange={e => setRate(e.target.value)} placeholder="0.00" style={inputSt} />
+              <div style={{ fontSize: 10, color: '#888', marginTop: 3, lineHeight: '1.4' }}>
+                Enter as a percentage, e.g. 5 for 5%. For annual charges, this is the rate per year.
+              </div>
             </div>
             <div>
               <label style={labelSt}>Display order</label>
@@ -682,10 +688,16 @@ function AddEditFeeScheduleItemModal({
             <div>
               <label style={labelSt}>Cap rate (%)</label>
               <input type="number" step="0.0001" value={capRate} onChange={e => setCapRate(e.target.value)} placeholder="Optional" style={inputSt} />
+              <div style={{ fontSize: 10, color: '#888', marginTop: 3, lineHeight: '1.4' }}>
+                Optional. Maximum total rate as a percentage, e.g. 10 means the charge will never exceed 10% of cost regardless of years held.
+              </div>
             </div>
             <div>
               <label style={labelSt}>Cap years</label>
               <input type="number" step="1" value={capYears} onChange={e => setCapYears(e.target.value)} placeholder="Optional" style={inputSt} />
+              <div style={{ fontSize: 10, color: '#888', marginTop: 3, lineHeight: '1.4' }}>
+                Optional. Maximum number of years the charge applies, e.g. 5 means the charge stops accruing after 5 years.
+              </div>
             </div>
           </div>
           {error && <div style={{ fontSize: 12, color: '#c0392b', marginBottom: 12 }}>{error}</div>}
