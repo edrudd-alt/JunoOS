@@ -43,6 +43,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: dealInvestorRows },
     { data: followUpNotes },
     { data: lastActivityRow },
+    { data: relationshipRows },
   ] = await Promise.all([
     // Portfolio data per entity
     supabase
@@ -120,7 +121,31 @@ export default async function ClientRecordPage({ params }: Props) {
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle(),
+
+    // Client relationships — both directions
+    supabase
+      .from('client_relationships')
+      .select('id, client_id, related_client_id, relationship_type, active, notes')
+      .or(`client_id.eq.${id},related_client_id.eq.${id}`)
+      .order('active', { ascending: false }),
   ])
+
+  // Resolve names for related clients
+  const relatedIds = [...new Set(
+    (relationshipRows ?? []).flatMap(r => [
+      (r as Record<string, unknown>).client_id as string,
+      (r as Record<string, unknown>).related_client_id as string,
+    ]).filter(cid => cid !== id)
+  )]
+  const { data: relatedClientsData } = relatedIds.length > 0
+    ? await supabase.from('clients').select('id, full_name').in('id', relatedIds)
+    : { data: [] as { id: string; full_name: string }[] }
+  const relatedClientMap = new Map((relatedClientsData ?? []).map(c => [c.id, c.full_name]))
+  const relationships = (relationshipRows ?? []).map(r => {
+    const row = r as Record<string, unknown>
+    const otherId = row.client_id === id ? row.related_client_id as string : row.client_id as string
+    return { ...row, other_client_id: otherId, related_client_name: relatedClientMap.get(otherId) ?? '—' }
+  })
 
   // Query 4a: active deals (depends on dealInvestorRows) — no join
   const dealIds = [...new Set((dealInvestorRows ?? []).map(d => (d as Record<string, unknown>).deal_id as string).filter(Boolean))]
@@ -230,6 +255,7 @@ export default async function ClientRecordPage({ params }: Props) {
       activeDeals={activeDeals as Record<string, unknown>[]}
       followUpNotes={(followUpNotes ?? []) as Record<string, unknown>[]}
       lastActivity={lastActivity}
+      relationships={relationships as Record<string, unknown>[]}
     />
   )
 }
