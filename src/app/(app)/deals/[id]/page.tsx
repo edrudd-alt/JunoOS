@@ -40,7 +40,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
     supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
     supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
-    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type').order('full_name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type, lead_investor_id').order('full_name'),
     supabase.from('investments').select('id, client_id, sum_subscribed, shares_purchased, status, completion_date, eis_status').eq('deal_id', id),
   ])
 

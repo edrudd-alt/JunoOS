@@ -126,7 +126,8 @@ export default function DealDetail({
   const documents       = documentsRaw      as unknown as Document[]
   const invoices        = invoicesRaw       as unknown as Invoice[]
   const bookbuild       = bookbuildRaw      as unknown as Bookbuild | null
-  const allClients      = allClientsRaw     as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null }[]
+  const allClients      = allClientsRaw     as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null }[]
+  const primaryClients  = allClients.filter(c => !c.lead_investor_id)
   const dealInvestments = dealInvestmentsRaw as unknown as DealInvestmentRow[]
 
   const router   = useRouter()
@@ -556,7 +557,7 @@ export default function DealDetail({
               dealId={deal.id}
               companyId={deal.companies?.id ?? ''}
               bookbuild={bookbuild}
-              allClients={allClients}
+              allClients={primaryClients}
               dealInfo={{
                 id:             deal.id,
                 companyId:      deal.companies?.id ?? '',
