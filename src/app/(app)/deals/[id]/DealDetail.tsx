@@ -166,6 +166,7 @@ export default function DealDetail({
   const signingStatuses = Object.fromEntries(
     (deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent'])
   )
+  console.log('signingStatuses on render:', JSON.stringify(signingStatuses))
   const [pendingStatuses, setPendingStatuses] = useState<Record<string, string>>({})
 
 const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
