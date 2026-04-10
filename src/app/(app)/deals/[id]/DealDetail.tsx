@@ -264,18 +264,18 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
     return deal.status
   }
 
-  async function saveSigningStatuses() {
-    setSaving(true)
-    const merged  = { ...signingStatuses, ...pendingStatuses }
+  async function handleStatusChange(diId: string, newStatus: string) {
+    setPendingStatuses(prev => ({ ...prev, [diId]: newStatus }))
+    const merged  = { ...signingStatuses, ...pendingStatuses, [diId]: newStatus }
     const derived = deriveStatus(merged)
-    for (const [diId, st] of Object.entries(merged)) {
-      await supabase.from('deal_investors').update({ signing_status: st }).eq('id', diId)
-    }
-    await supabase.from('deals').update({ status: derived }).eq('id', deal.id)
-    setPendingStatuses({})
-    setSaving(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    const { error: diError } = await supabase.from('deal_investors')
+      .update({ signing_status: newStatus }).eq('id', diId)
+    if (diError) console.error('deal_investors update failed:', diError)
+
+    const { error: dealError } = await supabase.from('deals')
+      .update({ status: derived }).eq('id', deal.id)
+    if (dealError) console.error('deals update failed:', dealError)
+
     router.refresh()
   }
 
@@ -568,10 +568,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
             investors={investors}
             dealStatus={deal.status}
             signingStatuses={mergedStatuses}
-            setSigningStatuses={setPendingStatuses}
-            saving={saving}
-            saved={saved}
-            onSave={saveSigningStatuses}
+            onStatusChange={handleStatusChange}
           />
 
           {(isBuyDeal || isSaleDeal) && investors.length > 0 && (

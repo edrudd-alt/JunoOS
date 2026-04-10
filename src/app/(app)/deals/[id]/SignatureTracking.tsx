@@ -15,17 +15,14 @@ const inputStyle: React.CSSProperties = {
 }
 
 interface Props {
-  investors: DealInvestor[]
-  dealStatus: string
-  signingStatuses: Record<string, string>
-  setSigningStatuses: React.Dispatch<React.SetStateAction<Record<string, string>>>
-  saving: boolean
-  saved: boolean
-  onSave: () => void
+  investors:        DealInvestor[]
+  dealStatus:       string
+  signingStatuses:  Record<string, string>
+  onStatusChange:   (diId: string, status: string) => void
 }
 
 export function SignatureTracking({
-  investors, dealStatus, signingStatuses, setSigningStatuses, saving, saved, onSave,
+  investors, dealStatus, signingStatuses, onStatusChange,
 }: Props) {
   return (
     <div className="card">
@@ -56,7 +53,7 @@ export function SignatureTracking({
                     ) : (
                       <select
                         value={signingStatuses[di.id] ?? 'not_sent'}
-                        onChange={e => setSigningStatuses(prev => ({ ...prev, [di.id]: e.target.value }))}
+                        onChange={e => onStatusChange(di.id, e.target.value)}
                         style={{ ...inputStyle, width: 'auto', fontSize: 11, padding: '4px 6px' }}
                       >
                         {SIGNING_OPTIONS.map(o => (
@@ -70,16 +67,6 @@ export function SignatureTracking({
             </tbody>
           </table>
           <SuggestedNextStep investors={investors} statuses={signingStatuses} />
-          {dealStatus !== 'complete' && (
-            <button
-              className="btn btn-primary"
-              onClick={onSave}
-              disabled={saving}
-              style={{ fontSize: 12, padding: '6px 14px' }}
-            >
-              {saving ? 'Saving…' : saved ? '✓ Saved' : 'Save status'}
-            </button>
-          )}
         </>
       )}
     </div>
