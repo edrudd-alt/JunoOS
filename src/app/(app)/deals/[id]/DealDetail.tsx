@@ -163,9 +163,10 @@ export default function DealDetail({
 
   const perInvestorItems = isBuyDeal ? BUY_ITEMS : isSaleDeal ? SALE_ITEMS : []
 
-  const [signingStatuses, setSigningStatuses] = useState<Record<string, string>>(
-    () => Object.fromEntries((deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent']))
+  const signingStatuses = Object.fromEntries(
+    (deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent'])
   )
+  const [pendingStatuses, setPendingStatuses] = useState<Record<string, string>>({})
 
 const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
     () => (deal.completion_checklist?.per_investor as Record<string, Record<string, boolean>>) ?? {}
@@ -211,11 +212,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
     inv.eis_status === 'yes' || inv.eis_status === 'tbc'
   )
 
+  const mergedStatuses = { ...signingStatuses, ...pendingStatuses }
+
   // Whether a given investor has all required checklist items ticked
   const clientToSigningStatus = new Map<string, string>(
     investors.map(di => [
       di.clients?.id ?? '',
-      signingStatuses[di.id] ?? di.signing_status ?? 'not_sent',
+      mergedStatuses[di.id] ?? 'not_sent',
     ])
   )
 
@@ -249,9 +252,9 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
     }))
   }
 
-  function deriveStatus(): string {
+  function deriveStatus(merged: Record<string, string>): string {
     if (deal.status === 'complete') return 'complete'
-    const statuses = investors.map(di => signingStatuses[di.id] ?? di.signing_status)
+    const statuses = investors.map(di => merged[di.id] ?? 'not_sent')
     const allSigned = statuses.length > 0 && statuses.every(s => s === 'signed')
     const anySigned = statuses.some(s => s === 'signed')
     if (allSigned) return 'fully_signed'
@@ -263,11 +266,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
   async function saveSigningStatuses() {
     setSaving(true)
-    const derived = deriveStatus()
-    for (const [diId, st] of Object.entries(signingStatuses)) {
+    const merged  = { ...signingStatuses, ...pendingStatuses }
+    const derived = deriveStatus(merged)
+    for (const [diId, st] of Object.entries(merged)) {
       await supabase.from('deal_investors').update({ signing_status: st }).eq('id', diId)
     }
     await supabase.from('deals').update({ status: derived }).eq('id', deal.id)
+    setPendingStatuses({})
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -562,8 +567,8 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
           <SignatureTracking
             investors={investors}
             dealStatus={deal.status}
-            signingStatuses={signingStatuses}
-            setSigningStatuses={setSigningStatuses}
+            signingStatuses={mergedStatuses}
+            setSigningStatuses={setPendingStatuses}
             saving={saving}
             saved={saved}
             onSave={saveSigningStatuses}
