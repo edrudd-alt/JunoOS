@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound, redirect } from 'next/navigation'
 import EditInvestorsClient from './EditInvestorsClient'
-import type { SetupData }    from '../../new/buy/buyWizardTypes'
-import type { SellSetupData } from '../../new/sell/sellWizardTypes'
+import type { SetupData } from '../../new/buy/buyWizardTypes'
 
 export default async function EditDealPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -27,7 +26,8 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
   const isBuyDeal  = deal.deal_type === 'new_investment' || deal.deal_type === 'follow_on'
   const isSellDeal = deal.deal_type === 'full_exit'      || deal.deal_type === 'partial_exit'
 
-  if (!isBuyDeal && !isSellDeal) {
+  // Sell deals manage investors via the bookbuild on the deal page
+  if (!isBuyDeal) {
     redirect(`/deals/${id}`)
   }
 
@@ -70,29 +70,4 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
     )
   }
 
-  // Sell deal
-  const setupData: SellSetupData = {
-    companyId:          deal.company_id ?? '',
-    companyName,
-    grossPricePerShare: String(deal.share_price ?? ''),
-    saleDate:           deal.investment_date ?? '',
-    dealCosts:          cc.deal_costs != null ? String(cc.deal_costs) : '',
-    netProceedsMethod:  (cc.net_proceeds_method as SellSetupData['netProceedsMethod']) ?? 'gross_less_costs',
-    netPricePerShare:   cc.net_price_per_share != null ? String(cc.net_price_per_share) : '',
-    totalNetProceeds:   cc.total_net_proceeds  != null ? String(cc.total_net_proceeds)  : '',
-    shareClass:         deal.share_class ?? '',
-    notes:              deal.notes ?? '',
-  }
-
-  return (
-    <EditInvestorsClient
-      dealTypeCategory="sell"
-      dealType={deal.deal_type as 'full_exit' | 'partial_exit'}
-      dealId={id}
-      setupData={setupData}
-      clients={(clients ?? []) as Record<string, unknown>[]}
-      investments={(investments ?? []) as Record<string, unknown>[]}
-      existingInvestorData={(cc.investor_data ?? {}) as Record<string, unknown>}
-    />
-  )
 }

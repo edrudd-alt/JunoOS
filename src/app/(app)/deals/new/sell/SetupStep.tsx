@@ -1,92 +1,156 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import type { SellDealType, SellSetupData, NetProceedsMethod } from './sellWizardTypes'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
+import type { SellDealType } from './sellWizardTypes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Company {
-  id: string
+  id:   string
   name: string
-  share_classes?: string[] | null
+}
+
+interface ShareClassOption {
+  id:   string
+  name: string
+}
+
+interface SelectedClass {
+  id:    string
+  name:  string
+  price: string
 }
 
 interface Props {
-  dealType:    SellDealType
-  companies:   Company[]
-  initialData?: SellSetupData
-  onContinue:  (data: SellSetupData) => void
-  onBack:      () => void
+  dealType:  SellDealType
+  companies: Company[]
+  onBack:    () => void
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function SetupStep({ dealType, companies, initialData, onContinue, onBack }: Props) {
+export function SetupStep({ dealType, companies, onBack }: Props) {
   const isFullExit = dealType === 'full_exit'
   const today      = new Date().toISOString().slice(0, 10)
+  const supabase   = createClient()
+  const router     = useRouter()
 
-  // Company search
-  const [companySearch,   setCompanySearch]   = useState('')
-  const [showDropdown,    setShowDropdown]     = useState(false)
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(
-    initialData ? (companies.find(c => c.id === initialData.companyId) ?? null) : null
+  // Company
+  const [companyId,       setCompanyId]      = useState('')
+  const [companyName,     setCompanyName]    = useState('')
+  const [companySearch,   setCompanySearch]  = useState('')
+  const [showCompanyDrop, setShowCompanyDrop] = useState(false)
+  const companyInputRef = useRef<HTMLInputElement>(null)
+
+  // Share classes
+  const [shareClassOptions, setShareClassOptions] = useState<ShareClassOption[]>([])
+  const [loadingClasses,    setLoadingClasses]    = useState(false)
+  const [selectedClasses,   setSelectedClasses]   = useState<SelectedClass[]>([])
+
+  // Other fields
+  const [saleDate, setSaleDate] = useState(today)
+  const [notes,    setNotes]    = useState('')
+  const [error,    setError]    = useState('')
+  const [saving,   setSaving]   = useState(false)
+
+  const filteredCompanies = companies.filter(c =>
+    c.name.toLowerCase().includes(companySearch.toLowerCase()),
   )
 
-  // Form fields
-  const [grossPrice,    setGrossPrice]   = useState(initialData?.grossPricePerShare ?? '')
-  const [saleDate,      setSaleDate]     = useState(initialData?.saleDate ?? today)
-  const [dealCosts,     setDealCosts]    = useState(initialData?.dealCosts ?? '')
-  const [method,        setMethod]       = useState<NetProceedsMethod>(initialData?.netProceedsMethod ?? 'gross_less_costs')
-  const [netPrice,      setNetPrice]     = useState(initialData?.netPricePerShare ?? '')
-  const [totalNet,      setTotalNet]     = useState(initialData?.totalNetProceeds ?? '')
-  const [shareClass,    setShareClass]   = useState(initialData?.shareClass ?? '')
-  const [notes,         setNotes]        = useState(initialData?.notes ?? '')
-  const [error,         setError]        = useState('')
+  // Fetch share classes whenever company changes
+  useEffect(() => {
+    setSelectedClasses([])
+    setShareClassOptions([])
+    if (!companyId) return
 
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  const filtered = companySearch.trim()
-    ? companies.filter(c => c.name.toLowerCase().includes(companySearch.toLowerCase()))
-    : companies
+    setLoadingClasses(true)
+    supabase
+      .from('company_share_classes')
+      .select('id, name')
+      .eq('company_id', companyId)
+      .order('name')
+      .then(({ data }) => {
+        setShareClassOptions(data ?? [])
+        setLoadingClasses(false)
+      })
+  }, [companyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectCompany(c: Company) {
-    setSelectedCompany(c)
+    setCompanyId(c.id)
+    setCompanyName(c.name)
     setCompanySearch('')
-    setShowDropdown(false)
-    if (!shareClass && c.share_classes?.length) {
-      setShareClass(c.share_classes[0])
-    }
+    setShowCompanyDrop(false)
   }
 
   function clearCompany() {
-    setSelectedCompany(null)
+    setCompanyId('')
+    setCompanyName('')
     setCompanySearch('')
-    setShareClass('')
+    setSelectedClasses([])
+    setShareClassOptions([])
+    setTimeout(() => companyInputRef.current?.focus(), 0)
   }
 
-  function handleContinue() {
-    if (!selectedCompany)             { setError('Please select a company'); return }
-    if (!grossPrice || parseFloat(grossPrice) <= 0) { setError('Please enter a valid gross sale price'); return }
-    if (!saleDate)                    { setError('Please enter a sale date'); return }
-    if (method === 'given_net_price' && (!netPrice || parseFloat(netPrice) <= 0)) {
-      setError('Please enter a valid net price per share'); return
+  function toggleClass(option: ShareClassOption, checked: boolean) {
+    if (checked) {
+      setSelectedClasses(prev => [...prev, { id: option.id, name: option.name, price: '' }])
+    } else {
+      setSelectedClasses(prev => prev.filter(sc => sc.id !== option.id))
     }
-    if (method === 'calculate_from_total' && (!totalNet || parseFloat(totalNet) <= 0)) {
-      setError('Please enter the total net proceeds'); return
-    }
+  }
+
+  function updatePrice(id: string, price: string) {
+    setSelectedClasses(prev => prev.map(sc => sc.id === id ? { ...sc, price } : sc))
+  }
+
+  async function handleSave() {
     setError('')
-    onContinue({
-      companyId:          selectedCompany.id,
-      companyName:        selectedCompany.name,
-      grossPricePerShare: grossPrice,
-      saleDate,
-      dealCosts,
-      netProceedsMethod:  method,
-      netPricePerShare:   netPrice,
-      totalNetProceeds:   totalNet,
-      shareClass,
-      notes,
+    if (!companyId)                   { setError('Please select a company'); return }
+    if (selectedClasses.length === 0) { setError('Please select at least one share class'); return }
+    if (selectedClasses.some(sc => !sc.price || parseFloat(sc.price) <= 0)) {
+      setError('Please enter a valid price for each selected share class'); return
+    }
+    if (!saleDate) { setError('Please enter a sale date'); return }
+
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+
+    const shareClassPrices = Object.fromEntries(
+      selectedClasses.map(sc => [sc.name, parseFloat(sc.price)]),
+    )
+
+    const { data: deal, error: dealErr } = await supabase
+      .from('deals')
+      .insert({
+        deal_type:            dealType,
+        company_id:           companyId,
+        investment_date:      saleDate,
+        status:               'draft',
+        created_by:           user?.id ?? null,
+        share_class:          selectedClasses.map(sc => sc.name).join(', '),
+        share_price:          parseFloat(selectedClasses[0].price),
+        notes:                notes.trim() || null,
+        completion_checklist: { share_class_prices: shareClassPrices },
+      })
+      .select('id')
+      .single()
+
+    if (dealErr || !deal) {
+      setError('Failed to create deal: ' + (dealErr?.message ?? 'unknown error'))
+      setSaving(false)
+      return
+    }
+
+    await supabase.from('internal_updates').insert({
+      company_id:  companyId,
+      update_type: 'deal',
+      description: `Deal created: ${isFullExit ? 'Full exit' : 'Partial exit'} — ${companyName}`,
+      created_by:  user?.id ?? null,
     })
+
+    router.push(`/deals/${deal.id}`)
   }
 
   return (
@@ -97,224 +161,173 @@ export function SetupStep({ dealType, companies, initialData, onContinue, onBack
         </div>
       )}
 
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#0f2744', marginBottom: 14, paddingBottom: 10, borderBottom: '0.5px solid #f0f0ec' }}>
+      <div className="card">
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744', marginBottom: 20, paddingBottom: 10, borderBottom: '0.5px solid #f0f0ec' }}>
           Deal details
         </div>
 
-        {/* Company */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelSt}>Company *</label>
-          {selectedCompany ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+
+          {/* Company */}
+          <div>
+            <label style={labelSt}>Company *</label>
+            {companyId ? (
               <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8,
-                background: '#f0f6ff', border: '0.5px solid #c5d9f5',
-                borderRadius: 6, padding: '6px 12px', fontSize: 13, color: '#0f2744',
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '7px 10px', border: '0.5px solid #d0d0c8',
+                borderRadius: 5, background: '#f9f9f7',
               }}>
-                <span style={{ fontWeight: 500 }}>{selectedCompany.name}</span>
+                <span style={{ flex: 1, fontSize: 13, color: '#0f2744', fontWeight: 500 }}>{companyName}</span>
                 <button
                   onClick={clearCompany}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#888', fontSize: 14, lineHeight: 1, padding: 0 }}
-                >
-                  ×
-                </button>
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#aaa', fontSize: 16, padding: 0, lineHeight: 1 }}
+                  title="Change company"
+                >×</button>
               </div>
-            </div>
-          ) : (
-            <div style={{ position: 'relative', maxWidth: 320 }} ref={dropdownRef}>
-              <input
-                type="text"
-                value={companySearch}
-                onChange={e => { setCompanySearch(e.target.value); setShowDropdown(true) }}
-                onFocus={() => setShowDropdown(true)}
-                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-                placeholder="Search companies…"
-                style={{ ...inputSt, maxWidth: 320 }}
-                autoComplete="off"
-              />
-              {showDropdown && filtered.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                  background: '#fff', border: '0.5px solid #d0d0c8', borderRadius: 5,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.08)', maxHeight: 200, overflowY: 'auto',
-                  marginTop: 2,
-                }}>
-                  {filtered.map(c => (
-                    <div
-                      key={c.id}
-                      onMouseDown={() => selectCompany(c)}
-                      style={{
-                        padding: '8px 12px', fontSize: 13, cursor: 'pointer',
-                        borderBottom: '0.5px solid #f5f5f2',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.background = '#f5f9ff' }}
-                      onMouseLeave={e => { e.currentTarget.style.background = '' }}
-                    >
-                      {c.name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Gross price + date row */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 14 }}>
-          <div>
-            <label style={labelSt}>Gross price per share *</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
-              <input
-                type="number" min="0" step="0.0001"
-                value={grossPrice}
-                onChange={e => setGrossPrice(e.target.value)}
-                style={{ ...inputSt, paddingLeft: 24 }}
-                placeholder="0.0000"
-              />
-            </div>
+            ) : (
+              <div style={{ position: 'relative' }}>
+                <input
+                  ref={companyInputRef}
+                  type="text"
+                  placeholder="Search companies…"
+                  value={companySearch}
+                  onChange={e => { setCompanySearch(e.target.value); setShowCompanyDrop(true) }}
+                  onFocus={() => setShowCompanyDrop(true)}
+                  onBlur={() => setTimeout(() => setShowCompanyDrop(false), 150)}
+                  style={inputSt}
+                  autoComplete="off"
+                />
+                {showCompanyDrop && filteredCompanies.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0,
+                    background: '#fff', border: '0.5px solid #e8e7e0', borderRadius: 5,
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 100,
+                    maxHeight: 220, overflowY: 'auto',
+                  }}>
+                    {filteredCompanies.slice(0, 20).map(c => (
+                      <button
+                        key={c.id}
+                        onMouseDown={() => selectCompany(c)}
+                        style={{
+                          display: 'block', width: '100%', textAlign: 'left',
+                          padding: '9px 12px', fontSize: 13, background: 'none',
+                          border: 'none', borderBottom: '0.5px solid #f5f5f2',
+                          cursor: 'pointer', color: '#333', fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
+                        onMouseLeave={e => (e.currentTarget.style.background = '')}
+                      >
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showCompanyDrop && companySearch && filteredCompanies.length === 0 && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0,
+                    background: '#fff', border: '0.5px solid #e8e7e0', borderRadius: 5,
+                    padding: '10px 12px', fontSize: 12, color: '#aaa', zIndex: 100,
+                  }}>
+                    No companies match &ldquo;{companySearch}&rdquo;
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
+          {/* Sale date */}
           <div>
             <label style={labelSt}>Sale date *</label>
             <input type="date" value={saleDate} onChange={e => setSaleDate(e.target.value)} style={inputSt} />
           </div>
-
-          <div>
-            <label style={labelSt}>Deal costs (£)</label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
-              <input
-                type="number" min="0" step="0.01"
-                value={dealCosts}
-                onChange={e => setDealCosts(e.target.value)}
-                style={{ ...inputSt, paddingLeft: 24 }}
-                placeholder="0.00"
-              />
-            </div>
-          </div>
         </div>
 
-        {/* Net proceeds method */}
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelSt}>Net proceeds method</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-            {NET_METHODS.map(m => (
-              <label key={m.value} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="net_method"
-                  value={m.value}
-                  checked={method === m.value}
-                  onChange={() => setMethod(m.value as NetProceedsMethod)}
-                  style={{ marginTop: 2 }}
-                />
-                <div>
-                  <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>{m.label}</div>
-                  <div style={{ fontSize: 11, color: '#888' }}>{m.description}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-
-          {method === 'given_net_price' && (
-            <div style={{ marginTop: 10, maxWidth: 220 }}>
-              <label style={labelSt}>Net price per share *</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
-                <input
-                  type="number" min="0" step="0.0001"
-                  value={netPrice}
-                  onChange={e => setNetPrice(e.target.value)}
-                  style={{ ...inputSt, paddingLeft: 24 }}
-                  placeholder="0.0000"
-                />
-              </div>
+        {/* Share classes */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelSt}>Share classes *</label>
+          {!companyId ? (
+            <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa', cursor: 'not-allowed' }}>
+              Select a company first
             </div>
-          )}
-
-          {method === 'calculate_from_total' && (
-            <div style={{ marginTop: 10, maxWidth: 220 }}>
-              <label style={labelSt}>Total net proceeds *</label>
-              <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: '#888', pointerEvents: 'none' }}>£</span>
-                <input
-                  type="number" min="0" step="0.01"
-                  value={totalNet}
-                  onChange={e => setTotalNet(e.target.value)}
-                  style={{ ...inputSt, paddingLeft: 24 }}
-                  placeholder="0.00"
-                />
-              </div>
+          ) : loadingClasses ? (
+            <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa' }}>Loading…</div>
+          ) : shareClassOptions.length === 0 ? (
+            <div style={{ padding: '7px 10px', border: '0.5px solid #f0c674', borderRadius: 5, background: '#fffbf0', fontSize: 12, color: '#78500a' }}>
+              No share classes found. Add share classes in the <strong>Share classes</strong> tab on the company page first.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {shareClassOptions.map(option => {
+                const selected = selectedClasses.find(sc => sc.id === option.id)
+                return (
+                  <div key={option.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', minWidth: 160 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!selected}
+                        onChange={e => toggleClass(option, e.target.checked)}
+                      />
+                      <span style={{ fontSize: 13, color: '#0f2744' }}>{option.name}</span>
+                    </label>
+                    {selected && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 11, color: '#888' }}>Price per share</span>
+                        <div style={{ position: 'relative' }}>
+                          <span style={{
+                            position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)',
+                            fontSize: 12, color: '#888', pointerEvents: 'none',
+                          }}>£</span>
+                          <input
+                            type="number" min="0" step="0.0001"
+                            value={selected.price}
+                            onChange={e => updatePrice(option.id, e.target.value)}
+                            placeholder="0.0000"
+                            style={{ ...inputSt, width: 130, paddingLeft: 24 }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
 
-        {/* Share class + notes */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 14 }}>
-          <div>
-            <label style={labelSt}>Share class</label>
-            <input
-              type="text"
-              value={shareClass}
-              onChange={e => setShareClass(e.target.value)}
-              style={inputSt}
-              placeholder="e.g. Ordinary A"
-            />
-          </div>
-          <div>
-            <label style={labelSt}>Notes</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              style={inputSt}
-              placeholder="Optional internal notes"
-            />
-          </div>
+        {/* Notes */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={labelSt}>
+            Notes <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+          </label>
+          <input
+            type="text"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Optional internal notes"
+            style={inputSt}
+          />
         </div>
-      </div>
 
-      {/* Actions */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={onBack} className="btn btn-secondary">← Back</button>
-        <button onClick={handleContinue} className="btn btn-primary">
-          Continue to investors →
-        </button>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 16, borderTop: '0.5px solid #f0f0ec' }}>
+          <button onClick={onBack} className="btn btn-secondary" disabled={saving}>← Back</button>
+          <button onClick={handleSave} className="btn btn-primary" disabled={saving}>
+            {saving ? 'Creating deal…' : 'Create deal'}
+          </button>
+        </div>
       </div>
     </div>
   )
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const NET_METHODS = [
-  {
-    value:       'gross_less_costs',
-    label:       'Gross less deal costs',
-    description: "Deal costs deducted proportionally from each investor's gross proceeds",
-  },
-  {
-    value:       'given_net_price',
-    label:       'Given net price per share',
-    description: 'A fixed net price per share is applied to each investor',
-  },
-  {
-    value:       'calculate_from_total',
-    label:       'Calculate from total net proceeds',
-    description: 'A total net figure is allocated proportionally by shares sold',
-  },
-] as const
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const inputSt: React.CSSProperties = {
   width: '100%', padding: '7px 10px',
   border: '0.5px solid #d0d0c8', borderRadius: 5,
-  fontSize: 12, outline: 'none', boxSizing: 'border-box',
+  fontSize: 13, outline: 'none', boxSizing: 'border-box',
   background: '#fff', fontFamily: 'inherit',
 }
+
 const labelSt: React.CSSProperties = {
   display: 'block', fontSize: 11, fontWeight: 500, color: '#555', marginBottom: 4,
 }

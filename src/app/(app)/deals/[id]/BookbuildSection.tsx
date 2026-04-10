@@ -52,11 +52,16 @@ interface Props {
 // ─── Status config ────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
-  confirmed:  { label: 'Confirmed',  cls: 'pill-green' },
-  interested: { label: 'Interested', cls: 'pill-blue'  },
-  maybe:      { label: 'Maybe',      cls: 'pill-amber' },
-  rejected:   { label: 'Rejected',   cls: 'pill-grey'  },
-  withdrawn:  { label: 'Withdrawn',  cls: 'pill-grey'  },
+  // Buy-deal statuses
+  confirmed:   { label: 'Confirmed',   cls: 'pill-green' },
+  interested:  { label: 'Interested',  cls: 'pill-blue'  },
+  maybe:       { label: 'Maybe',       cls: 'pill-amber' },
+  rejected:    { label: 'Rejected',    cls: 'pill-grey'  },
+  withdrawn:   { label: 'Withdrawn',   cls: 'pill-grey'  },
+  // Sell-deal statuses
+  selling:     { label: 'Selling',     cls: 'pill-green' },
+  not_selling: { label: 'Not selling', cls: 'pill-grey'  },
+  undecided:   { label: 'Undecided',   cls: 'pill-blue'  },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

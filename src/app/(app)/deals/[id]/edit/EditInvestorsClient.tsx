@@ -2,51 +2,34 @@
 
 import { useRouter } from 'next/navigation'
 import { Breadcrumb } from '@/components/Breadcrumb'
-import { StepBar }     from '../../new/buy/StepBar'
-import { SellStepBar } from '../../new/sell/SellStepBar'
-import { InvestorsStep as BuyInvestorsStep }  from '../../new/buy/InvestorsStep'
-import { InvestorsStep as SellInvestorsStep } from '../../new/sell/InvestorsStep'
-import type { SetupData, BuyDealType }           from '../../new/buy/buyWizardTypes'
-import type { SellSetupData, SellDealType }      from '../../new/sell/sellWizardTypes'
+import { StepBar }    from '../../new/buy/StepBar'
+import { InvestorsStep as BuyInvestorsStep } from '../../new/buy/InvestorsStep'
+import type { SetupData, BuyDealType } from '../../new/buy/buyWizardTypes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Props =
-  | {
-      dealTypeCategory: 'buy'
-      dealType:         BuyDealType
-      dealId:           string
-      setupData:        SetupData
-      clients:          Record<string, unknown>[]
-      investments:      Record<string, unknown>[]
-      existingInvestorData: Record<string, unknown>
-    }
-  | {
-      dealTypeCategory: 'sell'
-      dealType:         SellDealType
-      dealId:           string
-      setupData:        SellSetupData
-      clients:          Record<string, unknown>[]
-      investments:      Record<string, unknown>[]
-      existingInvestorData: Record<string, unknown>
-    }
+interface Props {
+  dealTypeCategory:     'buy'
+  dealType:             BuyDealType
+  dealId:               string
+  setupData:            SetupData
+  clients:              Record<string, unknown>[]
+  investments:          Record<string, unknown>[]
+  existingInvestorData: Record<string, unknown>
+}
 
 const DEAL_TYPE_LABELS: Record<string, string> = {
   new_investment: 'New Investment',
   follow_on:      'Follow-on Investment',
-  full_exit:      'Full Exit',
-  partial_exit:   'Partial Exit',
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function EditInvestorsClient(props: Props) {
-  const router    = useRouter()
+  const router      = useRouter()
   const { dealId, clients, investments, existingInvestorData } = props
-  const title     = DEAL_TYPE_LABELS[props.dealType] ?? props.dealType
-  const companyName = props.setupData.companyId
-    ? (props.dealTypeCategory === 'buy' ? props.setupData.companyName : (props.setupData as SellSetupData).companyName)
-    : ''
+  const title       = DEAL_TYPE_LABELS[props.dealType] ?? props.dealType
+  const companyName = props.setupData.companyName ?? ''
 
   return (
     <div style={{ maxWidth: 1200 }}>
@@ -63,33 +46,16 @@ export default function EditInvestorsClient(props: Props) {
         )}
       </div>
 
-      {props.dealTypeCategory === 'buy' ? (
-        <>
-          <StepBar activeStep={1} />
-          <BuyInvestorsStep
-            dealType={props.dealType}
-            setupData={props.setupData}
-            clients={clients}
-            investments={investments}
-            existingDealId={dealId}
-            existingInvestorData={existingInvestorData as Record<string, { name?: string; shares?: number; shareClass?: string; eis?: string; poaHeld?: boolean; feeRate?: number; currentShares?: number; fundType?: string }>}
-            onBack={() => router.push(`/deals/${dealId}`)}
-          />
-        </>
-      ) : (
-        <>
-          <SellStepBar activeStep={1} />
-          <SellInvestorsStep
-            dealType={props.dealType}
-            setupData={props.setupData}
-            clients={clients}
-            investments={investments}
-            existingDealId={dealId}
-            existingInvestorData={existingInvestorData as Record<string, { sharesSold?: number; feeRate?: number; excluded?: boolean }>}
-            onBack={() => router.push(`/deals/${dealId}`)}
-          />
-        </>
-      )}
+      <StepBar activeStep={1} />
+      <BuyInvestorsStep
+        dealType={props.dealType}
+        setupData={props.setupData}
+        clients={clients}
+        investments={investments}
+        existingDealId={dealId}
+        existingInvestorData={existingInvestorData as Record<string, { name?: string; shares?: number; shareClass?: string; eis?: string; poaHeld?: boolean; feeRate?: number; currentShares?: number; fundType?: string }>}
+        onBack={() => router.push(`/deals/${dealId}`)}
+      />
     </div>
   )
 }

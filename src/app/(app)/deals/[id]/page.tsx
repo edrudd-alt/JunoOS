@@ -94,6 +94,67 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     }
   }
 
+  // Auto-populate bookbuild for sell deals with no bookbuild yet
+  if (
+    (rawDeal.deal_type === 'full_exit' || rawDeal.deal_type === 'partial_exit')
+    && !rawBookbuild
+    && rawDeal.company_id
+  ) {
+    try {
+      // Parse share class names stored as comma-joined string at deal setup
+      const selectedClasses = (rawDeal.share_class ?? '')
+        .split(',').map((s: string) => s.trim()).filter(Boolean)
+
+      // Fetch active buy investments for this company, filtered to selected share classes
+      let invQuery = supabase
+        .from('investments')
+        .select('client_id, shares_purchased, share_class')
+        .eq('company_id', rawDeal.company_id)
+        .eq('status', 'active')
+        .neq('transaction_type', 'sell')
+        .neq('transaction_type', 'transfer_out')
+
+      if (selectedClasses.length > 0) {
+        invQuery = invQuery.in('share_class', selectedClasses)
+      }
+
+      const { data: existingInvs } = await invQuery
+
+      // Aggregate total shares per client
+      const byClient = new Map<string, number>()
+      for (const inv of existingInvs ?? []) {
+        const cid = (inv as Record<string, unknown>).client_id as string
+        const shr = (inv as Record<string, unknown>).shares_purchased as number ?? 0
+        byClient.set(cid, (byClient.get(cid) ?? 0) + shr)
+      }
+
+      // Create bookbuild record
+      const { data: newBookbuild } = await supabase
+        .from('bookbuilds')
+        .insert({ deal_id: id, company_id: rawDeal.company_id, status: 'open' })
+        .select('id, deal_id, company_id, target_raise, status')
+        .single()
+
+      if (newBookbuild && byClient.size > 0) {
+        const salePrice = rawDeal.share_price ?? 0
+        await supabase.from('bookbuild_entries').insert(
+          [...byClient.entries()].map(([client_id, totalShares]) => ({
+            bookbuild_id:      newBookbuild.id,
+            company_id:        rawDeal.company_id,
+            client_id,
+            indicative_shares: totalShares || null,
+            indicative_amount: salePrice > 0 ? (totalShares * salePrice) || null : null,
+            status:            'undecided',
+          })),
+        )
+      }
+
+      rawBookbuild = newBookbuild
+    } catch (e) {
+      console.error('Auto-populate sell bookbuild failed:', e)
+    }
+  }
+
   // Bookbuild entries (sequential — needs bookbuild id)
   let rawEntries: Record<string, unknown>[] = []
   if (rawBookbuild) {

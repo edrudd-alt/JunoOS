@@ -43,6 +43,7 @@ export interface DealInfo {
   sharePrice:     number | null
   investmentDate: string | null
   eisQualifying:  string | null
+  dealType:       string
 }
 
 interface Document {
@@ -545,7 +546,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       {/* ── Overview tab ── */}
       {activeTab === 'overview' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {isBuyDeal && (
+          {(isBuyDeal || isSaleDeal) && (
             <BookbuildSection
               dealId={deal.id}
               companyId={deal.companies?.id ?? ''}
@@ -559,6 +560,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
                 sharePrice:     deal.share_price ?? null,
                 investmentDate: deal.investment_date ?? null,
                 eisQualifying:  deal.eis_qualifying ?? null,
+                dealType:       deal.deal_type,
               }}
               completionChecklist={deal.completion_checklist}
             />

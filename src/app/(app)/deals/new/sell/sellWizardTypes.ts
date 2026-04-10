@@ -1,7 +1,6 @@
 // ─── Deal type ────────────────────────────────────────────────────────────────
 
-export type SellDealType        = 'full_exit' | 'partial_exit'
-export type NetProceedsMethod   = 'gross_less_costs' | 'given_net_price' | 'calculate_from_total'
+export type SellDealType = 'full_exit' | 'partial_exit'
 
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
@@ -19,37 +18,3 @@ export const SELL_STEPS = [
 
 export type SellStepKey = typeof SELL_STEPS[number]['key']
 
-// ─── Data shapes passed between wizard steps ──────────────────────────────────
-
-export interface SellSetupData {
-  companyId:          string
-  companyName:        string
-  grossPricePerShare: string
-  saleDate:           string
-  dealCosts:          string             // total £ deal costs, empty = 0
-  netProceedsMethod:  NetProceedsMethod
-  netPricePerShare:   string             // used when method = 'given_net_price'
-  totalNetProceeds:   string             // used when method = 'calculate_from_total'
-  shareClass:         string
-  notes:              string
-}
-
-export interface SellInvestorRow {
-  uid:                   string
-  clientId:              string
-  name:                  string
-  email:                 string
-  sharesOwned:           number
-  totalCost:             number
-  avgCostPrice:          number
-  earliestInvestmentDate: string | null  // used for Multi-Manager fee years calc
-  fundType:              'syndicate' | 'multi_manager'
-  shareClass:            string
-  // editable in step
-  sharesSold:            string
-  sellAll:               boolean
-  excluded:              boolean
-  feePct:                string
-  // set after save
-  dealInvestorId?:       string
-}

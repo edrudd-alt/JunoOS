@@ -21,19 +21,30 @@ interface Props {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STATUS_OPTIONS = [
+const BUY_STATUS_OPTIONS = [
   { value: 'interested', label: 'Interested' },
   { value: 'confirmed',  label: 'Confirmed'  },
   { value: 'rejected',   label: 'Rejected'   },
   { value: 'withdrawn',  label: 'Withdrawn'  },
 ]
 
+const SELL_STATUS_OPTIONS = [
+  { value: 'undecided',   label: 'Undecided'   },
+  { value: 'selling',     label: 'Selling'     },
+  { value: 'not_selling', label: 'Not selling' },
+  { value: 'withdrawn',   label: 'Withdrawn'   },
+]
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existingClientIds, dealInfo, completionChecklist, entry, onClose, onSaved }: Props) {
-  const isEditMode     = !!entry
-  const previousStatus = entry?.status ?? 'interested'   // status at modal open — for direction detection
-  const supabase       = createClient()
+  const isEditMode  = !!entry
+  const isSellDeal  = dealInfo.dealType === 'full_exit' || dealInfo.dealType === 'partial_exit'
+  const statusOptions = isSellDeal ? SELL_STATUS_OPTIONS : BUY_STATUS_OPTIONS
+  const confirmedStatus = isSellDeal ? 'selling' : 'confirmed'
+  const defaultStatus   = isSellDeal ? 'undecided' : 'interested'
+  const previousStatus  = entry?.status ?? defaultStatus   // status at modal open — for direction detection
+  const supabase        = createClient()
 
   // Investor (locked in edit mode)
   const [clientId,       setClientId]       = useState(entry?.client_id ?? '')
@@ -111,7 +122,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     )
   }
 
-  const [status,  setStatus]  = useState(entry?.status ?? 'interested')
+  const [status,  setStatus]  = useState(entry?.status ?? defaultStatus)
   const [notes,   setNotes]   = useState(entry?.notes ?? '')
   const [saving,           setSaving]           = useState(false)
   const [error,            setError]            = useState('')
@@ -181,18 +192,18 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     const perInvestor = (completionChecklist?.per_investor ?? {}) as Record<string, Record<string, boolean>>
     const appSigned   = perInvestor[clientId]?.app_signed === true
 
-    // Un-confirm guard: moving away from 'confirmed'
-    if (isEditMode && previousStatus === 'confirmed' && status !== 'confirmed') {
+    // Un-confirm guard: moving away from the confirmed-equivalent status
+    if (isEditMode && previousStatus === confirmedStatus && status !== confirmedStatus) {
       if (appSigned && !pendingSave) {
         setUnconfirmWarning(true)
         return
       }
     }
 
-    // Amount-change guard: staying 'confirmed' but amount/shares changed
+    // Amount-change guard: staying confirmed but amount/shares changed
     const amount  = indicativeAmount ? parseFloat(indicativeAmount.replace(/,/g, '')) : null
     const shares  = indicativeShares ? Math.round(parseFloat(indicativeShares))       : null
-    const isAmountChanging = isEditMode && previousStatus === 'confirmed' && status === 'confirmed'
+    const isAmountChanging = isEditMode && previousStatus === confirmedStatus && status === confirmedStatus
       && (amount !== (entry?.indicative_amount ?? null) || shares !== (entry?.indicative_shares ?? null))
     if (isAmountChanging && appSigned && !pendingSave) {
       setUnconfirmWarning(true)
@@ -239,15 +250,11 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
 
     // ── Side-effects based on status transition ────────────────────────────────
 
-    const isConfirming   = status === 'confirmed' && previousStatus !== 'confirmed'
-    const isUnconfirming = previousStatus === 'confirmed' && status !== 'confirmed'
+    const isConfirming   = status === confirmedStatus && previousStatus !== confirmedStatus
+    const isUnconfirming = previousStatus === confirmedStatus && status !== confirmedStatus
 
     if (isConfirming) {
-      const client          = clients.find(c => c.id === clientId)
-      const feeRate         = client?.default_fee_rate ?? 0
-      const sumSubscribed   = amount ?? 0
-      const feeAmount       = sumSubscribed * feeRate / 100
-      const sharesPurchased = shares ?? (sharePrice > 0 ? sumSubscribed / sharePrice : 0)
+      const client = clients.find(c => c.id === clientId)
 
       // Upsert deal_investors — safe on re-confirm
       await supabase
@@ -257,44 +264,69 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           { onConflict: 'deal_id,client_id', ignoreDuplicates: true },
         )
 
-      // Reset per-investor checklist so it starts fresh on re-confirmation
-      const { data: dealRow } = await supabase
-        .from('deals')
-        .select('completion_checklist')
-        .eq('id', dealInfo.id)
-        .single()
-      if (dealRow) {
-        const existing = (dealRow.completion_checklist ?? {}) as Record<string, unknown>
-        const existingPerInvestor = (existing.per_investor ?? {}) as Record<string, unknown>
-        await supabase.from('deals').update({
-          completion_checklist: {
-            ...existing,
-            per_investor: { ...existingPerInvestor, [clientId]: {} },
-          },
-        }).eq('id', dealInfo.id)
-      }
+      if (isSellDeal) {
+        // Insert pending SELL investment — shares being sold, proceeds as sum_subscribed
+        await supabase.from('investments').insert({
+          client_id:            clientId,
+          company_id:           dealInfo.companyId,
+          deal_id:              dealInfo.id,
+          bookbuild_id:         bookbuildId,
+          share_class:          dealInfo.shareClass     || null,
+          original_share_price: sharePrice,
+          investment_date:      dealInfo.investmentDate || null,
+          sum_subscribed:       amount ?? 0,
+          shares_purchased:     shares ?? 0,
+          eis_status:           'tbc',
+          transaction_type:     'sell',
+          status:               'pending',
+          fund_type:            client?.fund_type ?? 'syndicate',
+          holding_location:     'direct',
+        })
+      } else {
+        const feeRate         = client?.default_fee_rate ?? 0
+        const sumSubscribed   = amount ?? 0
+        const feeAmount       = sumSubscribed * feeRate / 100
+        const sharesPurchased = shares ?? (sharePrice > 0 ? sumSubscribed / sharePrice : 0)
 
-      // Insert pending investment
-      await supabase.from('investments').insert({
-        client_id:            clientId,
-        company_id:           dealInfo.companyId,
-        deal_id:              dealInfo.id,
-        bookbuild_id:         bookbuildId,
-        share_class_id:       dealInfo.shareClassId  || null,
-        share_class:          dealInfo.shareClass     || null,
-        original_share_price: sharePrice,
-        investment_date:      dealInfo.investmentDate || null,
-        sum_subscribed:       sumSubscribed,
-        shares_purchased:     sharesPurchased,
-        eis_status:           dealInfo.eisQualifying  || 'tbc',
-        transaction_type:     'buy',
-        transaction_category: 'equity',
-        status:               'pending',
-        fund_type:            client?.fund_type ?? 'syndicate',
-        fee_rate:             feeRate,
-        fee_amount:           feeAmount,
-        holding_location:     'direct',
-      })
+        // Reset per-investor checklist so it starts fresh on re-confirmation
+        const { data: dealRow } = await supabase
+          .from('deals')
+          .select('completion_checklist')
+          .eq('id', dealInfo.id)
+          .single()
+        if (dealRow) {
+          const existing = (dealRow.completion_checklist ?? {}) as Record<string, unknown>
+          const existingPerInvestor = (existing.per_investor ?? {}) as Record<string, unknown>
+          await supabase.from('deals').update({
+            completion_checklist: {
+              ...existing,
+              per_investor: { ...existingPerInvestor, [clientId]: {} },
+            },
+          }).eq('id', dealInfo.id)
+        }
+
+        // Insert pending BUY investment
+        await supabase.from('investments').insert({
+          client_id:            clientId,
+          company_id:           dealInfo.companyId,
+          deal_id:              dealInfo.id,
+          bookbuild_id:         bookbuildId,
+          share_class_id:       dealInfo.shareClassId  || null,
+          share_class:          dealInfo.shareClass     || null,
+          original_share_price: sharePrice,
+          investment_date:      dealInfo.investmentDate || null,
+          sum_subscribed:       sumSubscribed,
+          shares_purchased:     sharesPurchased,
+          eis_status:           dealInfo.eisQualifying  || 'tbc',
+          transaction_type:     'buy',
+          transaction_category: 'equity',
+          status:               'pending',
+          fund_type:            client?.fund_type ?? 'syndicate',
+          fee_rate:             feeRate,
+          fee_amount:           feeAmount,
+          holding_location:     'direct',
+        })
+      }
     }
 
     if (isUnconfirming) {
@@ -478,7 +510,8 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr', gap: 12, marginBottom: 14 }}>
             <div>
               <label style={labelSt}>
-                Amount <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+                {isSellDeal ? 'Indicative proceeds' : 'Amount'}{' '}
+                <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <span style={{
@@ -499,7 +532,8 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
             </div>
             <div>
               <label style={labelSt}>
-                Shares <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
+                {isSellDeal ? 'Shares to sell' : 'Shares'}{' '}
+                <span style={{ color: '#aaa', fontWeight: 400 }}>(optional)</span>
               </label>
               {hasSharePrice ? (
                 <input
@@ -525,7 +559,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
                 onChange={e => setStatus(e.target.value)}
                 style={inputSt}
               >
-                {STATUS_OPTIONS.map(o => (
+                {statusOptions.map(o => (
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
