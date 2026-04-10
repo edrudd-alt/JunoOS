@@ -214,6 +214,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   )
 
   const mergedStatuses = { ...signingStatuses, ...pendingStatuses }
+  console.log('mergedStatuses on render:', JSON.stringify(mergedStatuses))
 
   // Whether a given investor has all required checklist items ticked
   const clientToSigningStatus = new Map<string, string>(
