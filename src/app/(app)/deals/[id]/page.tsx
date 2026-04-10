@@ -44,6 +44,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('investments').select('id, client_id, sum_subscribed, shares_purchased, status, completion_date, eis_status').eq('deal_id', id),
   ])
 
+  console.log('First client sample:', JSON.stringify((allClientsData ?? [])[0]))
+
   // Build a map from allClientsData for all name lookups
   const allClientsMap = new Map(
     ((allClientsData ?? []) as { id: string; full_name: string; email: string | null }[]).map(c => [c.id, c]),
