@@ -49,7 +49,7 @@ export function SignatureTracking({
                   <td style={{ fontSize: 12 }}>{di.amount ? formatCurrency(di.amount) : '—'}</td>
                   <td>
                     {dealStatus === 'complete' ? (
-                      <span className="pill pill-green" style={{ fontSize: 10 }}>Signed</span>
+                      <SigningBadge status={signingStatuses[di.id] ?? 'not_sent'} />
                     ) : (
                       <select
                         value={signingStatuses[di.id] ?? 'not_sent'}
@@ -110,4 +110,15 @@ function SuggestedNextStep({ investors, statuses }: { investors: DealInvestor[];
       <strong>Next step:</strong> {message}
     </div>
   )
+}
+
+function SigningBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    signed:   { label: 'Signed',   cls: 'pill-green' },
+    viewed:   { label: 'Viewed',   cls: 'pill-blue'  },
+    sent:     { label: 'Sent',     cls: 'pill-amber' },
+    not_sent: { label: 'Not sent', cls: 'pill-grey'  },
+  }
+  const { label, cls } = map[status] ?? map['not_sent']
+  return <span className={`pill ${cls}`} style={{ fontSize: 10 }}>{label}</span>
 }
