@@ -166,8 +166,7 @@ export default function DealDetail({
   const signingStatuses = Object.fromEntries(
     (deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent'])
   )
-  console.log('signingStatuses on render:', JSON.stringify(signingStatuses))
-  const [pendingStatuses, setPendingStatuses] = useState<Record<string, string>>({})
+const [pendingStatuses, setPendingStatuses] = useState<Record<string, string>>({})
 
 const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
     () => (deal.completion_checklist?.per_investor as Record<string, Record<string, boolean>>) ?? {}
@@ -214,7 +213,6 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   )
 
   const mergedStatuses = { ...signingStatuses, ...pendingStatuses }
-  console.log('mergedStatuses on render:', JSON.stringify(mergedStatuses))
 
   // Whether a given investor has all required checklist items ticked
   const clientToSigningStatus = new Map<string, string>(
