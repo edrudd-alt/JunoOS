@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import Link from 'next/link'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -167,19 +167,7 @@ export default function DealDetail({
     () => Object.fromEntries((deal.deal_investors ?? []).map(di => [di.id, di.signing_status ?? 'not_sent']))
   )
 
-  useEffect(() => {
-    setSigningStatuses(prev => {
-      const updated = { ...prev }
-      for (const di of deal.deal_investors ?? []) {
-        if (!(di.id in updated)) {
-          updated[di.id] = di.signing_status ?? 'not_sent'
-        }
-      }
-      return updated
-    })
-  }, [deal.deal_investors])
-
-  const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
+const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boolean>>>(
     () => (deal.completion_checklist?.per_investor as Record<string, Record<string, boolean>>) ?? {}
   )
 

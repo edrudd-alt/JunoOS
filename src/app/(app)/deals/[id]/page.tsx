@@ -149,6 +149,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   return (
     <Suspense>
       <DealDetail
+        key={id}
         deal={deal as Record<string, unknown>}
         documents={(documents ?? []) as Record<string, unknown>[]}
         invoices={mergedInvoices as Record<string, unknown>[]}
