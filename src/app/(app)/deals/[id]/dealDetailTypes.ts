@@ -51,3 +51,18 @@ export interface FifoLot {
   lotProceeds:    number
   gainLoss:       number
 }
+
+export interface TrancheDef {
+  tranche_number:          number
+  expected_amount:         number
+  expected_date:           string
+  contingency_description: string
+  is_final_tranche:        boolean
+}
+
+export interface DeferredData {
+  upfrontTotal:         number
+  totalProceedsCap:     number
+  deferredPeriodMonths: number
+  tranches:             TrancheDef[]
+}

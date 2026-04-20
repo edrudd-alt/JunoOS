@@ -6,7 +6,7 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
-import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot } from './dealDetailTypes'
+import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, DeferredData } from './dealDetailTypes'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
@@ -314,7 +314,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   }
 
   // Per-investor completion (sell deals) — uses pre-computed FIFO lots from PreCloseTab
-  async function completeSellInvestor(clientId: string, lots: FifoLot[]) {
+  async function completeSellInvestor(clientId: string, lots: FifoLot[], deferredData?: DeferredData) {
     setCompletingInvestor(clientId)
     const today     = new Date().toISOString().split('T')[0]
     const companyId = deal.companies?.id
@@ -326,12 +326,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       .eq('status', 'pending')
       .eq('transaction_type', 'sell')
 
-    // Insert one sell row per FIFO lot, and update/exit the source buy investment
+    // Insert one sell row per FIFO lot, capture IDs for deferred_payments linkage
+    const sellInvestmentIds: string[] = []
     for (const lot of lots) {
       const sourceLot = companyInvestments.find(inv => inv.id === lot.investmentId)
       if (!sourceLot) continue
 
-      await supabase.from('investments').insert({
+      const { data: newInv } = await supabase.from('investments').insert({
         client_id:            clientId,
         company_id:           companyId,
         deal_id:              deal.id,
@@ -348,13 +349,45 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         status:               'active',
         completion_date:      today,
         holding_location:     'direct',
-      })
+      }).select('id').single()
+      if (newInv?.id) sellInvestmentIds.push(newInv.id)
 
       const remaining = sourceLot.shares_purchased - lot.sharesConsumed
       if (remaining <= 0) {
         await supabase.from('investments').update({ status: 'exited' }).eq('id', lot.investmentId)
       } else {
         await supabase.from('investments').update({ shares_purchased: remaining }).eq('id', lot.investmentId)
+      }
+    }
+
+    // Deferred consideration — update deal and insert deferred_payments rows
+    if (deferredData && sellInvestmentIds.length > 0) {
+      await supabase.from('deals').update({
+        deferred_consideration: true,
+        total_proceeds_cap:     deferredData.totalProceedsCap     || null,
+        deferred_period_months: deferredData.deferredPeriodMonths || null,
+      }).eq('id', deal.id)
+
+      const investorShares    = lots.reduce((s, l) => s + l.sharesConsumed, 0)
+      const totalSharesSold   = (bookbuild?.entries ?? [])
+        .filter(e => e.status === 'selling')
+        .reduce((s, e) => s + (e.indicative_shares ?? 0), 0)
+      const proportion        = totalSharesSold > 0 ? investorShares / totalSharesSold : 0
+      const primaryInvId      = sellInvestmentIds[0]
+
+      for (const tranche of deferredData.tranches) {
+        await supabase.from('deferred_payments').insert({
+          investment_id:           primaryInvId,
+          deal_id:                 deal.id,
+          client_id:               clientId,
+          expected_amount:         parseFloat((tranche.expected_amount * proportion).toFixed(2)),
+          expected_date:           tranche.expected_date,
+          contingency_description: tranche.contingency_description || null,
+          tranche_number:          tranche.tranche_number,
+          is_final_tranche:        tranche.is_final_tranche,
+          payment_route:           'direct',
+          status:                  'expected',
+        })
       }
     }
 
