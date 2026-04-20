@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { checkNeedsWarning, runBookbuildSideEffects } from './bookbuildSideEffects'
 import type { Client, BookbuildEntry } from './BookbuildSection'
 import type { DealInfo } from './DealDetail'
 
@@ -189,23 +190,16 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
     setError('')
     if (!clientId) { setError('Please select an investor'); return }
 
-    const perInvestor = (completionChecklist?.per_investor ?? {}) as Record<string, Record<string, boolean>>
-    const appSigned   = perInvestor[clientId]?.app_signed === true
+    const amount      = indicativeAmount ? parseFloat(indicativeAmount.replace(/,/g, '')) : null
+    const shares      = indicativeShares ? Math.round(parseFloat(indicativeShares))       : null
+    const entryAmount = entry?.indicative_amount ?? null
+    const entryShares = entry?.indicative_shares != null ? Math.round(entry.indicative_shares) : null
 
-    // Un-confirm guard: moving away from the confirmed-equivalent status
-    if (isEditMode && previousStatus === confirmedStatus && status !== confirmedStatus) {
-      if (appSigned && !pendingSave) {
-        setUnconfirmWarning(true)
-        return
-      }
-    }
-
-    // Amount-change guard: staying confirmed but amount/shares changed
-    const amount  = indicativeAmount ? parseFloat(indicativeAmount.replace(/,/g, '')) : null
-    const shares  = indicativeShares ? Math.round(parseFloat(indicativeShares))       : null
-    const isAmountChanging = isEditMode && previousStatus === confirmedStatus && status === confirmedStatus
-      && (amount !== (entry?.indicative_amount ?? null) || shares !== (entry?.indicative_shares ?? null))
-    if (isAmountChanging && appSigned && !pendingSave) {
+    if (checkNeedsWarning({
+      previousStatus, status, confirmedStatus, clientId,
+      amount, entryAmount, shares, entryShares,
+      completionChecklist, pendingSave,
+    })) {
       setUnconfirmWarning(true)
       return
     }
@@ -227,7 +221,6 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           updated_at:           new Date().toISOString(),
         })
         .eq('id', entry.id)
-
       if (dbErr) { setError(dbErr.message); setSaving(false); return }
     } else {
       const { error: dbErr } = await supabase
@@ -244,109 +237,14 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
           created_by:           user?.id ?? null,
           updated_at:           new Date().toISOString(),
         })
-
       if (dbErr) { setError(dbErr.message); setSaving(false); return }
     }
 
-    // ── Side-effects based on status transition ────────────────────────────────
-
-    const isConfirming   = status === confirmedStatus && previousStatus !== confirmedStatus
-    const isUnconfirming = previousStatus === confirmedStatus && status !== confirmedStatus
-
-    if (isConfirming) {
-      const client = clients.find(c => c.id === clientId)
-
-      // Upsert deal_investors — safe on re-confirm
-      await supabase
-        .from('deal_investors')
-        .upsert(
-          { deal_id: dealInfo.id, client_id: clientId, poa_held: false, signing_status: 'pending' },
-          { onConflict: 'deal_id,client_id', ignoreDuplicates: true },
-        )
-
-      if (isSellDeal) {
-        // Insert pending SELL investment — shares being sold, proceeds as sum_subscribed
-        await supabase.from('investments').insert({
-          client_id:            clientId,
-          company_id:           dealInfo.companyId,
-          deal_id:              dealInfo.id,
-          bookbuild_id:         bookbuildId,
-          share_class:          dealInfo.shareClass     || null,
-          original_share_price: sharePrice,
-          investment_date:      dealInfo.investmentDate || null,
-          sum_subscribed:       amount ?? 0,
-          shares_purchased:     shares ?? 0,
-          eis_status:           'tbc',
-          transaction_type:     'sell',
-          status:               'pending',
-          fund_type:            client?.fund_type ?? 'syndicate',
-          holding_location:     'direct',
-        })
-      } else {
-        const feeRate         = client?.default_fee_rate ?? 0
-        const sumSubscribed   = amount ?? 0
-        const feeAmount       = sumSubscribed * feeRate / 100
-        const sharesPurchased = shares ?? (sharePrice > 0 ? sumSubscribed / sharePrice : 0)
-
-        // Reset per-investor checklist so it starts fresh on re-confirmation
-        const { data: dealRow } = await supabase
-          .from('deals')
-          .select('completion_checklist')
-          .eq('id', dealInfo.id)
-          .single()
-        if (dealRow) {
-          const existing = (dealRow.completion_checklist ?? {}) as Record<string, unknown>
-          const existingPerInvestor = (existing.per_investor ?? {}) as Record<string, unknown>
-          await supabase.from('deals').update({
-            completion_checklist: {
-              ...existing,
-              per_investor: { ...existingPerInvestor, [clientId]: {} },
-            },
-          }).eq('id', dealInfo.id)
-        }
-
-        // Insert pending BUY investment
-        await supabase.from('investments').insert({
-          client_id:            clientId,
-          company_id:           dealInfo.companyId,
-          deal_id:              dealInfo.id,
-          bookbuild_id:         bookbuildId,
-          share_class_id:       dealInfo.shareClassId  || null,
-          share_class:          dealInfo.shareClass     || null,
-          original_share_price: sharePrice,
-          investment_date:      dealInfo.investmentDate || null,
-          sum_subscribed:       sumSubscribed,
-          shares_purchased:     sharesPurchased,
-          eis_status:           dealInfo.eisQualifying  || 'tbc',
-          transaction_type:     'buy',
-          transaction_category: 'equity',
-          status:               'pending',
-          fund_type:            client?.fund_type ?? 'syndicate',
-          fee_rate:             feeRate,
-          fee_amount:           feeAmount,
-          holding_location:     'direct',
-        })
-      }
-    }
-
-    if (isUnconfirming) {
-      await supabase.from('deal_investors').delete()
-        .eq('deal_id', dealInfo.id).eq('client_id', clientId)
-      await supabase.from('investments').delete()
-        .eq('deal_id', dealInfo.id).eq('client_id', clientId).eq('status', 'pending')
-    }
-
-    if (isAmountChanging) {
-      // Update the pending investment's amount and shares to match the new bookbuild figures
-      await supabase.from('investments')
-        .update({
-          sum_subscribed:   amount ?? 0,
-          shares_purchased: shares ?? (sharePrice > 0 ? (amount ?? 0) / sharePrice : 0),
-        })
-        .eq('deal_id', dealInfo.id)
-        .eq('client_id', clientId)
-        .eq('status', 'pending')
-    }
+    await runBookbuildSideEffects({
+      status, previousStatus, confirmedStatus, isSellDeal,
+      clientId, amount, shares, entryAmount, entryShares,
+      clients, dealInfo, bookbuildId, completionChecklist, supabase,
+    })
 
     onSaved()
   }

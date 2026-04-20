@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { AddBookbuildEntryModal } from './AddBookbuildEntryModal'
+import { BookbuildEntryPopover } from './BookbuildEntryPopover'
 import type { DealInfo } from './DealDetail'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
 
   const [starting,       setStarting]       = useState(false)
   const [modalEntry,     setModalEntry]     = useState<BookbuildEntry | 'new' | null>(null)
+  const [openPopover,    setOpenPopover]    = useState<{ id: string; top: number; left: number } | null>(null)
   const [editingTarget,  setEditingTarget]  = useState(false)
   const [targetInput,    setTargetInput]    = useState(bookbuild?.target_raise != null ? String(bookbuild.target_raise) : '')
   const [savingTarget,   setSavingTarget]   = useState(false)
@@ -284,8 +286,18 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
                         ? entry.indicative_shares.toLocaleString(undefined, { maximumFractionDigits: 0 })
                         : <span style={{ color: '#ccc' }}>—</span>}
                     </td>
-                    <td style={tdSt}>
-                      <span className={`pill ${sc.cls}`}>{sc.label}</span>
+                    <td style={{ ...tdSt, position: 'relative' }}>
+                      <button
+                        onClick={e => {
+                          const rect = e.currentTarget.getBoundingClientRect()
+                          setOpenPopover(prev =>
+                            prev?.id === entry.id ? null : { id: entry.id, top: rect.bottom + 4, left: rect.left }
+                          )
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                      >
+                        <span className={`pill ${sc.cls}`}>{sc.label}</span>
+                      </button>
                     </td>
                     <td style={{ ...tdSt, color: '#666', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {entry.notes
@@ -310,6 +322,25 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
           </table>
         </div>
       )}
+
+      {/* Inline status popover */}
+      {openPopover && (() => {
+        const popEntry = bookbuild.entries.find(e => e.id === openPopover.id)
+        if (!popEntry) return null
+        return (
+          <BookbuildEntryPopover
+            entry={popEntry}
+            bookbuildId={bookbuild.id}
+            clients={allClients}
+            dealInfo={dealInfo}
+            completionChecklist={completionChecklist}
+            top={openPopover.top}
+            left={openPopover.left}
+            onClose={() => setOpenPopover(null)}
+            onSaved={() => { setOpenPopover(null); router.refresh() }}
+          />
+        )
+      })()}
 
       {/* Modal */}
       {modalEntry !== null && (
