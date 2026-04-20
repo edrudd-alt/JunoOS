@@ -18,3 +18,37 @@ export const SELL_STEPS = [
 
 export type SellStepKey = typeof SELL_STEPS[number]['key']
 
+// ─── Setup form data ──────────────────────────────────────────────────────────
+
+export interface SellSetupData {
+  companyId:          string
+  companyName:        string
+  shareClass:         string
+  saleDate:           string
+  grossPricePerShare: string
+  netProceedsMethod:  string
+  netPricePerShare:   string
+  totalNetProceeds:   string
+  dealCosts:          string
+  notes:              string
+}
+
+// ─── Per-investor row ─────────────────────────────────────────────────────────
+
+export interface SellInvestorRow {
+  uid:                    string
+  clientId:               string
+  name:                   string
+  email:                  string
+  sharesOwned:            number
+  totalCost:              number
+  avgCostPrice:           number
+  earliestInvestmentDate: string | null
+  fundType:               'syndicate' | 'multi_manager'
+  shareClass:             string
+  sharesSold:             string
+  sellAll:                boolean
+  excluded:               boolean
+  feePct:                 string
+}
+

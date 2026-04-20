@@ -14,8 +14,6 @@ import { BookbuildSection } from './BookbuildSection'
 import type { Bookbuild }   from './BookbuildSection'
 import { PostDealTab }      from './PostDealTab'
 import type { DealInvestmentRow } from './PostDealTab'
-import { StepBar }     from '../new/buy/StepBar'
-import { SellStepBar } from '../new/sell/SellStepBar'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,30 +136,6 @@ export default function DealDetail({
   const isSaleDeal      = deal.deal_type === 'full_exit' || deal.deal_type === 'partial_exit'
   const isNewDealFormat = !!(deal.completion_checklist?.investor_data)
 
-  // Map deal status to step bar index (steps 0–1 are wizard-only; step 2 = Bookbuild; DealDetail starts at step 2)
-  const buyStepIndex = (() => {
-    switch (deal.status) {
-      case 'draft':            return 2
-      case 'sent':             return 4
-      case 'partially_signed': return 5
-      case 'fully_signed':     return 6
-      case 'complete':         return 7
-      default:                 return 2
-    }
-  })()
-
-  // Sell deal: steps 0–1 in SellDealWizard; DealDetail shows steps 2–8
-  const sellStepIndex = (() => {
-    switch (deal.status) {
-      case 'draft':            return 2  // Consent
-      case 'sent':             return 3  // PoA
-      case 'partially_signed': return 4  // Bank details
-      case 'fully_signed':     return 5  // Review
-      case 'complete':         return 8  // Post-deal
-      default:                 return 2
-    }
-  })()
-
   const perInvestorItems = isBuyDeal ? BUY_ITEMS : isSaleDeal ? SALE_ITEMS : []
 
   const signingStatuses = Object.fromEntries(
@@ -191,12 +165,12 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   const [confirmComplete,    setConfirmComplete]    = useState(false)
   const [completingInvestor, setCompletingInvestor] = useState<string | null>(null)
   const searchParams = useSearchParams()
-  const [activeTab,          setActiveTab]          = useState<'overview' | 'documents' | 'invoices' | 'post_deal'>(() => {
+  const [activeTab,          setActiveTab]          = useState<'bookbuild' | 'pre_close' | 'post_close' | 'documents' | 'invoices'>(() => {
     const tabParam            = searchParams.get('tab')
     const initialCompleted    = (deal.completion_checklist?.completed_investors as Record<string, string>) ?? {}
-    const postDealAvailable   = Object.keys(initialCompleted).length > 0
-    if (tabParam === 'post_deal' && postDealAvailable) return 'post_deal'
-    return 'overview'
+    const postCloseAvailable  = Object.keys(initialCompleted).length > 0
+    if (tabParam === 'post_close' && postCloseAvailable) return 'post_close'
+    return 'bookbuild'
   })
 
   const [completedInvestors, setCompletedInvestors] = useState<Record<string, string>>(
@@ -451,10 +425,6 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      {/* Step bars */}
-      {isBuyDeal  && <StepBar     activeStep={buyStepIndex}  />}
-      {isSaleDeal && <SellStepBar activeStep={sellStepIndex} />}
-
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
@@ -524,27 +494,32 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e4', marginBottom: 20 }}>
-        {(['overview', 'documents', 'invoices', ...(isBuyDeal ? ['post_deal'] : [])] as ('overview' | 'documents' | 'invoices' | 'post_deal')[]).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            style={{
-              padding: '8px 16px', fontSize: 13, fontWeight: 500,
-              background: 'none', border: 'none', cursor: 'pointer',
-              borderBottom: activeTab === tab ? '2px solid #0f2744' : '2px solid transparent',
-              color: activeTab === tab ? '#0f2744' : '#888',
-              textTransform: 'capitalize',
-            }}
-          >
-            {tab === 'post_deal' ? 'Post-deal' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-            {tab === 'documents' && documents.length > 0 ? ` (${documents.length})` : ''}
-            {tab === 'invoices'  && invoices.length  > 0 ? ` (${invoices.length})`  : ''}
-          </button>
-        ))}
+        {([
+          { key: 'bookbuild',  label: 'Bookbuild',  show: true },
+          { key: 'pre_close',  label: 'Pre-close',  show: isBuyDeal || isSaleDeal },
+          { key: 'post_close', label: 'Post-close', show: isBuyDeal || isSaleDeal },
+          { key: 'documents',  label: documents.length > 0 ? `Documents (${documents.length})` : 'Documents', show: true },
+          { key: 'invoices',   label: invoices.length  > 0 ? `Invoices (${invoices.length})`   : 'Invoices',  show: true },
+        ] as { key: typeof activeTab; label: string; show: boolean }[])
+          .filter(t => t.show)
+          .map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              style={{
+                padding: '8px 16px', fontSize: 13, fontWeight: 500,
+                background: 'none', border: 'none', cursor: 'pointer',
+                borderBottom: activeTab === t.key ? '2px solid #0f2744' : '2px solid transparent',
+                color: activeTab === t.key ? '#0f2744' : '#888',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
       </div>
 
-      {/* ── Overview tab ── */}
-      {activeTab === 'overview' && (
+      {/* ── Bookbuild tab ── */}
+      {activeTab === 'bookbuild' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {(isBuyDeal || isSaleDeal) && (
             <BookbuildSection
@@ -606,6 +581,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
               onSave={saveChecklist}
             />
           )}
+        </div>
+      )}
+
+      {/* ── Pre-close tab ── */}
+      {activeTab === 'pre_close' && (
+        <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 13 }}>
+          Coming soon
         </div>
       )}
 
@@ -676,8 +658,8 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         </div>
       )}
 
-      {/* Post-deal tab */}
-      {activeTab === 'post_deal' && (
+      {/* ── Post-close tab ── */}
+      {activeTab === 'post_close' && (
         <PostDealTab
           investors={investors}
           investorData={investorData}

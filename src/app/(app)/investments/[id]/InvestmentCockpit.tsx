@@ -273,7 +273,7 @@ export default function InvestmentCockpit({
           </div>
           {deal && (
             <Link
-              href={`/deals/${deal.id}?tab=post_deal`}
+              href={`/deals/${deal.id}?tab=post_close`}
               className="btn btn-secondary"
               style={{ fontSize: 12, whiteSpace: 'nowrap' }}
             >
