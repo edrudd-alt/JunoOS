@@ -32,3 +32,22 @@ export interface CompletionChecklist {
   per_investor?: Record<string, Record<string, boolean>>
   [key: string]: unknown
 }
+
+export interface CompanyInvestmentRow {
+  id:               string
+  client_id:        string
+  investment_date:  string | null
+  shares_purchased: number
+  sum_subscribed:   number
+  cost_basis:       number | null
+  share_class:      string | null
+  status:           string
+}
+
+export interface FifoLot {
+  investmentId:   string
+  sharesConsumed: number
+  lotCostBasis:   number
+  lotProceeds:    number
+  gainLoss:       number
+}

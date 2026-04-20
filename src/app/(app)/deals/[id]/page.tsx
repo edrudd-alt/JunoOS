@@ -32,6 +32,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     { data: rawBookbuildInitial },
     { data: allClientsData },
     { data: dealInvestmentsData },
+    { data: companyInvestmentsData },
   ] = await Promise.all([
     supabase.from('deal_investors').select('id, amount, signing_status, poa_held, client_id').eq('deal_id', id),
     rawDeal.company_id
@@ -42,6 +43,16 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
     supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type, lead_investor_id').order('full_name'),
     supabase.from('investments').select('id, client_id, sum_subscribed, shares_purchased, status, completion_date, eis_status, fee_rate, fee_amount').eq('deal_id', id),
+    rawDeal.company_id
+      ? supabase
+          .from('investments')
+          .select('id, client_id, investment_date, shares_purchased, sum_subscribed, cost_basis, share_class, status')
+          .eq('company_id', rawDeal.company_id)
+          .eq('status', 'active')
+          .neq('transaction_type', 'sell')
+          .neq('transaction_type', 'transfer_out')
+          .order('investment_date', { ascending: true })
+      : { data: [] },
   ])
 
   // Build a map from allClientsData for all name lookups
@@ -215,6 +226,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         bookbuild={bookbuild}
         allClients={(allClientsData ?? []) as Record<string, unknown>[]}
         dealInvestments={(dealInvestmentsData ?? []) as Record<string, unknown>[]}
+        companyInvestments={(companyInvestmentsData ?? []) as Record<string, unknown>[]}
       />
     </Suspense>
   )

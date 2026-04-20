@@ -6,7 +6,7 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
-import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDetailTypes'
+import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot } from './dealDetailTypes'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
@@ -114,21 +114,24 @@ export default function DealDetail({
   bookbuild: bookbuildRaw,
   allClients: allClientsRaw,
   dealInvestments: dealInvestmentsRaw,
+  companyInvestments: companyInvestmentsRaw,
 }: {
-  deal:            Record<string, unknown>
-  documents:       Record<string, unknown>[]
-  invoices:        Record<string, unknown>[]
-  bookbuild:       Record<string, unknown> | null
-  allClients:      Record<string, unknown>[]
-  dealInvestments: Record<string, unknown>[]
+  deal:                Record<string, unknown>
+  documents:           Record<string, unknown>[]
+  invoices:            Record<string, unknown>[]
+  bookbuild:           Record<string, unknown> | null
+  allClients:          Record<string, unknown>[]
+  dealInvestments:     Record<string, unknown>[]
+  companyInvestments:  Record<string, unknown>[]
 }) {
-  const deal            = dealRaw           as unknown as Deal
-  const documents       = documentsRaw      as unknown as Document[]
-  const invoices        = invoicesRaw       as unknown as Invoice[]
-  const bookbuild       = bookbuildRaw      as unknown as Bookbuild | null
-  const allClients      = allClientsRaw     as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null }[]
-  const primaryClients  = allClients.filter(c => !c.lead_investor_id)
-  const dealInvestments = dealInvestmentsRaw as unknown as DealInvestmentRow[]
+  const deal               = dealRaw              as unknown as Deal
+  const documents          = documentsRaw         as unknown as Document[]
+  const invoices           = invoicesRaw          as unknown as Invoice[]
+  const bookbuild          = bookbuildRaw         as unknown as Bookbuild | null
+  const allClients         = allClientsRaw        as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null }[]
+  const primaryClients     = allClients.filter(c => !c.lead_investor_id)
+  const dealInvestments    = dealInvestmentsRaw   as unknown as DealInvestmentRow[]
+  const companyInvestments = companyInvestmentsRaw as unknown as CompanyInvestmentRow[]
 
   const router   = useRouter()
   const supabase = createClient()
@@ -286,6 +289,73 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         .eq('client_id', clientId)
         .eq('company_id', companyId)
         .eq('status', 'pending')
+    }
+
+    const newCompleted = { ...completedInvestors, [clientId]: today }
+    const allDone = investors.every(di => {
+      const cid = di.clients?.id
+      if (!cid) return false
+      return !!newCompleted[cid]
+    })
+
+    const updated = {
+      ...deal.completion_checklist,
+      per_investor:        perInvestor,
+      completed_investors: newCompleted,
+    }
+    await supabase.from('deals').update({
+      completion_checklist: updated,
+      ...(allDone ? { status: 'complete', updated_at: new Date().toISOString() } : {}),
+    }).eq('id', deal.id)
+
+    setCompletedInvestors(newCompleted)
+    setCompletingInvestor(null)
+    router.refresh()
+  }
+
+  // Per-investor completion (sell deals) — uses pre-computed FIFO lots from PreCloseTab
+  async function completeSellInvestor(clientId: string, lots: FifoLot[]) {
+    setCompletingInvestor(clientId)
+    const today     = new Date().toISOString().split('T')[0]
+    const companyId = deal.companies?.id
+
+    // Remove the placeholder pending sell investment created at bookbuild confirm
+    await supabase.from('investments').delete()
+      .eq('deal_id', deal.id)
+      .eq('client_id', clientId)
+      .eq('status', 'pending')
+      .eq('transaction_type', 'sell')
+
+    // Insert one sell row per FIFO lot, and update/exit the source buy investment
+    for (const lot of lots) {
+      const sourceLot = companyInvestments.find(inv => inv.id === lot.investmentId)
+      if (!sourceLot) continue
+
+      await supabase.from('investments').insert({
+        client_id:            clientId,
+        company_id:           companyId,
+        deal_id:              deal.id,
+        bookbuild_id:         bookbuild?.id ?? null,
+        share_class:          sourceLot.share_class ?? deal.share_class ?? null,
+        investment_date:      deal.investment_date ?? today,
+        original_share_price: deal.share_price ?? 0,
+        shares_purchased:     lot.sharesConsumed,
+        sum_subscribed:       lot.lotProceeds,
+        cost_basis:           lot.lotCostBasis,
+        gain_loss:            lot.gainLoss,
+        eis_status:           'no',
+        transaction_type:     'sell',
+        status:               'active',
+        completion_date:      today,
+        holding_location:     'direct',
+      })
+
+      const remaining = sourceLot.shares_purchased - lot.sharesConsumed
+      if (remaining <= 0) {
+        await supabase.from('investments').update({ status: 'exited' }).eq('id', lot.investmentId)
+      } else {
+        await supabase.from('investments').update({ shares_purchased: remaining }).eq('id', lot.investmentId)
+      }
     }
 
     const newCompleted = { ...completedInvestors, [clientId]: today }
@@ -674,12 +744,16 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
           isSaleDeal={isSaleDeal}
           onSetInvestorItem={setInvestorItem}
           onCompleteInvestor={completeInvestor}
+          onCompleteSellInvestor={completeSellInvestor}
           completingInvestor={completingInvestor}
           dealStatus={deal.status}
           saving={saving}
           saved={saved}
           onSave={saveChecklist}
           onFeeOverride={handleFeeOverride}
+          bookbuild={bookbuild}
+          companyInvestments={companyInvestments}
+          dealSharePrice={deal.share_price}
         />
       )}
 
