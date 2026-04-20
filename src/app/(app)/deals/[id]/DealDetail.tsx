@@ -10,6 +10,7 @@ import type { DealInvestor, InvestorData, CompletionChecklist } from './dealDeta
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
+import { PreCloseTab } from './PreCloseTab'
 import { BookbuildSection } from './BookbuildSection'
 import type { Bookbuild }   from './BookbuildSection'
 import { PostDealTab }      from './PostDealTab'
@@ -421,6 +422,12 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
     router.refresh()
   }
 
+  async function handleFeeOverride(investmentId: string, feeRate: number, feeAmount: number) {
+    await supabase.from('investments')
+      .update({ fee_rate: feeRate, fee_amount: feeAmount })
+      .eq('id', investmentId)
+  }
+
   const canComplete = allPerInvestorDone()
 
   return (
@@ -548,28 +555,6 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
             onStatusChange={handleStatusChange}
           />
 
-          {(isBuyDeal || isSaleDeal) && investors.length > 0 && (
-            <CompletionChecklistComponent
-              investors={investors}
-              isBuyDeal={isBuyDeal}
-              isSaleDeal={isSaleDeal}
-              isNewDealFormat={isNewDealFormat}
-              investorData={investorData}
-              perInvestor={perInvestor}
-              perInvestorItems={perInvestorItems}
-              onSetInvestorItem={setInvestorItem}
-              dealStatus={deal.status}
-              saving={saving}
-              saved={saved}
-              onSave={saveChecklist}
-              signingStatuses={clientToSigningStatus}
-              completedInvestors={completedInvestors}
-              onCompleteInvestor={completeInvestor}
-              completingInvestor={completingInvestor}
-              isInvestorDone={isInvestorDone}
-            />
-          )}
-
           {!isBuyDeal && !isSaleDeal && (
             <GenericChecklist
               items={GENERIC_ITEMS}
@@ -586,9 +571,23 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
       {/* ── Pre-close tab ── */}
       {activeTab === 'pre_close' && (
-        <div style={{ padding: '32px 0', textAlign: 'center', color: '#888', fontSize: 13 }}>
-          Coming soon
-        </div>
+        <PreCloseTab
+          investors={investors}
+          dealInvestments={dealInvestments}
+          perInvestor={perInvestor}
+          completedInvestors={completedInvestors}
+          clientToSigningStatus={clientToSigningStatus}
+          isBuyDeal={isBuyDeal}
+          isSaleDeal={isSaleDeal}
+          onSetInvestorItem={setInvestorItem}
+          onCompleteInvestor={completeInvestor}
+          completingInvestor={completingInvestor}
+          dealStatus={deal.status}
+          saving={saving}
+          saved={saved}
+          onSave={saveChecklist}
+          onFeeOverride={handleFeeOverride}
+        />
       )}
 
       {/* Documents tab */}

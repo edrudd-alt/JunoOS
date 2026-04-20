@@ -14,6 +14,8 @@ export interface DealInvestmentRow {
   status:           string
   completion_date:  string | null
   eis_status:       string | null
+  fee_rate:         number | null
+  fee_amount:       number | null
 }
 
 interface Props {
