@@ -430,6 +430,53 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
   const canComplete = allPerInvestorDone()
 
+  // ── Summary card computations ──────────────────────────────────────────────
+  const bbEntries = bookbuild?.entries ?? []
+
+  const confirmedEntries = bbEntries.filter(e => e.status === 'confirmed')
+  const confirmedCount   = confirmedEntries.length
+  const totalConfirmed   = confirmedEntries.reduce((s, e) => s + (e.indicative_amount ?? 0), 0)
+  const targetRaise      = bookbuild?.target_raise ?? null
+  const targetPct        = targetRaise && targetRaise > 0 ? (totalConfirmed / targetRaise) * 100 : null
+
+  const sellingEntries   = bbEntries.filter(e => e.status === 'selling')
+  const sellersCount     = sellingEntries.length
+  const grossProceedsSum = sellingEntries.reduce((s, e) => s + (e.indicative_amount ?? 0), 0)
+  const sharesBeingSold  = sellingEntries.reduce((s, e) => s + (e.indicative_shares ?? 0), 0)
+
+  const feesReceivable = dealInvestments
+    .filter(inv => clientToSigningStatus.get(inv.client_id) === 'signed')
+    .reduce((s, inv) => s + (inv.fee_amount ?? 0), 0)
+
+  const activeEntries  = isBuyDeal ? confirmedEntries : sellingEntries
+  const activeClientIds = new Set(activeEntries.map(e => e.client_id))
+  const feesAllSigned  = activeClientIds.size > 0
+    && [...activeClientIds].every(cid => clientToSigningStatus.get(cid) === 'signed')
+  const feesBg = activeClientIds.size === 0 ? undefined
+    : feesAllSigned ? '#f0faf6' : '#fffbf0'
+
+  const shareClasses     = (deal.share_class ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const shareClassPrices = deal.completion_checklist?.['share_class_prices'] as Record<string, number> | undefined
+
+  const shareClassValue: React.ReactNode = shareClasses.length > 1
+    ? (
+      <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+        {shareClasses.map(cls => {
+          const price = shareClassPrices?.[cls] ?? deal.share_price
+          return (
+            <div key={cls}>
+              {cls}{price != null ? `: £${price.toFixed(2)}` : ''}
+            </div>
+          )
+        })}
+      </div>
+    )
+    : (deal.share_class ?? '—')
+
+  const shareClassSubValue: React.ReactNode = shareClasses.length <= 1 && deal.share_price != null
+    ? `£${deal.share_price.toFixed(2)}`
+    : undefined
+
   return (
     <div style={{ maxWidth: 1100 }}>
       {/* Header */}
@@ -486,18 +533,64 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       </div>
 
       {/* Summary cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
-        <SummaryCard label="Investors" value={String(investors.length)} />
-        <SummaryCard
-          label={isSaleDeal ? 'Gross proceeds' : 'Total amount'}
-          value={deal.investment_amount ? formatCurrency(deal.investment_amount) : '—'}
-        />
-        <SummaryCard label="Share class" value={deal.share_class ?? '—'} />
-        <SummaryCard
-          label={isSaleDeal ? 'Sale price' : 'Price / share'}
-          value={deal.share_price ? formatPrice(deal.share_price) : '—'}
-        />
-      </div>
+      {isBuyDeal && (
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${targetRaise ? 5 : 4}, 1fr)`, gap: 12, marginBottom: 24 }}>
+          <SummaryCard label="Confirmed investors" value={String(confirmedCount)} />
+          <SummaryCard
+            label="Total confirmed"
+            value={confirmedCount > 0 ? formatCurrency(totalConfirmed) : '—'}
+          />
+          {targetRaise && (
+            <SummaryCard
+              label="Target raise"
+              value={formatCurrency(targetRaise)}
+              subValue={targetPct !== null ? `${targetPct.toFixed(0)}% confirmed` : undefined}
+              bg={targetPct !== null && targetPct >= 100 ? '#f0faf6' : undefined}
+            />
+          )}
+          <SummaryCard
+            label="Fees receivable"
+            value={feesReceivable > 0 ? formatCurrency(feesReceivable) : '—'}
+            bg={feesBg}
+          />
+          <SummaryCard
+            label="Share class / Price per share"
+            value={shareClassValue}
+            subValue={shareClassSubValue}
+          />
+        </div>
+      )}
+
+      {isSaleDeal && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+          <SummaryCard label="Sellers confirmed" value={String(sellersCount)} />
+          <SummaryCard
+            label="Gross proceeds"
+            value={sellersCount > 0 ? formatCurrency(grossProceedsSum) : '—'}
+          />
+          <SummaryCard
+            label="Shares being sold"
+            value={sharesBeingSold > 0 ? sharesBeingSold.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
+          />
+          <SummaryCard
+            label="Fees receivable"
+            value={feesReceivable > 0 ? formatCurrency(feesReceivable) : '—'}
+            bg={feesBg}
+          />
+          <SummaryCard
+            label="Share class / Price per share"
+            value={shareClassValue}
+            subValue={shareClassSubValue}
+          />
+        </div>
+      )}
+
+      {!isBuyDeal && !isSaleDeal && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 24 }}>
+          <SummaryCard label="Investors" value={String(investors.length)} />
+          <SummaryCard label="Started" value={formatDate(deal.created_at)} />
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid #e8e8e4', marginBottom: 20 }}>
@@ -715,11 +808,17 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
 
 // ─── File-local sub-components ────────────────────────────────────────────────
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value, subValue, bg }: {
+  label:     string
+  value:     React.ReactNode
+  subValue?: React.ReactNode
+  bg?:       string
+}) {
   return (
-    <div className="card" style={{ padding: '12px 16px' }}>
+    <div className="card" style={{ padding: '12px 16px', background: bg }}>
       <div style={{ fontSize: 10, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
       <div style={{ fontSize: 18, fontWeight: 600, marginTop: 4 }}>{value}</div>
+      {subValue && <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{subValue}</div>}
     </div>
   )
 }
