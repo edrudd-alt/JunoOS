@@ -55,6 +55,11 @@ export function SetupStep({ dealType, companies, onBack }: Props) {
   const [error,    setError]    = useState('')
   const [saving,   setSaving]   = useState(false)
 
+  // Deferred consideration
+  const [deferredConsideration, setDeferredConsideration] = useState(false)
+  const [capBasis,              setCapBasis]              = useState<'total' | 'per_share'>('total')
+  const [totalProceedsCap,      setTotalProceedsCap]      = useState('')
+
   const filteredCompanies = companies.filter(c =>
     c.name.toLowerCase().includes(companySearch.toLowerCase()),
   )
@@ -131,8 +136,12 @@ export function SetupStep({ dealType, companies, onBack }: Props) {
         created_by:           user?.id ?? null,
         share_class:          selectedClasses.map(sc => sc.name).join(', '),
         share_price:          parseFloat(selectedClasses[0].price),
-        notes:                notes.trim() || null,
-        completion_checklist: { share_class_prices: shareClassPrices },
+        notes:                  notes.trim() || null,
+        completion_checklist:   { share_class_prices: shareClassPrices },
+        deferred_consideration: deferredConsideration,
+        total_proceeds_cap:     deferredConsideration && capBasis === 'total' && totalProceedsCap
+          ? parseFloat(totalProceedsCap)
+          : null,
       })
       .select('id')
       .single()
@@ -306,6 +315,83 @@ export function SetupStep({ dealType, companies, onBack }: Props) {
             placeholder="Optional internal notes"
             style={inputSt}
           />
+        </div>
+
+        {/* Deferred consideration */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={deferredConsideration}
+              onChange={e => {
+                setDeferredConsideration(e.target.checked)
+                if (!e.target.checked) { setCapBasis('total'); setTotalProceedsCap('') }
+              }}
+              style={{ accentColor: '#0f2744', width: 14, height: 14 }}
+            />
+            <span style={{ fontSize: 13, color: '#0f2744', fontWeight: 500 }}>This is a deferred consideration exit</span>
+          </label>
+
+          {deferredConsideration && (
+            <div style={{ marginTop: 14, paddingLeft: 22, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+              {/* Cap basis selector */}
+              <div>
+                <div style={{ ...labelSt, marginBottom: 8 }}>Cap basis</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {(['total', 'per_share'] as const).map(basis => (
+                    <button
+                      key={basis}
+                      type="button"
+                      onClick={() => setCapBasis(basis)}
+                      style={{
+                        padding: '5px 14px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
+                        fontFamily: 'inherit', fontWeight: capBasis === basis ? 600 : 400,
+                        background: capBasis === basis ? '#0f2744' : '#f5f5f2',
+                        color:      capBasis === basis ? '#fff'     : '#555',
+                        border:     `0.5px solid ${capBasis === basis ? '#0f2744' : '#d0d0c8'}`,
+                      }}
+                    >
+                      {basis === 'total' ? 'Total amount' : 'Per share'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Total amount input */}
+              {capBasis === 'total' && (
+                <div>
+                  <label style={labelSt}>Total proceeds cap (£)</label>
+                  <div style={{ position: 'relative', maxWidth: 240 }}>
+                    <span style={{
+                      position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
+                      fontSize: 13, color: '#888', pointerEvents: 'none',
+                    }}>£</span>
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={totalProceedsCap}
+                      onChange={e => setTotalProceedsCap(e.target.value)}
+                      placeholder="0.00"
+                      style={{ ...inputSt, paddingLeft: 24 }}
+                    />
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                    The maximum total amount receivable across all tranches including upfront payment.
+                  </div>
+                </div>
+              )}
+
+              {/* Per share info */}
+              {capBasis === 'per_share' && (
+                <div style={{
+                  padding: '8px 12px', background: '#f5f5f2', borderRadius: 5,
+                  fontSize: 12, color: '#666', lineHeight: 1.5,
+                }}>
+                  The price per share entered above will be used as the per-share cap. Total cap will be calculated when the bookbuild is populated.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', paddingTop: 16, borderTop: '0.5px solid #f0f0ec' }}>
