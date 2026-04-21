@@ -6,7 +6,7 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
-import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, DeferredData } from './dealDetailTypes'
+import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, TrancheScheduleItem } from './dealDetailTypes'
 import { TrancheSchedule } from './TrancheSchedule'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
@@ -317,7 +317,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   }
 
   // Per-investor completion (sell deals) — uses pre-computed FIFO lots from PreCloseTab
-  async function completeSellInvestor(clientId: string, lots: FifoLot[], deferredData?: DeferredData) {
+  async function completeSellInvestor(clientId: string, lots: FifoLot[]) {
     setCompletingInvestor(clientId)
     const today     = new Date().toISOString().split('T')[0]
     const companyId = deal.companies?.id
@@ -363,34 +363,33 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       }
     }
 
-    // Deferred consideration — update deal and insert deferred_payments rows
-    if (deferredData && sellInvestmentIds.length > 0) {
-      await supabase.from('deals').update({
-        deferred_consideration: true,
-        total_proceeds_cap:     deferredData.totalProceedsCap     || null,
-        deferred_period_months: deferredData.deferredPeriodMonths || null,
-      }).eq('id', deal.id)
+    // Deferred consideration — insert deferred_payments from stored tranche schedule
+    if (deal.deferred_consideration === true && sellInvestmentIds.length > 0) {
+      const storedTranches = (deal.completion_checklist?.tranches ?? []) as TrancheScheduleItem[]
+      const cap            = deal.total_proceeds_cap
 
-      const investorShares    = lots.reduce((s, l) => s + l.sharesConsumed, 0)
-      const totalSharesSold   = (bookbuild?.entries ?? [])
-        .filter(e => e.status === 'selling')
-        .reduce((s, e) => s + (e.indicative_shares ?? 0), 0)
-      const proportion        = totalSharesSold > 0 ? investorShares / totalSharesSold : 0
-      const primaryInvId      = sellInvestmentIds[0]
+      if (storedTranches.length > 0 && cap) {
+        const investorShares  = lots.reduce((s, l) => s + l.sharesConsumed, 0)
+        const totalSharesSold = (bookbuild?.entries ?? [])
+          .filter(e => e.status === 'selling')
+          .reduce((s, e) => s + (e.indicative_shares ?? 0), 0)
+        const proportion   = totalSharesSold > 0 ? investorShares / totalSharesSold : 0
+        const primaryInvId = sellInvestmentIds[0]
 
-      for (const tranche of deferredData.tranches) {
-        await supabase.from('deferred_payments').insert({
-          investment_id:           primaryInvId,
-          deal_id:                 deal.id,
-          client_id:               clientId,
-          expected_amount:         parseFloat((tranche.expected_amount * proportion).toFixed(2)),
-          expected_date:           tranche.expected_date,
-          contingency_description: tranche.contingency_description || null,
-          tranche_number:          tranche.tranche_number,
-          is_final_tranche:        tranche.is_final_tranche,
-          payment_route:           'direct',
-          status:                  'expected',
-        })
+        for (const tranche of storedTranches) {
+          await supabase.from('deferred_payments').insert({
+            investment_id:           primaryInvId,
+            deal_id:                 deal.id,
+            client_id:               clientId,
+            expected_amount:         parseFloat((cap * tranche.percentage / 100 * proportion).toFixed(2)),
+            expected_date:           null,
+            contingency_description: tranche.contingency_description || null,
+            tranche_number:          tranche.tranche_number,
+            is_final_tranche:        tranche.is_final_tranche,
+            payment_route:           'direct',
+            status:                  'expected',
+          })
+        }
       }
     }
 
