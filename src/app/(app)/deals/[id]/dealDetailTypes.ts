@@ -76,3 +76,25 @@ export interface DeferredData {
   deferredPeriodMonths: number
   tranches:             TrancheDef[]
 }
+
+export interface DeferredPaymentRow {
+  id:                      string
+  deal_id:                 string
+  client_id:               string
+  tranche_number:          number
+  expected_amount:         number
+  actual_amount:           number | null
+  actual_date:             string | null
+  contingency_description: string | null
+  is_final_tranche:        boolean
+  status:                  string
+  payment_route:           string
+}
+
+export interface DeferredNoteRow {
+  id:          string
+  note:        string
+  created_at:  string
+  created_by:  string | null
+  author_name: string | null
+}

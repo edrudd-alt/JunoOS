@@ -33,6 +33,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     { data: allClientsData },
     { data: dealInvestmentsData },
     { data: companyInvestmentsData },
+    { data: deferredPaymentsData },
+    { data: rawDeferredNotes },
   ] = await Promise.all([
     supabase.from('deal_investors').select('id, amount, signing_status, poa_held, client_id').eq('deal_id', id),
     rawDeal.company_id
@@ -53,7 +55,30 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           .neq('transaction_type', 'transfer_out')
           .order('investment_date', { ascending: true })
       : { data: [] },
+    supabase.from('deferred_payments').select('*').eq('deal_id', id).order('tranche_number'),
+    supabase.from('deal_deferred_notes').select('id, note, created_at, created_by').eq('deal_id', id).order('created_at', { ascending: false }),
   ])
+
+  // Resolve deferred note author names from team_members
+  const authorIds = [...new Set(
+    (rawDeferredNotes ?? [])
+      .map(n => n.created_by as string | null)
+      .filter((id): id is string => !!id),
+  )]
+  const authorMap = new Map<string, string>()
+  if (authorIds.length > 0) {
+    const { data: teamMembers } = await supabase
+      .from('team_members')
+      .select('id, full_name')
+      .in('id', authorIds)
+    for (const tm of teamMembers ?? []) {
+      authorMap.set(tm.id, tm.full_name ?? '')
+    }
+  }
+  const deferredNotes = (rawDeferredNotes ?? []).map(n => ({
+    ...n,
+    author_name: n.created_by ? (authorMap.get(n.created_by as string) ?? null) : null,
+  }))
 
   // Build a map from allClientsData for all name lookups
   const allClientsMap = new Map(
@@ -227,6 +252,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         allClients={(allClientsData ?? []) as Record<string, unknown>[]}
         dealInvestments={(dealInvestmentsData ?? []) as Record<string, unknown>[]}
         companyInvestments={(companyInvestmentsData ?? []) as Record<string, unknown>[]}
+        deferredPayments={(deferredPaymentsData ?? []) as Record<string, unknown>[]}
+        deferredNotes={deferredNotes as Record<string, unknown>[]}
       />
     </Suspense>
   )

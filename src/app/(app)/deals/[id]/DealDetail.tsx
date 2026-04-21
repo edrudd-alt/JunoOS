@@ -6,7 +6,7 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
-import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, TrancheScheduleItem } from './dealDetailTypes'
+import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, TrancheScheduleItem, DeferredPaymentRow, DeferredNoteRow } from './dealDetailTypes'
 import { TrancheSchedule } from './TrancheSchedule'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
@@ -118,6 +118,8 @@ export default function DealDetail({
   allClients: allClientsRaw,
   dealInvestments: dealInvestmentsRaw,
   companyInvestments: companyInvestmentsRaw,
+  deferredPayments: deferredPaymentsRaw,
+  deferredNotes: deferredNotesRaw,
 }: {
   deal:                Record<string, unknown>
   documents:           Record<string, unknown>[]
@@ -126,6 +128,8 @@ export default function DealDetail({
   allClients:          Record<string, unknown>[]
   dealInvestments:     Record<string, unknown>[]
   companyInvestments:  Record<string, unknown>[]
+  deferredPayments:    Record<string, unknown>[]
+  deferredNotes:       Record<string, unknown>[]
 }) {
   const deal               = dealRaw              as unknown as Deal
   const documents          = documentsRaw         as unknown as Document[]
@@ -133,8 +137,10 @@ export default function DealDetail({
   const bookbuild          = bookbuildRaw         as unknown as Bookbuild | null
   const allClients         = allClientsRaw        as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null }[]
   const primaryClients     = allClients.filter(c => !c.lead_investor_id)
-  const dealInvestments    = dealInvestmentsRaw   as unknown as DealInvestmentRow[]
+  const dealInvestments    = dealInvestmentsRaw    as unknown as DealInvestmentRow[]
   const companyInvestments = companyInvestmentsRaw as unknown as CompanyInvestmentRow[]
+  const deferredPayments   = deferredPaymentsRaw   as unknown as DeferredPaymentRow[]
+  const deferredNotes      = deferredNotesRaw      as unknown as DeferredNoteRow[]
 
   const router   = useRouter()
   const supabase = createClient()
@@ -533,6 +539,16 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       .eq('id', investmentId)
   }
 
+  async function handleCloseOut() {
+    const { data: { user } } = await supabase.auth.getUser()
+    await supabase.from('deals').update({
+      deferred_closed_out:    true,
+      deferred_closed_out_at: new Date().toISOString(),
+      deferred_closed_out_by: user?.id ?? null,
+    }).eq('id', deal.id)
+    router.refresh()
+  }
+
   const canComplete = allPerInvestorDone()
 
   // ── Summary card computations ──────────────────────────────────────────────
@@ -911,6 +927,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
           completedInvestors={completedInvestors}
           dealInvestments={dealInvestments}
           showEisItems={showEisItems}
+          isSaleDeal={isSaleDeal}
+          deferredConsideration={deal.deferred_consideration ?? false}
+          deferredPayments={deferredPayments}
+          deferredNotes={deferredNotes}
+          completionChecklist={deal.completion_checklist as Record<string, unknown> | null}
+          dealId={deal.id}
+          onCloseOut={handleCloseOut}
         />
       )}
 
