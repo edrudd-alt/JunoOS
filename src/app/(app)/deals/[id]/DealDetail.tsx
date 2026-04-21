@@ -383,7 +383,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         const primaryInvId = sellInvestmentIds[0]
 
         for (const tranche of storedTranches) {
-          await supabase.from('deferred_payments').insert({
+          const { error: dpError } = await supabase.from('deferred_payments').insert({
             investment_id:           primaryInvId,
             deal_id:                 deal.id,
             client_id:               clientId,
@@ -395,6 +395,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
             payment_route:           'direct',
             status:                  'expected',
           })
+          if (dpError) console.error('deferred_payments insert failed:', dpError)
         }
       }
     }
