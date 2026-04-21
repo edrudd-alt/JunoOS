@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
 import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, DeferredData } from './dealDetailTypes'
+import { TrancheSchedule } from './TrancheSchedule'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
 import { GenericChecklist } from './GenericChecklist'
@@ -30,6 +31,8 @@ interface Deal {
   investment_date: string | null
   eis_qualifying: string | null
   completion_checklist: CompletionChecklist | null
+  deferred_consideration: boolean | null
+  total_proceeds_cap: number | null
   companies: { id: string; name: string } | null
   deal_investors: DealInvestor[]
 }
@@ -741,6 +744,13 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
                 dealType:       deal.deal_type,
               }}
               completionChecklist={deal.completion_checklist}
+            />
+          )}
+
+          {isSaleDeal && deal.deferred_consideration === true && (
+            <TrancheSchedule
+              deal={deal}
+              onUpdate={() => router.refresh()}
             />
           )}
 

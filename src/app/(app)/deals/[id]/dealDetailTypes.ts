@@ -52,6 +52,16 @@ export interface FifoLot {
   gainLoss:       number
 }
 
+export interface TrancheScheduleItem {
+  tranche_number:          number
+  label:                   string
+  percentage:              number
+  timing:                  string
+  contingency_description: string
+  is_final_tranche:        boolean
+  is_upfront:              boolean
+}
+
 export interface TrancheDef {
   tranche_number:          number
   expected_amount:         number
