@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/utils'
 import { AddBookbuildEntryModal } from './AddBookbuildEntryModal'
 import { BookbuildEntryPopover } from './BookbuildEntryPopover'
 import type { DealInfo } from './DealDetail'
+import type { CompanyInvestmentRow } from './dealDetailTypes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ interface Props {
   companyId:           string
   bookbuild:           Bookbuild | null
   allClients:          Client[]
+  companyInvestments:  CompanyInvestmentRow[]
   dealInfo:            DealInfo
   completionChecklist: Record<string, unknown> | null
 }
@@ -79,7 +81,7 @@ const tdSt: React.CSSProperties = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dealInfo, completionChecklist }: Props) {
+export function BookbuildSection({ dealId, companyId, bookbuild, allClients, companyInvestments, dealInfo, completionChecklist }: Props) {
   const router   = useRouter()
   const supabase = createClient()
 
@@ -332,6 +334,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
             entry={popEntry}
             bookbuildId={bookbuild.id}
             clients={allClients}
+            companyInvestments={companyInvestments}
             dealInfo={dealInfo}
             completionChecklist={completionChecklist}
             top={openPopover.top}
@@ -348,6 +351,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, dea
           bookbuildId={bookbuild.id}
           companyId={companyId}
           clients={allClients}
+          companyInvestments={companyInvestments}
           existingClientIds={bookbuild.entries.map(e => e.client_id)}
           dealInfo={dealInfo}
           completionChecklist={completionChecklist}

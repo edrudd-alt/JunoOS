@@ -785,6 +785,7 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
               companyId={deal.companies?.id ?? ''}
               bookbuild={bookbuild}
               allClients={primaryClients}
+              companyInvestments={companyInvestments}
               dealInfo={{
                 id:             deal.id,
                 companyId:      deal.companies?.id ?? '',

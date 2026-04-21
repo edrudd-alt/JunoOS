@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { checkNeedsWarning, runBookbuildSideEffects } from './bookbuildSideEffects'
 import type { Client, BookbuildEntry } from './BookbuildSection'
 import type { DealInfo } from './DealDetail'
+import type { CompanyInvestmentRow } from './dealDetailTypes'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,7 @@ interface Props {
   bookbuildId:         string
   companyId:           string
   clients:             Client[]
+  companyInvestments:  CompanyInvestmentRow[]
   existingClientIds:   string[]
   dealInfo:            DealInfo
   completionChecklist: Record<string, unknown> | null
@@ -38,7 +40,7 @@ const SELL_STATUS_OPTIONS = [
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existingClientIds, dealInfo, completionChecklist, entry, onClose, onSaved }: Props) {
+export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, companyInvestments, existingClientIds, dealInfo, completionChecklist, entry, onClose, onSaved }: Props) {
   const isEditMode  = !!entry
   const isSellDeal  = dealInfo.dealType === 'full_exit' || dealInfo.dealType === 'partial_exit'
   const statusOptions = isSellDeal ? SELL_STATUS_OPTIONS : BUY_STATUS_OPTIONS
@@ -93,8 +95,14 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
       const num    = parseFloat(val.replace(/,/g, ''))
       const shares = Math.round(num / sharePrice)
       setIndicativeShares(isNaN(shares) ? '' : String(shares))
+      if (maxShares !== null && !isNaN(shares) && shares > maxShares) {
+        setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)
+      } else {
+        setSharesError('')
+      }
     } else {
       setIndicativeShares('')
+      setSharesError('')
     }
   }
 
@@ -111,9 +119,9 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
   }
 
   function handleSharesChange(val: string) {
-    if (!val) { setIndicativeShares(''); setIndicativeAmount(''); return }
+    if (!val) { setIndicativeShares(''); setIndicativeAmount(''); setSharesError(''); return }
     const wholeShares  = Math.round(parseFloat(val))
-    if (isNaN(wholeShares)) { setIndicativeShares(''); setIndicativeAmount(''); return }
+    if (isNaN(wholeShares)) { setIndicativeShares(''); setIndicativeAmount(''); setSharesError(''); return }
     const canonicalAmt = wholeShares * sharePrice
     setIndicativeShares(String(wholeShares))
     setIndicativeAmount(
@@ -121,14 +129,26 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
         ? canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '',
     )
+    if (maxShares !== null && wholeShares > maxShares) {
+      setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)
+    } else {
+      setSharesError('')
+    }
   }
 
   const [status,  setStatus]  = useState(entry?.status ?? defaultStatus)
   const [notes,   setNotes]   = useState(entry?.notes ?? '')
   const [saving,           setSaving]           = useState(false)
   const [error,            setError]            = useState('')
+  const [sharesError,      setSharesError]      = useState('')
   const [unconfirmWarning, setUnconfirmWarning] = useState(false)
   const [pendingSave,      setPendingSave]      = useState(false)
+
+  const maxShares = isSellDeal && clientId
+    ? companyInvestments
+        .filter(inv => inv.client_id === clientId)
+        .reduce((sum, inv) => sum + (inv.shares_purchased ?? 0), 0)
+    : null
 
   // In edit mode, fetch linked vehicles for the pre-selected investor on mount
   useEffect(() => {
@@ -441,13 +461,16 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
                   value={indicativeShares}
                   onChange={e => handleSharesChange(e.target.value)}
                   placeholder="0"
-                  style={inputSt}
+                  style={{ ...inputSt, borderColor: sharesError ? '#a32d2d' : undefined }}
                   onKeyDown={e => { if (e.key === '.') e.preventDefault() }}
                 />
               ) : (
                 <div style={{ ...inputSt, background: '#f9f9f7', color: '#aaa', fontSize: 11, cursor: 'not-allowed' }}>
                   Share price not set
                 </div>
+              )}
+              {sharesError && (
+                <div style={{ fontSize: 11, color: '#a32d2d', marginTop: 4 }}>{sharesError}</div>
               )}
             </div>
             <div>
@@ -492,7 +515,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, existi
             <button type="button" className="btn btn-secondary" onClick={onClose}>
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary" disabled={saving || dupError}>
+            <button type="submit" className="btn btn-primary" disabled={saving || dupError || !!sharesError}>
               {saving ? 'Saving…' : isEditMode ? 'Save changes' : 'Add investor'}
             </button>
           </div>

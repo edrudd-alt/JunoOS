@@ -105,6 +105,7 @@ export function PreCloseTab({
   // Sell completion modal state
   const [pendingCompletion, setPendingCompletion] = useState<{ clientId: string; lots: FifoLot[] } | null>(null)
   const [confirming,        setConfirming]        = useState(false)
+  const [completionError,   setCompletionError]   = useState<{ clientId: string; message: string } | null>(null)
 
   function isInvestorDone(clientId: string): boolean {
     const checks = perInvestor[clientId] ?? {}
@@ -301,6 +302,15 @@ export function PreCloseTab({
                         <button
                           onClick={() => {
                             if (isSaleDeal) {
+                              const actualSharesHeld = companyInvestments
+                                .filter(inv => inv.client_id === clientId)
+                                .reduce((sum, inv) => sum + (inv.shares_purchased ?? 0), 0)
+                              const sharesToSell = bookbuild?.entries?.find(e => e.client_id === clientId)?.indicative_shares ?? 0
+                              if (sharesToSell > actualSharesHeld) {
+                                setCompletionError({ clientId, message: `Cannot complete: ${sharesToSell.toLocaleString()} shares to sell exceeds the ${actualSharesHeld.toLocaleString()} shares held. Please update the bookbuild entry.` })
+                                return
+                              }
+                              setCompletionError(null)
                               const lots = calcFifoLots(clientId)
                               setPendingCompletion({ clientId, lots })
                             } else {
@@ -320,6 +330,11 @@ export function PreCloseTab({
                         >
                           {completingInvestor === clientId ? '…' : 'Complete'}
                         </button>
+                      )}
+                      {completionError?.clientId === clientId && (
+                        <div style={{ fontSize: 10, color: '#a32d2d', marginTop: 4, maxWidth: 180 }}>
+                          {completionError.message}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -353,11 +368,13 @@ export function PreCloseTab({
         const feeAmount    = feeEdit ? parseFloat(feeEdit.amount) || 0 : 0
         const feeRate      = feeEdit ? parseFloat(feeEdit.rate)   || 0 : 0
 
-        const totalProceeds = lots.reduce((s, l) => s + l.lotProceeds,   0)
-        const totalCost     = lots.reduce((s, l) => s + l.lotCostBasis,  0)
-        const totalGainLoss = lots.reduce((s, l) => s + l.gainLoss,      0)
-        const totalShares   = lots.reduce((s, l) => s + l.sharesConsumed, 0)
-        const netProceeds   = totalProceeds - feeAmount
+        const totalProceeds    = lots.reduce((s, l) => s + l.lotProceeds,   0)
+        const totalCost        = lots.reduce((s, l) => s + l.lotCostBasis,  0)
+        const totalGainLoss    = lots.reduce((s, l) => s + l.gainLoss,      0)
+        const totalShares      = lots.reduce((s, l) => s + l.sharesConsumed, 0)
+        const netProceeds      = totalProceeds - feeAmount
+        const sharesToSellForModal = bookbuild?.entries?.find(e => e.client_id === clientId)?.indicative_shares ?? 0
+        const sharesMismatch   = totalShares !== sharesToSellForModal
 
         const investorPct = totalSharesSoldInDeal > 0
           ? ((totalShares / totalSharesSoldInDeal) * 100).toFixed(1)
@@ -379,6 +396,13 @@ export function PreCloseTab({
                 {dealSharePrice != null ? ` at £${dealSharePrice.toFixed(4)}/share` : ''}
                 {investorPct != null ? ` · ${investorPct}% of deal` : ''}
               </div>
+
+              {/* Belt-and-braces mismatch warning */}
+              {sharesMismatch && (
+                <div style={{ background: '#fff8e6', border: '1px solid #f5d87a', borderRadius: 6, padding: '8px 12px', marginBottom: 12, fontSize: 12, color: '#7a5c00' }}>
+                  Warning: only {totalShares.toLocaleString()} shares could be matched from existing holdings. Please check the investor's holding records.
+                </div>
+              )}
 
               {/* FIFO lot table */}
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, marginBottom: 12 }}>

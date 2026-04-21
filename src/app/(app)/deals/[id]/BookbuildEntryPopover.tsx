@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { checkNeedsWarning, runBookbuildSideEffects } from './bookbuildSideEffects'
 import type { BookbuildEntry, Client } from './BookbuildSection'
 import type { DealInfo } from './DealDetail'
+import type { CompanyInvestmentRow } from './dealDetailTypes'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,6 +29,7 @@ interface Props {
   entry:               BookbuildEntry
   bookbuildId:         string
   clients:             Client[]
+  companyInvestments:  CompanyInvestmentRow[]
   dealInfo:            DealInfo
   completionChecklist: Record<string, unknown> | null
   top:                 number
@@ -39,7 +41,7 @@ interface Props {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function BookbuildEntryPopover({
-  entry, bookbuildId, clients, dealInfo, completionChecklist,
+  entry, bookbuildId, clients, companyInvestments, dealInfo, completionChecklist,
   top, left, onClose, onSaved,
 }: Props) {
   const isSellDeal      = dealInfo.dealType === 'full_exit' || dealInfo.dealType === 'partial_exit'
@@ -62,8 +64,15 @@ export function BookbuildEntryPopover({
     entry.indicative_shares != null ? String(Math.round(entry.indicative_shares)) : '',
   )
   const [saving,        setSaving]        = useState(false)
+  const [sharesError,   setSharesError]   = useState('')
   const [showWarning,   setShowWarning]   = useState(false)
   const [pendingStatus, setPendingStatus] = useState<string | null>(null)
+
+  const maxShares = isSellDeal
+    ? companyInvestments
+        .filter(inv => inv.client_id === entry.client_id)
+        .reduce((sum, inv) => sum + (inv.shares_purchased ?? 0), 0)
+    : null
 
   const popoverRef = useRef<HTMLDivElement>(null)
 
@@ -104,8 +113,14 @@ export function BookbuildEntryPopover({
       const num    = parseFloat(val.replace(/,/g, ''))
       const shares = Math.round(num / sharePrice)
       setLocalShares(isNaN(shares) ? '' : String(shares))
+      if (maxShares !== null && !isNaN(shares) && shares > maxShares) {
+        setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)
+      } else {
+        setSharesError('')
+      }
     } else {
       setLocalShares('')
+      setSharesError('')
     }
   }
 
@@ -120,9 +135,9 @@ export function BookbuildEntryPopover({
   }
 
   function handleSharesChange(val: string) {
-    if (!val) { setLocalShares(''); setLocalAmount(''); return }
+    if (!val) { setLocalShares(''); setLocalAmount(''); setSharesError(''); return }
     const wholeShares  = Math.round(parseFloat(val))
-    if (isNaN(wholeShares)) { setLocalShares(''); setLocalAmount(''); return }
+    if (isNaN(wholeShares)) { setLocalShares(''); setLocalAmount(''); setSharesError(''); return }
     const canonicalAmt = wholeShares * sharePrice
     setLocalShares(String(wholeShares))
     setLocalAmount(
@@ -130,6 +145,11 @@ export function BookbuildEntryPopover({
         ? canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         : '',
     )
+    if (maxShares !== null && wholeShares > maxShares) {
+      setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)
+    } else {
+      setSharesError('')
+    }
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────────
@@ -275,7 +295,7 @@ export function BookbuildEntryPopover({
               onKeyDown={e => { if (e.key === '.') e.preventDefault() }}
               style={{
                 width: '100%', padding: '5px 8px', fontSize: 12,
-                border: '0.5px solid #d0d0c8', borderRadius: 4, outline: 'none',
+                border: `0.5px solid ${sharesError ? '#a32d2d' : '#d0d0c8'}`, borderRadius: 4, outline: 'none',
                 background: '#fff', fontFamily: 'inherit', boxSizing: 'border-box',
               }}
             />
@@ -287,6 +307,9 @@ export function BookbuildEntryPopover({
               No price set
             </div>
           )}
+          {sharesError && (
+            <div style={{ fontSize: 10, color: '#a32d2d', marginTop: 3 }}>{sharesError}</div>
+          )}
         </div>
       </div>
 
@@ -294,7 +317,7 @@ export function BookbuildEntryPopover({
       {isDirty && (
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || !!sharesError}
           className="btn btn-primary"
           style={{ fontSize: 11, padding: '4px 12px', width: '100%' }}
         >
