@@ -549,6 +549,15 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
   const grossProceedsSum = sellingEntries.reduce((s, e) => s + (e.indicative_amount ?? 0), 0)
   const sharesBeingSold  = sellingEntries.reduce((s, e) => s + (e.indicative_shares ?? 0), 0)
 
+  const storedTranches   = (deal.completion_checklist?.tranches ?? []) as TrancheScheduleItem[]
+  const upfrontTranche   = storedTranches.find(t => t.is_upfront)
+  const upfrontProceeds  = deal.total_proceeds_cap && upfrontTranche
+    ? deal.total_proceeds_cap * upfrontTranche.percentage / 100
+    : null
+  const deferredProceeds = deal.total_proceeds_cap && upfrontProceeds !== null
+    ? deal.total_proceeds_cap - upfrontProceeds
+    : null
+
   const feesReceivable = dealInvestments
     .filter(inv => clientToSigningStatus.get(inv.client_id) === 'signed')
     .reduce((s, inv) => s + (inv.fee_amount ?? 0), 0)
@@ -666,7 +675,34 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         </div>
       )}
 
-      {isSaleDeal && (
+      {isSaleDeal && deal.deferred_consideration === true && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
+          <SummaryCard
+            label="Total proceeds cap"
+            value={deal.total_proceeds_cap ? formatCurrency(deal.total_proceeds_cap) : <span style={{ color: '#aaa', fontWeight: 400 }}>Not set</span>}
+          />
+          <SummaryCard
+            label="Upfront proceeds"
+            value={upfrontProceeds !== null ? formatCurrency(upfrontProceeds) : <span style={{ color: '#aaa', fontWeight: 400, fontSize: 13 }}>Tranche schedule not set</span>}
+          />
+          <SummaryCard
+            label="Deferred proceeds (max)"
+            value={deferredProceeds !== null ? formatCurrency(deferredProceeds) : '—'}
+          />
+          <SummaryCard
+            label="Fees receivable"
+            value={feesReceivable > 0 ? formatCurrency(feesReceivable) : '—'}
+            bg={feesBg}
+          />
+          <SummaryCard
+            label="Share class / Price per share"
+            value={shareClassValue}
+            subValue={shareClassSubValue}
+          />
+        </div>
+      )}
+
+      {isSaleDeal && !deal.deferred_consideration && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>
           <SummaryCard label="Sellers confirmed" value={String(sellersCount)} />
           <SummaryCard
