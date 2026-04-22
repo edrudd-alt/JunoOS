@@ -35,6 +35,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     { data: companyInvestmentsData },
     { data: deferredPaymentsData },
     { data: rawDeferredNotes },
+    { data: feeScheduleItemsData },
   ] = await Promise.all([
     supabase.from('deal_investors').select('id, amount, signing_status, poa_held, client_id').eq('deal_id', id),
     rawDeal.company_id
@@ -43,7 +44,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
     supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
     supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
-    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type, lead_investor_id').order('full_name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type, lead_investor_id, fee_schedule_id').order('full_name'),
     supabase.from('investments').select('id, client_id, sum_subscribed, shares_purchased, status, completion_date, eis_status, fee_rate, fee_amount').eq('deal_id', id),
     rawDeal.company_id
       ? supabase
@@ -57,6 +58,10 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       : { data: [] },
     supabase.from('deferred_payments').select('*').eq('deal_id', id).order('tranche_number'),
     supabase.from('deal_deferred_notes').select('id, note, created_at, created_by').eq('deal_id', id).order('created_at', { ascending: false }),
+    supabase.from('fee_schedule_items')
+      .select('id, fee_schedule_id, fee_type, label, basis, rate, cap_rate, cap_years, display_order, active')
+      .eq('active', true)
+      .order('display_order'),
   ])
 
   // Resolve deferred note author names from team_members
@@ -254,6 +259,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         companyInvestments={(companyInvestmentsData ?? []) as Record<string, unknown>[]}
         deferredPayments={(deferredPaymentsData ?? []) as Record<string, unknown>[]}
         deferredNotes={deferredNotes as Record<string, unknown>[]}
+        feeScheduleItems={(feeScheduleItemsData ?? []) as Record<string, unknown>[]}
       />
     </Suspense>
   )

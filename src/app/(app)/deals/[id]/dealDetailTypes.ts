@@ -98,3 +98,16 @@ export interface DeferredNoteRow {
   created_by:  string | null
   author_name: string | null
 }
+
+export interface FeeScheduleItem {
+  id:               string
+  fee_schedule_id:  string
+  fee_type:         string
+  label:            string
+  basis:            string
+  rate:             number
+  cap_rate:         number | null
+  cap_years:        number | null
+  display_order:    number
+  active:           boolean
+}

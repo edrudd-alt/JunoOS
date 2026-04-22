@@ -6,7 +6,7 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatPrice, formatDate } from '@/lib/utils'
-import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, TrancheScheduleItem, DeferredPaymentRow, DeferredNoteRow } from './dealDetailTypes'
+import type { DealInvestor, InvestorData, CompletionChecklist, CompanyInvestmentRow, FifoLot, TrancheScheduleItem, DeferredPaymentRow, DeferredNoteRow, FeeScheduleItem } from './dealDetailTypes'
 import { TrancheSchedule } from './TrancheSchedule'
 import { SignatureTracking } from './SignatureTracking'
 import { CompletionChecklist as CompletionChecklistComponent } from './CompletionChecklist'
@@ -120,6 +120,7 @@ export default function DealDetail({
   companyInvestments: companyInvestmentsRaw,
   deferredPayments: deferredPaymentsRaw,
   deferredNotes: deferredNotesRaw,
+  feeScheduleItems: feeScheduleItemsRaw,
 }: {
   deal:                Record<string, unknown>
   documents:           Record<string, unknown>[]
@@ -130,12 +131,14 @@ export default function DealDetail({
   companyInvestments:  Record<string, unknown>[]
   deferredPayments:    Record<string, unknown>[]
   deferredNotes:       Record<string, unknown>[]
+  feeScheduleItems:    Record<string, unknown>[]
 }) {
   const deal               = dealRaw              as unknown as Deal
   const documents          = documentsRaw         as unknown as Document[]
   const invoices           = invoicesRaw          as unknown as Invoice[]
   const bookbuild          = bookbuildRaw         as unknown as Bookbuild | null
-  const allClients         = allClientsRaw        as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null }[]
+  const allClients         = allClientsRaw        as unknown as { id: string; full_name: string; email: string | null; default_fee_rate: number | null; fund_type: string | null; lead_investor_id: string | null; fee_schedule_id: string | null }[]
+  const feeScheduleItems   = feeScheduleItemsRaw  as unknown as FeeScheduleItem[]
   const primaryClients     = allClients.filter(c => !c.lead_investor_id)
   const dealInvestments    = dealInvestmentsRaw    as unknown as DealInvestmentRow[]
   const companyInvestments = companyInvestmentsRaw as unknown as CompanyInvestmentRow[]
@@ -298,6 +301,54 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         .eq('client_id', clientId)
         .eq('company_id', companyId)
         .eq('status', 'pending')
+
+      const scheduleId = allClients.find(c => c.id === clientId)?.fee_schedule_id ?? null
+      if (scheduleId) {
+        const { data: activatedInvs } = await supabase
+          .from('investments')
+          .select('id, sum_subscribed')
+          .eq('client_id', clientId)
+          .eq('company_id', companyId)
+          .eq('deal_id', deal.id)
+          .eq('status', 'active')
+
+        const items = feeScheduleItems.filter(
+          fi => fi.fee_schedule_id === scheduleId && fi.fee_type === 'buy'
+        )
+
+        for (const inv of activatedInvs ?? []) {
+          const sumSubscribed = inv.sum_subscribed ?? 0
+          let totalFee = 0
+          const feeRows: Record<string, unknown>[] = []
+
+          for (const item of items) {
+            let amount = 0
+            if (item.basis === 'percentage_of_proceeds') {
+              amount = sumSubscribed * item.rate / 100
+            } else if (item.basis === 'fixed') {
+              amount = item.rate
+            }
+            totalFee += amount
+            feeRows.push({
+              investment_id:        inv.id,
+              fee_schedule_item_id: item.id,
+              label:                item.label,
+              fee_type:             item.fee_type,
+              basis:                item.basis,
+              rate:                 item.rate,
+              amount:               parseFloat(amount.toFixed(2)),
+              overridden:           false,
+            })
+          }
+
+          if (feeRows.length > 0) {
+            await supabase.from('investment_fee_items').insert(feeRows)
+            await supabase.from('investments')
+              .update({ fee_amount: parseFloat(totalFee.toFixed(2)) })
+              .eq('id', inv.id)
+          }
+        }
+      }
     }
 
     const newCompleted = { ...completedInvestors, [clientId]: today }
@@ -335,6 +386,11 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
       .eq('status', 'pending')
       .eq('transaction_type', 'sell')
 
+    const sellScheduleId = allClients.find(c => c.id === clientId)?.fee_schedule_id ?? null
+    const sellFeeItems = sellScheduleId
+      ? feeScheduleItems.filter(fi => fi.fee_schedule_id === sellScheduleId && fi.fee_type !== 'buy')
+      : []
+
     // Insert one sell row per FIFO lot, capture IDs for deferred_payments linkage
     const sellInvestmentIds: string[] = []
     for (const lot of lots) {
@@ -359,7 +415,50 @@ const [perInvestor, setPerInvestor] = useState<Record<string, Record<string, boo
         completion_date:      today,
         holding_location:     'direct',
       }).select('id').single()
-      if (newInv?.id) sellInvestmentIds.push(newInv.id)
+      if (newInv?.id) {
+        sellInvestmentIds.push(newInv.id)
+
+        if (sellFeeItems.length > 0) {
+          let lotTotalFee = 0
+          const feeRows: Record<string, unknown>[] = []
+
+          for (const item of sellFeeItems) {
+            let amount = 0
+            if (item.basis === 'percentage_of_profit') {
+              amount = Math.max(0, lot.gainLoss) * item.rate / 100
+            } else if (item.basis === 'percentage_of_cost') {
+              const yearsHeld = sourceLot.investment_date
+                ? (Date.parse(today) - Date.parse(sourceLot.investment_date)) / (365 * 86_400_000)
+                : 0
+              const uncapped = (item.rate / 100) * lot.lotCostBasis * yearsHeld
+              const cap = item.cap_rate != null
+                ? (item.cap_rate / 100) * lot.lotCostBasis
+                : Infinity
+              amount = Math.min(uncapped, cap)
+            } else if (item.basis === 'percentage_of_proceeds') {
+              amount = lot.lotProceeds * item.rate / 100
+            } else if (item.basis === 'fixed') {
+              amount = item.rate
+            }
+            lotTotalFee += amount
+            feeRows.push({
+              investment_id:        newInv.id,
+              fee_schedule_item_id: item.id,
+              label:                item.label,
+              fee_type:             item.fee_type,
+              basis:                item.basis,
+              rate:                 item.rate,
+              amount:               parseFloat(amount.toFixed(2)),
+              overridden:           false,
+            })
+          }
+
+          await supabase.from('investment_fee_items').insert(feeRows)
+          await supabase.from('investments')
+            .update({ fee_amount: parseFloat(lotTotalFee.toFixed(2)) })
+            .eq('id', newInv.id)
+        }
+      }
 
       const remaining = sourceLot.shares_purchased - lot.sharesConsumed
       if (remaining <= 0) {
