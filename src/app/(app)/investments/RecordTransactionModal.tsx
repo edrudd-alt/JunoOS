@@ -40,6 +40,12 @@ function F({ label, children, hint }: { label: string; children: React.ReactNode
   )
 }
 
+function clientDisplayName(client: Client, allClients: Client[]): string {
+  if (!client.lead_investor_id) return client.full_name
+  const lead = allClients.find(c => c.id === client.lead_investor_id)
+  return lead ? `${lead.full_name} — ${client.full_name}` : client.full_name
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -113,10 +119,16 @@ export function RecordTransactionModal({
     return set
   }, [companyClientNet])
 
+  const sortedClients = useMemo(() => {
+    const primaries = clients.filter(c => !c.lead_investor_id).sort((a, b) => a.full_name.localeCompare(b.full_name))
+    const linked    = clients.filter(c =>  c.lead_investor_id).sort((a, b) => a.full_name.localeCompare(b.full_name))
+    return [...primaries, ...linked]
+  }, [clients])
+
   const eligibleInvestors = useMemo(() => {
-    if (modalType === 'buy') return clients
-    return clients.filter(c => Object.values(holdingsMap[c.id] ?? {}).some(n => n > 0))
-  }, [modalType, clients, holdingsMap])
+    if (modalType === 'buy') return sortedClients
+    return sortedClients.filter(c => Object.values(holdingsMap[c.id] ?? {}).some(n => n > 0))
+  }, [modalType, sortedClients, holdingsMap])
 
   const activeClient = modalType === 'transfer' ? fromClient : heldBy
 
@@ -432,7 +444,7 @@ export function RecordTransactionModal({
             <option value="">
               {!companyId ? 'Select a company first…' : 'Select…'}
             </option>
-            {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+            {eligibleInvestors.map(c => <option key={c.id} value={c.id}>{clientDisplayName(c, clients)}</option>)}
           </select>
         </F>
 
@@ -600,8 +612,8 @@ export function RecordTransactionModal({
               <F label="Transferring to *">
                 <select value={toClient} onChange={e => setToClient(e.target.value)} style={inputStyle}>
                   <option value="">Select…</option>
-                  {clients.filter(c => c.id !== fromClient).map(c =>
-                    <option key={c.id} value={c.id}>{c.full_name}</option>
+                  {sortedClients.filter(c => c.id !== fromClient).map(c =>
+                    <option key={c.id} value={c.id}>{clientDisplayName(c, clients)}</option>
                   )}
                 </select>
               </F>

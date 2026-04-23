@@ -14,7 +14,8 @@ type Client = {
   email: string | null
   kyc_status: string
   kyc_expiry: string | null
-  entity_type: string
+  vehicle_type: string | null
+  nominee_id: string | null
   tax_status: string
   date_joined: string | null
   lead_investor_id: string | null
@@ -47,6 +48,7 @@ interface Props {
   lastActivityByClient: Record<string, string>
   attentionCounts: { kycOverdue: number; kycRenewalDue: number; appUnsigned: number; amlOutstanding: number }
   clientFlags: Record<string, ClientFlag>
+  nominees: { id: string; name: string }[]
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -94,25 +96,34 @@ function Avatar({ name, muted }: { name: string; muted?: boolean }) {
 }
 
 function FundTypePill({ code }: { code: string }) {
-  const isMM = code === 'multi_manager', isBoth = code === 'both'
+  const isMM = code === 'multi_manager', isBoth = code === 'both', isEIS = code === 'eis_fund'
   return (
     <span style={{
       fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600,
-      background: isMM ? '#fff3e0' : isBoth ? '#f0f0ec' : '#e8f5f0',
-      color:      isMM ? '#e0952a' : isBoth ? '#555'    : '#1d9e75',
+      background: isMM ? '#fff3e0' : isBoth ? '#f0f0ec' : isEIS ? '#f0ecfb' : '#e8f5f0',
+      color:      isMM ? '#e0952a' : isBoth ? '#555'    : isEIS ? '#6b21a8' : '#1d9e75',
     }}>
-      {isMM ? 'MM' : isBoth ? 'Both' : 'S'}
+      {isMM ? 'MM' : isBoth ? 'Both' : isEIS ? 'EIS' : 'S'}
     </span>
   )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  nominee:   'Nominee',
+  corporate: 'Corporate vehicle',
+  trust:     'Trust',
+  estate:    'Estate',
+  pension:   'Pension',
+}
+
 export default function ClientList({
   allClients, leadNameById, portfolioByClient, clientsByCompany,
-  companies, lastInvestmentByClient, lastActivityByClient, attentionCounts, clientFlags,
+  companies, lastInvestmentByClient, lastActivityByClient, attentionCounts, clientFlags, nominees,
 }: Props) {
   const clients = allClients as unknown as Client[]
+  const nomineeMap = useMemo(() => new Map(nominees.map(n => [n.id, n.name])), [nominees])
 
   // Filters + sort
   const [search,         setSearch]         = useState('')
@@ -416,6 +427,7 @@ export default function ClientList({
             <option value="all">Fund type ▾</option>
             <option value="syndicate">Syndicate</option>
             <option value="multi_manager">Multi Manager</option>
+            <option value="eis_fund">EIS Fund</option>
             <option value="both">Both</option>
           </select>
 
@@ -471,7 +483,7 @@ export default function ClientList({
           )}
           {fundTypeFilter !== 'all' && (
             <span style={tagStyle}>
-              {fundTypeFilter === 'multi_manager' ? 'Multi Manager' : fundTypeFilter === 'both' ? 'Both' : 'Syndicate'}
+              {fundTypeFilter === 'multi_manager' ? 'Multi Manager' : fundTypeFilter === 'both' ? 'Both' : fundTypeFilter === 'eis_fund' ? 'EIS Fund' : 'Syndicate'}
               <button style={xBtn} onClick={() => { setFundTypeFilter('all'); setPage(1) }}>×</button>
             </span>
           )}
@@ -559,13 +571,13 @@ export default function ClientList({
                   ? `Lead · ${linkedEntities.length} ${linkedEntities.length === 1 ? 'entity' : 'entities'}`
                   : 'Individual'
               } else {
-                const typeLabel: Record<string, string> = {
-                  individual: 'Individual', corporate: 'Corporate',
-                  family_trust: 'Family', llp: 'LLP', sipp: 'SIPP',
-                }
-                const t = typeLabel[client.entity_type] ?? client.entity_type
                 const leadName = leadNameById[client.lead_investor_id!] ?? 'Unknown'
-                subtitle = `${t} · linked to ${leadName}`
+                let typeLabel = VEHICLE_TYPE_LABELS[client.vehicle_type ?? ''] ?? 'Linked entity'
+                if (client.vehicle_type === 'nominee' && client.nominee_id) {
+                  const nomineeName = nomineeMap.get(client.nominee_id)
+                  if (nomineeName) typeLabel = `Nominee (via ${nomineeName})`
+                }
+                subtitle = `${typeLabel} · linked to ${leadName}`
               }
 
               const tdStyle: React.CSSProperties = { padding: '10px 12px', verticalAlign: 'middle', borderBottom: '0.5px solid #f5f5f2' }

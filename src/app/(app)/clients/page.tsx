@@ -15,10 +15,11 @@ export default async function ClientsPage() {
     { data: activityRows },
     { data: rawInvestments },
     { data: rawDealInvestors },
+    { data: nomineesData },
   ] = await Promise.all([
     supabase
       .from('clients')
-      .select('id, full_name, investor_reference, email, kyc_status, kyc_expiry, entity_type, tax_status, date_joined, lead_investor_id, fund_type')
+      .select('id, full_name, investor_reference, email, kyc_status, kyc_expiry, vehicle_type, nominee_id, tax_status, date_joined, lead_investor_id, fund_type')
       .order('full_name'),
     supabase
       .from('client_portfolio_summary')
@@ -40,6 +41,10 @@ export default async function ClientsPage() {
       .from('deal_investors')
       .select('client_id, signing_status')
       .eq('signing_status', 'pending'),
+    supabase
+      .from('nominees')
+      .select('id, name')
+      .eq('active', true),
   ])
 
   // Last buy investment date per client (buy or null/legacy = treat as buy)
@@ -118,6 +123,7 @@ export default async function ClientsPage() {
       lastActivityByClient={lastActivityByClient}
       attentionCounts={attentionCounts}
       clientFlags={clientFlags}
+      nominees={(nomineesData ?? []) as { id: string; name: string }[]}
     />
   )
 }
