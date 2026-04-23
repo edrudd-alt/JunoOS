@@ -625,13 +625,13 @@ function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
       email:            email.trim() || null,
       lead_investor_id: leadClientId,
       vehicle_type:     vehicleType,
-      fund_type:        'syndicate',
-      tax_status:       'neither',
-      kyc_status:       'outstanding',
-      default_fee_rate: 5,
-      entity_type:      'own_name',
-      holding_location: 'direct',
-      report_delivery_method: 'download',
+      fund_type:              'syndicate',
+      tax_status:             'neither',
+      kyc_status:             'outstanding',
+      default_fee_rate:       5,
+      entity_type:            'own_name',
+      holding_location:       'direct',
+      report_delivery_method: 'email',
     })
     if (dbError) { setError(dbError.message); setSaving(false); return }
     setSaving(false)
