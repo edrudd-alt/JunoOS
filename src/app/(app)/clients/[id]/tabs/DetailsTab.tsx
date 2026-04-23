@@ -15,10 +15,6 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   source_of_funds: 'Source of funds',
 }
 
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  own_name: 'Own name', family: 'Family', corporate: 'Corporate',
-}
-
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
   nominee:   'Nominee',
   corporate: 'Corporate vehicle',
@@ -73,9 +69,10 @@ interface Props {
   investments?: Record<string, unknown>[]
   relationships?: Record<string, unknown>[]
   feeSchedules?: { id: string; name: string }[]
+  nominees?: { id: string; name: string }[]
 }
 
-export default function DetailsTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity, investments: investmentsRaw, relationships: relationshipsRaw, feeSchedules }: Props) {
+export default function DetailsTab({ client, linkedEntities, portfolioRows, membershipDocs, lastActivity, investments: investmentsRaw, relationships: relationshipsRaw, feeSchedules, nominees }: Props) {
   const investments   = (investmentsRaw   ?? []) as unknown as InvestmentRow[]
   const relationships = (relationshipsRaw ?? []) as unknown as RelationshipRow[]
   const isLead        = !client.lead_investor_id
@@ -308,8 +305,8 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
                 <thead>
                   <tr>
                     <th>Entity</th>
-                    <th>Type</th>
                     <th>Vehicle type</th>
+                    <th>Nominee</th>
                     <th>Invested</th>
                     <th>Current value</th>
                     <th>Change</th>
@@ -320,8 +317,8 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
                 <tbody>
                   <LinkedEntityRow
                     name="All entities"
-                    entityType={null}
                     vehicleType={null}
+                    nomineeName={null}
                     holdingLocation={null}
                     portfolio={Object.values(portfolioByEntity).reduce(
                       (acc, p) => ({
@@ -339,8 +336,8 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
                     <LinkedEntityRow
                       key={entity.id}
                       name={entity.full_name}
-                      entityType={entity.entity_type}
                       vehicleType={entity.vehicle_type}
+                      nomineeName={(nominees ?? []).find(n => n.id === entity.nominee_id)?.name ?? null}
                       holdingLocation={entity.holding_location}
                       portfolio={portfolioByEntity[entity.id] ?? { totalInvested: 0, currentValue: 0, gainLoss: 0 }}
                       linkId={entity.id}
@@ -366,6 +363,7 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
     {showAddLinkedModal && (
       <AddLinkedEntityModal
         leadClientId={client.id}
+        nominees={nominees ?? []}
         onClose={() => setShowAddLinkedModal(false)}
         onSaved={() => { setShowAddLinkedModal(false); router.refresh() }}
       />
@@ -490,11 +488,11 @@ function AddRelationshipModal({ clientId, onClose, onSaved }: { clientId: string
 }
 
 function LinkedEntityRow({
-  name, entityType, vehicleType, holdingLocation, portfolio, linkId, bold, onEdit,
+  name, vehicleType, nomineeName, holdingLocation, portfolio, linkId, bold, onEdit,
 }: {
   name: string
-  entityType: string | null
   vehicleType: string | null
+  nomineeName: string | null
   holdingLocation: string | null
   portfolio: { totalInvested: number; currentValue: number; gainLoss: number }
   linkId: string | null
@@ -510,16 +508,18 @@ function LinkedEntityRow({
           : name}
       </td>
       <td>
-        {entityType
-          ? <span className="pill pill-grey">{ENTITY_TYPE_LABELS[entityType] ?? entityType}</span>
-          : '—'}
-      </td>
-      <td>
         {vehicleType
           ? <span className="pill pill-grey">{VEHICLE_TYPE_LABELS[vehicleType] ?? vehicleType}</span>
           : linkId
             ? <span style={{ fontSize: 11, color: '#b45309' }}>Not set</span>
             : '—'}
+      </td>
+      <td>
+        {vehicleType === 'nominee'
+          ? nomineeName
+            ? <span style={{ fontSize: 11 }}>{nomineeName}</span>
+            : <span style={{ fontSize: 11, color: '#b45309' }}>Not set</span>
+          : '—'}
       </td>
       <td>{formatCurrency(portfolio.totalInvested)}</td>
       <td style={{ fontWeight: 500 }}>{formatCurrency(portfolio.currentValue)}</td>
@@ -573,12 +573,15 @@ function EditVehicleTypeModal({ entityId, currentValue, onClose, onSaved }: {
   const supabase = createClient()
   const [vehicleType, setVehicleType] = useState(currentValue ?? '')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   async function handleSave() {
     if (!vehicleType) return
     setSaving(true)
-    await supabase.from('clients').update({ vehicle_type: vehicleType }).eq('id', entityId)
+    setError('')
+    const { error: dbError } = await supabase.from('clients').update({ vehicle_type: vehicleType }).eq('id', entityId)
     setSaving(false)
+    if (dbError) { setError(dbError.message); return }
     onSaved()
   }
 
@@ -593,6 +596,7 @@ function EditVehicleTypeModal({ entityId, currentValue, onClose, onSaved }: {
           <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>Vehicle type</label>
           <VehicleTypeSelect value={vehicleType} onChange={setVehicleType} required />
         </div>
+        {error && <p style={{ fontSize: 12, color: '#a32d2d', margin: '0 0 14px' }}>{error}</p>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
           <button className="btn btn-primary" onClick={handleSave} disabled={!vehicleType || saving} style={{ fontSize: 12 }}>
@@ -604,17 +608,24 @@ function EditVehicleTypeModal({ entityId, currentValue, onClose, onSaved }: {
   )
 }
 
-function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
+function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
   leadClientId: string
+  nominees: { id: string; name: string }[]
   onClose: () => void
   onSaved: () => void
 }) {
   const supabase = createClient()
   const [fullName,    setFullName]    = useState('')
   const [vehicleType, setVehicleType] = useState('')
+  const [nomineeId,   setNomineeId]   = useState('')
   const [email,       setEmail]       = useState('')
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
+
+  function handleVehicleTypeChange(v: string) {
+    setVehicleType(v)
+    if (v !== 'nominee') setNomineeId('')
+  }
 
   async function handleSave() {
     if (!fullName.trim() || !vehicleType) return
@@ -625,11 +636,12 @@ function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
       email:            email.trim() || null,
       lead_investor_id: leadClientId,
       vehicle_type:     vehicleType,
+      nominee_id:       vehicleType === 'nominee' ? nomineeId || null : null,
       fund_type:              'syndicate',
       tax_status:             'neither',
       kyc_status:             'outstanding',
       default_fee_rate:       5,
-      entity_type:            'own_name',
+      entity_type:            null,
       holding_location:       'direct',
       report_delivery_method: 'email',
     })
@@ -669,8 +681,27 @@ function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
           <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
             Vehicle type <span style={{ color: '#a32d2d' }}>*</span>
           </label>
-          <VehicleTypeSelect value={vehicleType} onChange={setVehicleType} required />
+          <VehicleTypeSelect value={vehicleType} onChange={handleVehicleTypeChange} required />
         </div>
+
+        {vehicleType === 'nominee' && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
+              Nominee <span style={{ color: '#a32d2d' }}>*</span>
+            </label>
+            <select
+              value={nomineeId}
+              onChange={e => setNomineeId(e.target.value)}
+              required
+              style={inputStyle}
+            >
+              <option value="">Select nominee…</option>
+              {nominees.map(n => (
+                <option key={n.id} value={n.id}>{n.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>Email (optional)</label>
@@ -690,7 +721,7 @@ function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!fullName.trim() || !vehicleType || saving}
+            disabled={!fullName.trim() || !vehicleType || (vehicleType === 'nominee' && !nomineeId) || saving}
             style={{ fontSize: 12 }}
           >
             {saving ? 'Saving…' : 'Add entity'}
@@ -707,7 +738,7 @@ function taxStatusLabel(s: string) {
 
 function FundTypeDisplay({ fundType, activeFundType }: { fundType: string; activeFundType: string | null }) {
   const labels: Record<string, string> = {
-    syndicate: 'Syndicate', multi_manager: 'Multi Manager', both: 'Both',
+    syndicate: 'Syndicate', multi_manager: 'Multi Manager', eis_fund: 'EIS Fund', both: 'Both',
   }
   if (fundType === 'both' && activeFundType) {
     return <span>{labels[fundType]} <span style={{ color: '#888' }}>(active: {labels[activeFundType] ?? activeFundType})</span></span>

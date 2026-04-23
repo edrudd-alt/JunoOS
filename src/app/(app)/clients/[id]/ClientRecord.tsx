@@ -65,12 +65,13 @@ interface Props {
   lastActivity: string | null
   relationships: Record<string, unknown>[]
   feeSchedules: { id: string; name: string }[]
+  nominees: { id: string; name: string }[]
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
-  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules,
+  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules, nominees,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -243,6 +244,7 @@ export default function ClientRecord({
             investments={investments}
             relationships={relationships}
             feeSchedules={feeSchedules}
+            nominees={nominees}
           />
         )}
         {tab === 'investment_docs' && (
@@ -336,6 +338,7 @@ function EditFundTypeModal({
           <select value={fundType} onChange={e => setFundType(e.target.value)} style={inputSt}>
             <option value="syndicate">Syndicate</option>
             <option value="multi_manager">Multi Manager</option>
+            <option value="eis_fund">EIS Fund</option>
             <option value="both">Both</option>
           </select>
         </div>
