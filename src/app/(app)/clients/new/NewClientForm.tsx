@@ -70,6 +70,7 @@ export default function NewClientForm({ leads }: Props) {
     entity_type: 'own_name',
     holding_location: 'direct',
     lead_investor_id: '',
+    vehicle_type: '',
     notes: '',
     fund_type: 'syndicate',
   })
@@ -103,6 +104,7 @@ export default function NewClientForm({ leads }: Props) {
       entity_type: form.entity_type,
       holding_location: form.holding_location,
       lead_investor_id: isLinked && form.lead_investor_id ? form.lead_investor_id : null,
+      vehicle_type: isLinked && form.vehicle_type ? form.vehicle_type : null,
       notes: form.notes.trim() || null,
       fund_type: 'syndicate',
     }
@@ -168,20 +170,37 @@ export default function NewClientForm({ leads }: Props) {
             </div>
 
             {isLinked ? (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <Field label="Lead investor" required>
-                  <select
-                    value={form.lead_investor_id}
-                    onChange={e => set('lead_investor_id', e.target.value)}
-                    required
-                    style={inputStyle}
-                  >
-                    <option value="">Select lead investor…</option>
-                    {leads.map(l => (
-                      <option key={l.id} value={l.id}>{l.full_name}</option>
-                    ))}
-                  </select>
-                </Field>
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <Field label="Lead investor" required>
+                    <select
+                      value={form.lead_investor_id}
+                      onChange={e => set('lead_investor_id', e.target.value)}
+                      required
+                      style={inputStyle}
+                    >
+                      <option value="">Select lead investor…</option>
+                      {leads.map(l => (
+                        <option key={l.id} value={l.id}>{l.full_name}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Vehicle type" required>
+                    <select
+                      value={form.vehicle_type}
+                      onChange={e => set('vehicle_type', e.target.value)}
+                      required
+                      style={inputStyle}
+                    >
+                      <option value="">Select vehicle type…</option>
+                      <option value="nominee">Nominee</option>
+                      <option value="corporate">Corporate vehicle</option>
+                      <option value="trust">Trust</option>
+                      <option value="estate">Estate</option>
+                      <option value="pension">Pension</option>
+                    </select>
+                  </Field>
+                </div>
                 <Field label="Entity type">
                   <select value={form.entity_type} onChange={e => set('entity_type', e.target.value)} style={inputStyle}>
                     <option value="own_name">Own name</option>
@@ -189,7 +208,7 @@ export default function NewClientForm({ leads }: Props) {
                     <option value="corporate">Corporate vehicle</option>
                   </select>
                 </Field>
-              </div>
+              </>
             ) : (
               <Field label="Entity type">
                 <select value={form.entity_type} onChange={e => set('entity_type', e.target.value)} style={inputStyle}>

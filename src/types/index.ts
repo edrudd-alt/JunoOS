@@ -38,6 +38,7 @@ export interface Client {
   fund_type: string
   active_fund_type: string | null
   fee_schedule_id: string | null
+  vehicle_type: string | null
 }
 
 /**

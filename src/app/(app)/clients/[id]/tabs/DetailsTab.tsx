@@ -19,6 +19,14 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   own_name: 'Own name', family: 'Family', corporate: 'Corporate',
 }
 
+const VEHICLE_TYPE_LABELS: Record<string, string> = {
+  nominee:   'Nominee',
+  corporate: 'Corporate vehicle',
+  trust:     'Trust',
+  estate:    'Estate',
+  pension:   'Pension',
+}
+
 interface MembershipDoc {
   id: string
   type: string
@@ -75,8 +83,10 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
   const router  = useRouter()
   const supabase = createClient()
 
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [changingFeeSchedule,  setChangingFeeSchedule]  = useState(false)
+  const [showAddModal,        setShowAddModal]        = useState(false)
+  const [showAddLinkedModal,  setShowAddLinkedModal]  = useState(false)
+  const [editingEntityId,     setEditingEntityId]     = useState<string | null>(null)
+  const [changingFeeSchedule, setChangingFeeSchedule] = useState(false)
   const [pendingFeeScheduleId, setPendingFeeScheduleId] = useState(client.fee_schedule_id ?? '')
 
   async function handleFeeScheduleSave() {
@@ -277,51 +287,70 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
           </div>
         )}
 
-        {isLead && linkedEntities.length > 0 && (
+        {isLead && (
           <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', fontSize: 12, fontWeight: 500 }}>
-              Linked entities ({linkedEntities.length})
+            <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 12, fontWeight: 500 }}>
+                Linked entities{linkedEntities.length > 0 ? ` (${linkedEntities.length})` : ''}
+              </div>
+              <button
+                className="btn btn-secondary"
+                style={{ fontSize: 11, padding: '4px 10px' }}
+                onClick={() => setShowAddLinkedModal(true)}
+              >
+                + Add linked entity
+              </button>
             </div>
-            <table>
-              <thead>
-                <tr>
-                  <th>Entity</th>
-                  <th>Type</th>
-                  <th>Invested</th>
-                  <th>Current value</th>
-                  <th>Change</th>
-                  <th>Location</th>
-                </tr>
-              </thead>
-              <tbody>
-                <LinkedEntityRow
-                  name="All entities"
-                  entityType={null}
-                  holdingLocation={null}
-                  portfolio={Object.values(portfolioByEntity).reduce(
-                    (acc, p) => ({
-                      totalInvested: acc.totalInvested + p.totalInvested,
-                      currentValue:  acc.currentValue  + p.currentValue,
-                      gainLoss:      acc.gainLoss      + p.gainLoss,
-                    }),
-                    { totalInvested: 0, currentValue: 0, gainLoss: 0 }
-                  )}
-                  linkId={null}
-                  bold
-                />
-                {linkedEntities.map(entity => (
+            {linkedEntities.length === 0 ? (
+              <div style={{ padding: '14px 16px', fontSize: 12, color: '#888' }}>No linked entities</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Entity</th>
+                    <th>Type</th>
+                    <th>Vehicle type</th>
+                    <th>Invested</th>
+                    <th>Current value</th>
+                    <th>Change</th>
+                    <th>Location</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
                   <LinkedEntityRow
-                    key={entity.id}
-                    name={entity.full_name}
-                    entityType={entity.entity_type}
-                    holdingLocation={entity.holding_location}
-                    portfolio={portfolioByEntity[entity.id] ?? { totalInvested: 0, currentValue: 0, gainLoss: 0 }}
-                    linkId={entity.id}
-                    bold={false}
+                    name="All entities"
+                    entityType={null}
+                    vehicleType={null}
+                    holdingLocation={null}
+                    portfolio={Object.values(portfolioByEntity).reduce(
+                      (acc, p) => ({
+                        totalInvested: acc.totalInvested + p.totalInvested,
+                        currentValue:  acc.currentValue  + p.currentValue,
+                        gainLoss:      acc.gainLoss      + p.gainLoss,
+                      }),
+                      { totalInvested: 0, currentValue: 0, gainLoss: 0 }
+                    )}
+                    linkId={null}
+                    bold
+                    onEdit={null}
                   />
-                ))}
-              </tbody>
-            </table>
+                  {linkedEntities.map(entity => (
+                    <LinkedEntityRow
+                      key={entity.id}
+                      name={entity.full_name}
+                      entityType={entity.entity_type}
+                      vehicleType={entity.vehicle_type}
+                      holdingLocation={entity.holding_location}
+                      portfolio={portfolioByEntity[entity.id] ?? { totalInvested: 0, currentValue: 0, gainLoss: 0 }}
+                      linkId={entity.id}
+                      bold={false}
+                      onEdit={() => setEditingEntityId(entity.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )}
       </div>
@@ -332,6 +361,21 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
         clientId={client.id}
         onClose={() => setShowAddModal(false)}
         onSaved={() => { setShowAddModal(false); router.refresh() }}
+      />
+    )}
+    {showAddLinkedModal && (
+      <AddLinkedEntityModal
+        leadClientId={client.id}
+        onClose={() => setShowAddLinkedModal(false)}
+        onSaved={() => { setShowAddLinkedModal(false); router.refresh() }}
+      />
+    )}
+    {editingEntityId && (
+      <EditVehicleTypeModal
+        entityId={editingEntityId}
+        currentValue={linkedEntities.find(e => e.id === editingEntityId)?.vehicle_type ?? null}
+        onClose={() => setEditingEntityId(null)}
+        onSaved={() => { setEditingEntityId(null); router.refresh() }}
       />
     )}
     </>
@@ -446,14 +490,16 @@ function AddRelationshipModal({ clientId, onClose, onSaved }: { clientId: string
 }
 
 function LinkedEntityRow({
-  name, entityType, holdingLocation, portfolio, linkId, bold,
+  name, entityType, vehicleType, holdingLocation, portfolio, linkId, bold, onEdit,
 }: {
   name: string
   entityType: string | null
+  vehicleType: string | null
   holdingLocation: string | null
   portfolio: { totalInvested: number; currentValue: number; gainLoss: number }
   linkId: string | null
   bold: boolean
+  onEdit: (() => void) | null
 }) {
   const { pct } = calcGainLoss(portfolio.totalInvested, portfolio.currentValue)
   return (
@@ -468,6 +514,13 @@ function LinkedEntityRow({
           ? <span className="pill pill-grey">{ENTITY_TYPE_LABELS[entityType] ?? entityType}</span>
           : '—'}
       </td>
+      <td>
+        {vehicleType
+          ? <span className="pill pill-grey">{VEHICLE_TYPE_LABELS[vehicleType] ?? vehicleType}</span>
+          : linkId
+            ? <span style={{ fontSize: 11, color: '#b45309' }}>Not set</span>
+            : '—'}
+      </td>
       <td>{formatCurrency(portfolio.totalInvested)}</td>
       <td style={{ fontWeight: 500 }}>{formatCurrency(portfolio.currentValue)}</td>
       <td className={portfolio.gainLoss >= 0 ? 'text-positive' : 'text-negative'}>
@@ -479,7 +532,172 @@ function LinkedEntityRow({
           ? <span className="pill pill-grey" style={{ fontSize: 10 }}>{holdingLocation}</span>
           : '—'}
       </td>
+      <td style={{ textAlign: 'right' }}>
+        {onEdit && (
+          <button
+            onClick={onEdit}
+            style={{ fontSize: 11, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}
+          >
+            Edit
+          </button>
+        )}
+      </td>
     </tr>
+  )
+}
+
+function VehicleTypeSelect({ value, onChange, required }: { value: string; onChange: (v: string) => void; required?: boolean }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      required={required}
+      style={{ width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
+    >
+      <option value="">Select vehicle type…</option>
+      <option value="nominee">Nominee</option>
+      <option value="corporate">Corporate vehicle</option>
+      <option value="trust">Trust</option>
+      <option value="estate">Estate</option>
+      <option value="pension">Pension</option>
+    </select>
+  )
+}
+
+function EditVehicleTypeModal({ entityId, currentValue, onClose, onSaved }: {
+  entityId: string
+  currentValue: string | null
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const supabase = createClient()
+  const [vehicleType, setVehicleType] = useState(currentValue ?? '')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!vehicleType) return
+    setSaving(true)
+    await supabase.from('clients').update({ vehicle_type: vehicleType }).eq('id', entityId)
+    setSaving(false)
+    onSaved()
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="card" style={{ width: 360, padding: '24px 28px' }}>
+        <h2 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 18px' }}>Edit vehicle type</h2>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>Vehicle type</label>
+          <VehicleTypeSelect value={vehicleType} onChange={setVehicleType} required />
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!vehicleType || saving} style={{ fontSize: 12 }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AddLinkedEntityModal({ leadClientId, onClose, onSaved }: {
+  leadClientId: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const supabase = createClient()
+  const [fullName,    setFullName]    = useState('')
+  const [vehicleType, setVehicleType] = useState('')
+  const [email,       setEmail]       = useState('')
+  const [saving,      setSaving]      = useState(false)
+  const [error,       setError]       = useState('')
+
+  async function handleSave() {
+    if (!fullName.trim() || !vehicleType) return
+    setSaving(true)
+    setError('')
+    const { error: dbError } = await supabase.from('clients').insert({
+      full_name:        fullName.trim(),
+      email:            email.trim() || null,
+      lead_investor_id: leadClientId,
+      vehicle_type:     vehicleType,
+      fund_type:        'syndicate',
+      tax_status:       'neither',
+      kyc_status:       'outstanding',
+      default_fee_rate: 5,
+      entity_type:      'own_name',
+      holding_location: 'direct',
+      report_delivery_method: 'download',
+    })
+    if (dbError) { setError(dbError.message); setSaving(false); return }
+    setSaving(false)
+    onSaved()
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: '100%', padding: '7px 10px',
+    border: '0.5px solid #d0d0c8', borderRadius: 5,
+    fontSize: 13, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+  }
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <div className="card" style={{ width: 440, padding: '24px 28px' }}>
+        <h2 style={{ fontSize: 14, fontWeight: 600, margin: '0 0 18px' }}>Add linked entity</h2>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
+            Full name <span style={{ color: '#a32d2d' }}>*</span>
+          </label>
+          <input
+            type="text"
+            value={fullName}
+            onChange={e => setFullName(e.target.value)}
+            placeholder="e.g. Barry O'Brien Family Trust"
+            style={inputStyle}
+          />
+        </div>
+
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
+            Vehicle type <span style={{ color: '#a32d2d' }}>*</span>
+          </label>
+          <VehicleTypeSelect value={vehicleType} onChange={setVehicleType} required />
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>Email (optional)</label>
+          <input
+            type="email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder="entity@example.com"
+            style={inputStyle}
+          />
+        </div>
+
+        {error && <p style={{ fontSize: 12, color: '#a32d2d', margin: '0 0 14px' }}>{error}</p>}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={!fullName.trim() || !vehicleType || saving}
+            style={{ fontSize: 12 }}
+          >
+            {saving ? 'Saving…' : 'Add entity'}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
