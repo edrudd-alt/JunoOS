@@ -19,7 +19,7 @@ export default async function ClientsPage() {
   ] = await Promise.all([
     supabase
       .from('clients')
-      .select('id, full_name, investor_reference, email, kyc_status, kyc_expiry, vehicle_type, nominee_id, tax_status, date_joined, lead_investor_id, fund_type')
+      .select('id, full_name, investor_reference, email, kyc_status, kyc_expiry, vehicle_type, default_nominee_id, tax_status, date_joined, lead_investor_id, fund_type')
       .order('full_name'),
     supabase
       .from('client_portfolio_summary')

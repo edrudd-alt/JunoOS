@@ -15,7 +15,7 @@ type Client = {
   kyc_status: string
   kyc_expiry: string | null
   vehicle_type: string | null
-  nominee_id: string | null
+  default_nominee_id: string | null
   tax_status: string
   date_joined: string | null
   lead_investor_id: string | null
@@ -111,7 +111,6 @@ function FundTypePill({ code }: { code: string }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
-  nominee:   'Nominee',
   corporate: 'Corporate vehicle',
   trust:     'Trust',
   estate:    'Estate',
@@ -572,11 +571,7 @@ export default function ClientList({
                   : 'Individual'
               } else {
                 const leadName = leadNameById[client.lead_investor_id!] ?? 'Unknown'
-                let typeLabel = VEHICLE_TYPE_LABELS[client.vehicle_type ?? ''] ?? 'Linked entity'
-                if (client.vehicle_type === 'nominee' && client.nominee_id) {
-                  const nomineeName = nomineeMap.get(client.nominee_id)
-                  if (nomineeName) typeLabel = `Nominee (via ${nomineeName})`
-                }
+                const typeLabel = VEHICLE_TYPE_LABELS[client.vehicle_type ?? ''] ?? 'Linked entity'
                 subtitle = `${typeLabel} · linked to ${leadName}`
               }
 

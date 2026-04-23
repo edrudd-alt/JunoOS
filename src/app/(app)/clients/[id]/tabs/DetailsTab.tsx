@@ -16,7 +16,6 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 }
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
-  nominee:   'Nominee',
   corporate: 'Corporate vehicle',
   trust:     'Trust',
   estate:    'Estate',
@@ -337,7 +336,7 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
                       key={entity.id}
                       name={entity.full_name}
                       vehicleType={entity.vehicle_type}
-                      nomineeName={(nominees ?? []).find(n => n.id === entity.nominee_id)?.name ?? null}
+                      nomineeName={(nominees ?? []).find(n => n.id === entity.default_nominee_id)?.name ?? null}
                       holdingLocation={entity.holding_location}
                       portfolio={portfolioByEntity[entity.id] ?? { totalInvested: 0, currentValue: 0, gainLoss: 0 }}
                       linkId={entity.id}
@@ -515,10 +514,8 @@ function LinkedEntityRow({
             : '—'}
       </td>
       <td>
-        {vehicleType === 'nominee'
-          ? nomineeName
-            ? <span style={{ fontSize: 11 }}>{nomineeName}</span>
-            : <span style={{ fontSize: 11, color: '#b45309' }}>Not set</span>
+        {nomineeName
+          ? <span style={{ fontSize: 11 }}>{nomineeName}</span>
           : '—'}
       </td>
       <td>{formatCurrency(portfolio.totalInvested)}</td>
@@ -555,7 +552,6 @@ function VehicleTypeSelect({ value, onChange, required }: { value: string; onCha
       style={{ width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 13, outline: 'none', fontFamily: 'inherit' }}
     >
       <option value="">Select vehicle type…</option>
-      <option value="nominee">Nominee</option>
       <option value="corporate">Corporate vehicle</option>
       <option value="trust">Trust</option>
       <option value="estate">Estate</option>
@@ -617,15 +613,9 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
   const supabase = createClient()
   const [fullName,    setFullName]    = useState('')
   const [vehicleType, setVehicleType] = useState('')
-  const [nomineeId,   setNomineeId]   = useState('')
   const [email,       setEmail]       = useState('')
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
-
-  function handleVehicleTypeChange(v: string) {
-    setVehicleType(v)
-    if (v !== 'nominee') setNomineeId('')
-  }
 
   async function handleSave() {
     if (!fullName.trim() || !vehicleType) return
@@ -636,7 +626,7 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
       email:            email.trim() || null,
       lead_investor_id: leadClientId,
       vehicle_type:     vehicleType,
-      nominee_id:       vehicleType === 'nominee' ? nomineeId || null : null,
+      default_nominee_id: null,
       fund_type:              'syndicate',
       tax_status:             'neither',
       kyc_status:             'outstanding',
@@ -681,27 +671,8 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
           <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
             Vehicle type <span style={{ color: '#a32d2d' }}>*</span>
           </label>
-          <VehicleTypeSelect value={vehicleType} onChange={handleVehicleTypeChange} required />
+          <VehicleTypeSelect value={vehicleType} onChange={setVehicleType} required />
         </div>
-
-        {vehicleType === 'nominee' && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>
-              Nominee <span style={{ color: '#a32d2d' }}>*</span>
-            </label>
-            <select
-              value={nomineeId}
-              onChange={e => setNomineeId(e.target.value)}
-              required
-              style={inputStyle}
-            >
-              <option value="">Select nominee…</option>
-              {nominees.map(n => (
-                <option key={n.id} value={n.id}>{n.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
 
         <div style={{ marginBottom: 20 }}>
           <label style={{ fontSize: 11, fontWeight: 500, color: '#555', display: 'block', marginBottom: 4 }}>Email (optional)</label>
@@ -721,7 +692,7 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!fullName.trim() || !vehicleType || (vehicleType === 'nominee' && !nomineeId) || saving}
+            disabled={!fullName.trim() || !vehicleType || saving}
             style={{ fontSize: 12 }}
           >
             {saving ? 'Saving…' : 'Add entity'}

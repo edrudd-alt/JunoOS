@@ -75,7 +75,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
     report_delivery_method: 'email',
     lead_investor_id:       '',
     vehicle_type:           '',
-    nominee_id:             '',
   })
 
   // Typeahead state for lead investor picker
@@ -97,7 +96,7 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
   }
 
   function handleVehicleTypeChange(value: string) {
-    setForm(f => ({ ...f, vehicle_type: value, nominee_id: value === 'nominee' ? f.nominee_id : '' }))
+    setForm(f => ({ ...f, vehicle_type: value }))
   }
 
   function handleFundTypeChange(value: string) {
@@ -136,7 +135,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
           ...base,
           lead_investor_id:       form.lead_investor_id,
           vehicle_type:           form.vehicle_type,
-          nominee_id:             form.vehicle_type === 'nominee' ? form.nominee_id || null : null,
           fund_type:              form.fund_type,
           report_delivery_method: 'email',
         }
@@ -330,29 +328,12 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
                   style={inputStyle}
                 >
                   <option value="">Select vehicle type…</option>
-                  <option value="nominee">Nominee</option>
                   <option value="corporate">Corporate vehicle</option>
                   <option value="trust">Trust</option>
                   <option value="estate">Estate</option>
                   <option value="pension">Pension</option>
                 </select>
               </Field>
-
-              {form.vehicle_type === 'nominee' && (
-                <Field label="Nominee" required>
-                  <select
-                    value={form.nominee_id}
-                    onChange={e => set('nominee_id', e.target.value)}
-                    required
-                    style={inputStyle}
-                  >
-                    <option value="">Select nominee…</option>
-                    {nominees.map(n => (
-                      <option key={n.id} value={n.id}>{n.name}</option>
-                    ))}
-                  </select>
-                </Field>
-              )}
 
               <Field label="Lead investor" required>
                 <div style={{ position: 'relative' }}>

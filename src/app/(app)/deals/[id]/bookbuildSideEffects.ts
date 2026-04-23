@@ -64,7 +64,7 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
   if (isConfirming) {
     const client      = p.clients.find(c => c.id === p.clientId)
     const vehicleType = p.vehicleClient?.vehicle_type ?? null
-    const eisStatus       = (vehicleType && vehicleType !== 'nominee')
+    const eisStatus       = vehicleType
       ? 'no'
       : (p.dealInfo.eisQualifying || 'tbc')
     const effectiveFundType = p.vehicleClient?.fund_type ?? client?.fund_type ?? 'syndicate'
