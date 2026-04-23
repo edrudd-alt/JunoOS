@@ -29,6 +29,7 @@ interface Props {
   leads: Lead[]
   feeSchedules: FeeSchedule[]
   fundTypes: FundType[]
+  nominees: { id: string; name: string }[]
 }
 
 const inputStyle: React.CSSProperties = {
@@ -53,7 +54,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   )
 }
 
-export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props) {
+export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees }: Props) {
   const router   = useRouter()
   const supabase = createClient()
 
@@ -74,6 +75,7 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props)
     report_delivery_method: 'email',
     lead_investor_id:       '',
     vehicle_type:           '',
+    nominee_id:             '',
   })
 
   // Typeahead state for lead investor picker
@@ -92,6 +94,10 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props)
     } else {
       setForm(f => ({ ...f, fund_type: fundTypes[0]?.code ?? 'syndicate', fee_schedule_id: '', report_delivery_method: 'email' }))
     }
+  }
+
+  function handleVehicleTypeChange(value: string) {
+    setForm(f => ({ ...f, vehicle_type: value, nominee_id: value === 'nominee' ? f.nominee_id : '' }))
   }
 
   function handleFundTypeChange(value: string) {
@@ -130,6 +136,7 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props)
           ...base,
           lead_investor_id:       form.lead_investor_id,
           vehicle_type:           form.vehicle_type,
+          nominee_id:             form.vehicle_type === 'nominee' ? form.nominee_id || null : null,
           fund_type:              form.fund_type,
           report_delivery_method: 'email',
         }
@@ -318,7 +325,7 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props)
               <Field label="Vehicle type" required>
                 <select
                   value={form.vehicle_type}
-                  onChange={e => set('vehicle_type', e.target.value)}
+                  onChange={e => handleVehicleTypeChange(e.target.value)}
                   required
                   style={inputStyle}
                 >
@@ -330,6 +337,22 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes }: Props)
                   <option value="pension">Pension</option>
                 </select>
               </Field>
+
+              {form.vehicle_type === 'nominee' && (
+                <Field label="Nominee" required>
+                  <select
+                    value={form.nominee_id}
+                    onChange={e => set('nominee_id', e.target.value)}
+                    required
+                    style={inputStyle}
+                  >
+                    <option value="">Select nominee…</option>
+                    {nominees.map(n => (
+                      <option key={n.id} value={n.id}>{n.name}</option>
+                    ))}
+                  </select>
+                </Field>
+              )}
 
               <Field label="Lead investor" required>
                 <div style={{ position: 'relative' }}>

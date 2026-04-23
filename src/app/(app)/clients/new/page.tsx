@@ -8,6 +8,7 @@ export default async function NewClientPage() {
     { data: leads },
     { data: feeSchedules },
     { data: fundTypes },
+    { data: nominees },
   ] = await Promise.all([
     supabase
       .from('clients')
@@ -23,6 +24,11 @@ export default async function NewClientPage() {
       .from('fund_types')
       .select('id, name, code, default_fee_schedule_id')
       .order('name'),
+    supabase
+      .from('nominees')
+      .select('id, name')
+      .eq('active', true)
+      .order('name'),
   ])
 
   return (
@@ -30,6 +36,7 @@ export default async function NewClientPage() {
       leads={(leads ?? []) as { id: string; full_name: string; fee_schedule_id: string | null; fund_type: string }[]}
       feeSchedules={(feeSchedules ?? []) as { id: string; name: string }[]}
       fundTypes={(fundTypes ?? []) as { id: string; name: string; code: string; default_fee_schedule_id: string | null }[]}
+      nominees={(nominees ?? []) as { id: string; name: string }[]}
     />
   )
 }
