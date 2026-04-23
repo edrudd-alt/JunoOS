@@ -40,6 +40,8 @@ export interface SideEffectsParams {
   confirmedStatus:     string
   isSellDeal:          boolean
   clientId:            string
+  vehicleId:           string | null
+  vehicleClient:       Client | null
   amount:              number | null
   shares:              number | null
   entryAmount:         number | null
@@ -52,25 +54,31 @@ export interface SideEffectsParams {
 }
 
 export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<void> {
-  const sharePrice       = p.dealInfo.sharePrice ?? 0
-  const isConfirming     = p.status === p.confirmedStatus && p.previousStatus !== p.confirmedStatus
-  const isUnconfirming   = p.previousStatus === p.confirmedStatus && p.status !== p.confirmedStatus
-  const isAmountChanging = p.previousStatus === p.confirmedStatus && p.status === p.confirmedStatus
+  const sharePrice        = p.dealInfo.sharePrice ?? 0
+  const effectiveClientId = p.vehicleId ?? p.clientId
+  const isConfirming      = p.status === p.confirmedStatus && p.previousStatus !== p.confirmedStatus
+  const isUnconfirming    = p.previousStatus === p.confirmedStatus && p.status !== p.confirmedStatus
+  const isAmountChanging  = p.previousStatus === p.confirmedStatus && p.status === p.confirmedStatus
     && (p.amount !== p.entryAmount || p.shares !== p.entryShares)
 
   if (isConfirming) {
-    const client = p.clients.find(c => c.id === p.clientId)
+    const client      = p.clients.find(c => c.id === p.clientId)
+    const vehicleType = p.vehicleClient?.vehicle_type ?? null
+    const eisStatus       = (vehicleType && vehicleType !== 'nominee')
+      ? 'no'
+      : (p.dealInfo.eisQualifying || 'tbc')
+    const effectiveFundType = p.vehicleClient?.fund_type ?? client?.fund_type ?? 'syndicate'
 
     await p.supabase
       .from('deal_investors')
       .upsert(
-        { deal_id: p.dealInfo.id, client_id: p.clientId, poa_held: false, signing_status: 'pending' },
+        { deal_id: p.dealInfo.id, client_id: effectiveClientId, poa_held: false, signing_status: 'pending' },
         { onConflict: 'deal_id,client_id', ignoreDuplicates: true },
       )
 
     if (p.isSellDeal) {
       await p.supabase.from('investments').insert({
-        client_id:            p.clientId,
+        client_id:            effectiveClientId,
         company_id:           p.dealInfo.companyId,
         deal_id:              p.dealInfo.id,
         bookbuild_id:         p.bookbuildId,
@@ -79,14 +87,14 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
         investment_date:      p.dealInfo.investmentDate || null,
         sum_subscribed:       p.amount ?? 0,
         shares_purchased:     p.shares ?? 0,
-        eis_status:           'tbc',
+        eis_status:           eisStatus,
         transaction_type:     'sell',
         status:               'pending',
-        fund_type:            client?.fund_type ?? 'syndicate',
+        fund_type:            effectiveFundType,
         holding_location:     'direct',
       })
     } else {
-      const feeRate         = client?.default_fee_rate ?? 0
+      const feeRate         = p.vehicleClient?.default_fee_rate ?? client?.default_fee_rate ?? 0
       const sumSubscribed   = p.amount ?? 0
       const feeAmount       = sumSubscribed * feeRate / 100
       const sharesPurchased = p.shares ?? (sharePrice > 0 ? sumSubscribed / sharePrice : 0)
@@ -102,13 +110,13 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
         await p.supabase.from('deals').update({
           completion_checklist: {
             ...existing,
-            per_investor: { ...existingPerInvestor, [p.clientId]: {} },
+            per_investor: { ...existingPerInvestor, [effectiveClientId]: {} },
           },
         }).eq('id', p.dealInfo.id)
       }
 
       await p.supabase.from('investments').insert({
-        client_id:            p.clientId,
+        client_id:            effectiveClientId,
         company_id:           p.dealInfo.companyId,
         deal_id:              p.dealInfo.id,
         bookbuild_id:         p.bookbuildId,
@@ -118,11 +126,11 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
         investment_date:      p.dealInfo.investmentDate || null,
         sum_subscribed:       sumSubscribed,
         shares_purchased:     sharesPurchased,
-        eis_status:           p.dealInfo.eisQualifying  || 'tbc',
+        eis_status:           eisStatus,
         transaction_type:     'buy',
         transaction_category: 'equity',
         status:               'pending',
-        fund_type:            client?.fund_type ?? 'syndicate',
+        fund_type:            effectiveFundType,
         fee_rate:             feeRate,
         fee_amount:           feeAmount,
         holding_location:     'direct',
@@ -132,9 +140,9 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
 
   if (isUnconfirming) {
     await p.supabase.from('deal_investors').delete()
-      .eq('deal_id', p.dealInfo.id).eq('client_id', p.clientId)
+      .eq('deal_id', p.dealInfo.id).eq('client_id', effectiveClientId)
     await p.supabase.from('investments').delete()
-      .eq('deal_id', p.dealInfo.id).eq('client_id', p.clientId).eq('status', 'pending')
+      .eq('deal_id', p.dealInfo.id).eq('client_id', effectiveClientId).eq('status', 'pending')
   }
 
   if (isAmountChanging) {
@@ -144,7 +152,7 @@ export async function runBookbuildSideEffects(p: SideEffectsParams): Promise<voi
         shares_purchased: p.shares ?? (sharePrice > 0 ? (p.amount ?? 0) / sharePrice : 0),
       })
       .eq('deal_id', p.dealInfo.id)
-      .eq('client_id', p.clientId)
+      .eq('client_id', effectiveClientId)
       .eq('status', 'pending')
   }
 }

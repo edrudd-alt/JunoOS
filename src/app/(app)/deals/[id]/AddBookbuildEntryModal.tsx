@@ -170,7 +170,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, compan
     setLoadingVehicles(true)
     const { data } = await supabase
       .from('clients')
-      .select('id, full_name, email, default_fee_rate, fund_type')
+      .select('id, full_name, email, default_fee_rate, fund_type, vehicle_type, fee_schedule_id')
       .eq('lead_investor_id', investorId)
       .order('full_name')
     setLinkedVehicles(data ?? [])
@@ -260,9 +260,12 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, compan
       if (dbErr) { setError(dbErr.message); setSaving(false); return }
     }
 
+    const vehicleClient = vehicleId ? (linkedVehicles.find(c => c.id === vehicleId) ?? null) : null
+
     await runBookbuildSideEffects({
       status, previousStatus, confirmedStatus, isSellDeal,
-      clientId, amount, shares, entryAmount, entryShares,
+      clientId, vehicleId: vehicleId || null, vehicleClient,
+      amount, shares, entryAmount, entryShares,
       clients, dealInfo, bookbuildId, completionChecklist, supabase,
     })
 

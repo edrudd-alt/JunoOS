@@ -17,6 +17,8 @@ export interface Client {
   email:            string | null
   default_fee_rate: number | null
   fund_type:        string | null
+  vehicle_type?:    string | null
+  fee_schedule_id?: string | null
 }
 
 export interface BookbuildEntry {

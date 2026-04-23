@@ -168,12 +168,24 @@ export function BookbuildEntryPopover({
       updated_at:        new Date().toISOString(),
     }).eq('id', entry.id)
 
+    let vehicleClient: Client | null = null
+    if (entry.investing_vehicle_id) {
+      const { data } = await supabase
+        .from('clients')
+        .select('id, full_name, email, default_fee_rate, fund_type, vehicle_type, fee_schedule_id')
+        .eq('id', entry.investing_vehicle_id)
+        .single()
+      vehicleClient = data as Client | null
+    }
+
     await runBookbuildSideEffects({
       status:         statusToSave,
       previousStatus: entry.status,
       confirmedStatus,
       isSellDeal,
       clientId:       entry.client_id,
+      vehicleId:      entry.investing_vehicle_id ?? null,
+      vehicleClient,
       amount,
       shares,
       entryAmount,
