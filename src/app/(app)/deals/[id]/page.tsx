@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import DealDetail from './DealDetail'
+import BuyDealPage from './BuyDealPage'
 
 export default async function DealDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -22,6 +23,56 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     </div>
   }
   if (!rawDeal) notFound()
+
+  // ── Route buy deals to new page ───────────────────────────────────────────
+  if (rawDeal.deal_type === 'new_investment' || rawDeal.deal_type === 'follow_on') {
+    const [
+      { data: buyCompany },
+      { data: buyBookbuild },
+      { data: buyShareClasses },
+      { data: buyDealInvestors },
+      { data: buyFundTypes },
+    ] = await Promise.all([
+      rawDeal.company_id
+        ? supabase.from('companies').select('id, name, logo_url').eq('id', rawDeal.company_id).maybeSingle()
+        : { data: null },
+      supabase.from('bookbuilds').select('id, target_raise, status').eq('deal_id', id).maybeSingle(),
+      rawDeal.company_id
+        ? supabase.from('company_share_classes').select('id, name').eq('company_id', rawDeal.company_id)
+        : { data: [] },
+      supabase.from('deal_investors')
+        .select('id, client_id, soft_circle_amount, confirmed_amount, lifecycle_status')
+        .eq('deal_id', id),
+      supabase.from('fund_types').select('id, name, exit_fee_default_pct'),
+    ])
+
+    // Sequential: investor client records — needed to derive fund type
+    const clientIds = [...new Set(
+      (buyDealInvestors ?? []).map(di => di.client_id).filter((cid): cid is string => !!cid),
+    )]
+    let investorClients: { id: string; fund_type: string | null }[] = []
+    if (clientIds.length > 0) {
+      const { data: clients } = await supabase
+        .from('clients').select('id, fund_type').in('id', clientIds)
+      investorClients = (clients ?? []) as { id: string; fund_type: string | null }[]
+    }
+
+    return (
+      <Suspense>
+        <BuyDealPage
+          deal={rawDeal as unknown as Parameters<typeof BuyDealPage>[0]['deal']}
+          company={(buyCompany ?? null) as Parameters<typeof BuyDealPage>[0]['company']}
+          bookbuild={(buyBookbuild ?? null) as Parameters<typeof BuyDealPage>[0]['bookbuild']}
+          shareClasses={(buyShareClasses ?? []) as Parameters<typeof BuyDealPage>[0]['shareClasses']}
+          dealInvestors={(buyDealInvestors ?? []) as Parameters<typeof BuyDealPage>[0]['dealInvestors']}
+          investorClients={investorClients}
+          fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
+        />
+      </Suspense>
+    )
+  }
+
+  // ── Sell deals and all other types — existing page, completely unchanged ──
 
   // Fetch related data in parallel
   const [
