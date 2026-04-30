@@ -6,10 +6,9 @@ import { Breadcrumb } from '@/components/Breadcrumb'
 import { StepBar }    from './buy/StepBar'
 import { SetupStep }  from './buy/SetupStep'
 import SellDealWizard from './SellDealWizard'
-import NewDealWizard from './NewDealWizard'
 import type { BuyDealType } from './buy/buyWizardTypes'
 
-type DealTypeValue = BuyDealType | 'full_exit' | 'partial_exit' | 'kyc' | 'side_letter' | 'membership'
+type DealTypeValue = BuyDealType | 'full_exit' | 'partial_exit'
 
 interface DealTypeConfig {
   value: DealTypeValue
@@ -48,27 +47,6 @@ const DEAL_TYPES: DealTypeConfig[] = [
     group: 'sale',
     color: '#e8a820',
   },
-  {
-    value: 'kyc',
-    label: 'KYC / Onboarding',
-    description: 'Client onboarding documentation',
-    group: 'other',
-    color: '#185fa5',
-  },
-  {
-    value: 'side_letter',
-    label: 'Side Letter',
-    description: 'Supplementary agreement for a client',
-    group: 'other',
-    color: '#185fa5',
-  },
-  {
-    value: 'membership',
-    label: 'Membership',
-    description: 'Membership joining process',
-    group: 'other',
-    color: '#185fa5',
-  },
 ]
 
 const GROUP_LABELS: Record<string, string> = {
@@ -83,7 +61,7 @@ interface Props {
   investments: Record<string, unknown>[]
 }
 
-export default function NewDealPage({ companies, clients, investments }: Props) {
+export default function NewDealPage({ companies }: Props) {
   const [selectedType, setSelectedType] = useState<DealTypeValue | null>(null)
 
   if (selectedType === 'new_investment' || selectedType === 'follow_on') {
@@ -120,18 +98,8 @@ export default function NewDealPage({ companies, clients, investments }: Props) 
     )
   }
 
-  if (selectedType === 'kyc' || selectedType === 'side_letter' || selectedType === 'membership') {
-    return (
-      <NewDealWizard
-        companies={companies}
-        clients={clients}
-        initialDealType={selectedType}
-      />
-    )
-  }
-
   // Deal type selector
-  const groups = ['buy', 'sale', 'other'] as const
+  const groups = ['buy', 'sale'] as const
 
   return (
     <div style={{ maxWidth: 800 }}>

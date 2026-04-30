@@ -34,9 +34,6 @@ export const DEAL_TYPES = [
   { value: 'new_investment', label: 'New investment' },
   { value: 'follow_on',      label: 'Follow-on investment' },
   { value: 'exit',           label: 'Exit / sale of shares' },
-  { value: 'kyc',            label: 'KYC / Onboarding' },
-  { value: 'side_letter',    label: 'Side letter' },
-  { value: 'membership',     label: 'Membership joining' },
 ]
 
 export const DOC_TEMPLATES = [
