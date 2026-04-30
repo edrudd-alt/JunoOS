@@ -61,7 +61,7 @@ interface Props {
   investments: Record<string, unknown>[]
 }
 
-export default function NewDealPage({ companies, clients, investments }: Props) {
+export default function NewDealPage({ companies }: Props) {
   const [selectedType, setSelectedType] = useState<DealTypeValue | null>(null)
 
   if (selectedType === 'new_investment' || selectedType === 'follow_on') {
