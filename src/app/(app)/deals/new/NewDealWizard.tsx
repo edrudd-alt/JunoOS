@@ -35,7 +35,7 @@ export default function NewDealWizard({
   const [saving, setSaving] = useState(false)
 
   // ── Step 1 state ──
-  const [dealType,       setDealType]       = useState(initialDealType ?? 'kyc')
+  const [dealType,       setDealType]       = useState(initialDealType ?? 'new_investment')
   const [companyId,      setCompanyId]      = useState('')
   const [shareClass,     setShareClass]     = useState('')
   const [amount,         setAmount]         = useState('')
