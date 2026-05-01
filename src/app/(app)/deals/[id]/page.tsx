@@ -34,6 +34,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       { data: buyFundTypes },
       { data: buyDocuments },
       { data: buyInvoices },
+      { data: buyAllClients },
+    { data: buyNominees },
     ] = await Promise.all([
       rawDeal.company_id
         ? supabase.from('companies').select('id, name, logo_url').eq('id', rawDeal.company_id).maybeSingle()
@@ -43,23 +45,18 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         ? supabase.from('company_share_classes').select('id, name').eq('company_id', rawDeal.company_id)
         : { data: [] },
       supabase.from('deal_investors')
-        .select('id, client_id, soft_circle_amount, confirmed_amount, lifecycle_status')
-        .eq('deal_id', id),
+        .select('id, client_id, investing_vehicle_id, nominee_id, soft_circle_amount, confirmed_amount, shares, fee_pct, fee_overridden, fee_locked_at, poa_held, lifecycle_status, updated_at, created_at')
+        .eq('deal_id', id)
+        .order('created_at'),
       supabase.from('fund_types').select('id, name, exit_fee_default_pct'),
       supabase.from('documents').select('id').eq('deal_id', id),
       supabase.from('invoices').select('id').eq('deal_id', id),
+      // All clients in one shot — covers fund-type header, bookbuild table, and Add Investors modal
+      supabase.from('clients')
+        .select('id, full_name, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id')
+        .order('full_name'),
+      supabase.from('nominees').select('id, name').eq('active', true).order('name'),
     ])
-
-    // Sequential: investor client records — needed to derive fund type
-    const clientIds = [...new Set(
-      (buyDealInvestors ?? []).map(di => di.client_id).filter((cid): cid is string => !!cid),
-    )]
-    let investorClients: { id: string; fund_type: string | null }[] = []
-    if (clientIds.length > 0) {
-      const { data: clients } = await supabase
-        .from('clients').select('id, fund_type').in('id', clientIds)
-      investorClients = (clients ?? []) as { id: string; fund_type: string | null }[]
-    }
 
     return (
       <Suspense>
@@ -69,7 +66,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           bookbuild={(buyBookbuild ?? null) as Parameters<typeof BuyDealPage>[0]['bookbuild']}
           shareClasses={(buyShareClasses ?? []) as Parameters<typeof BuyDealPage>[0]['shareClasses']}
           dealInvestors={(buyDealInvestors ?? []) as Parameters<typeof BuyDealPage>[0]['dealInvestors']}
-          investorClients={investorClients}
+          allClients={(buyAllClients ?? []) as Parameters<typeof BuyDealPage>[0]['allClients']}
+          nominees={(buyNominees ?? []) as Parameters<typeof BuyDealPage>[0]['nominees']}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
           documentCount={(buyDocuments ?? []).length}
           invoiceCount={(buyInvoices ?? []).length}

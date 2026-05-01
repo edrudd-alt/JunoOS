@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils'
 import EditDealModal from './EditDealModal'
+import { DealInvestorFull, ClientFull, NomineeRow, getDisplayedStatus, ACTIVE_STATUSES } from './dealUtils'
+import BookbuildTab from './BookbuildTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -59,28 +61,27 @@ interface DealRow {
   company_id: string | null
 }
 
-interface ShareClassRow    { id: string; name: string }
-interface DealInvestorRow  { id: string; client_id: string; soft_circle_amount: number | null; confirmed_amount: number | null; lifecycle_status: string }
-interface InvestorClientRow { id: string; fund_type: string | null }
-interface FundTypeRow      { id: string; name: string; exit_fee_default_pct: string | null }
+interface ShareClassRow { id: string; name: string }
+interface FundTypeRow   { id: string; name: string; exit_fee_default_pct: string | null }
 
 interface Props {
-  deal:             DealRow
-  company:          { id: string; name: string; logo_url: string | null } | null
-  bookbuild:        { id: string; target_raise: number | null } | null
-  shareClasses:     ShareClassRow[]
-  dealInvestors:    DealInvestorRow[]
-  investorClients:  InvestorClientRow[]
-  fundTypes:        FundTypeRow[]
-  documentCount:    number
-  invoiceCount:     number
+  deal:          DealRow
+  company:       { id: string; name: string; logo_url: string | null } | null
+  bookbuild:     { id: string; target_raise: number | null } | null
+  shareClasses:  ShareClassRow[]
+  dealInvestors: DealInvestorFull[]
+  allClients:    ClientFull[]
+  nominees:      NomineeRow[]
+  fundTypes:     FundTypeRow[]
+  documentCount: number
+  invoiceCount:  number
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
-  investorClients, fundTypes, documentCount, invoiceCount,
+  allClients, nominees, fundTypes, documentCount, invoiceCount,
 }: Props) {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -89,7 +90,7 @@ export default function BuyDealPage({
   const searchParams = useSearchParams()
   const router       = useRouter()
 
-  const rawTab   = searchParams.get('tab')
+  const rawTab    = searchParams.get('tab')
   const activeTab: TabKey = (VALID_TABS as readonly string[]).includes(rawTab ?? '')
     ? rawTab as TabKey
     : 'bookbuild'
@@ -100,20 +101,26 @@ export default function BuyDealPage({
     router.replace(`?${params.toString()}`)
   }
 
+  // ── Client map ────────────────────────────────────────────────────────────
+  const clientMap = new Map(allClients.map(c => [c.id, c]))
+
   // ── Investor aggregations ─────────────────────────────────────────────────
-  const nonDeclined  = dealInvestors.filter(di => !['declined', 'superseded'].includes(di.lifecycle_status))
-  const totalActive  = nonDeclined.length
-  const targetRaise  = bookbuild?.target_raise ?? null
+  const nonDeclined = dealInvestors.filter(di => {
+    const s = getDisplayedStatus(di)
+    return !['declined', 'superseded'].includes(s)
+  })
+  const totalActive = nonDeclined.length
+  const targetRaise = bookbuild?.target_raise ?? null
 
   // Soft-circled (all non-declined investors carry a soft_circle_amount)
   const softCircledTotal = nonDeclined.reduce((s, di) => s + (di.soft_circle_amount ?? 0), 0)
 
   // Confirmed (investors who have confirmed an amount)
   const confirmedTotal = nonDeclined
-    .filter(di => !['soft_circled', 'chase'].includes(di.lifecycle_status))
+    .filter(di => !['soft_circled', 'chase'].includes(getDisplayedStatus(di)))
     .reduce((s, di) => s + (di.confirmed_amount ?? 0), 0)
   const confirmedCount = nonDeclined.filter(di =>
-    ['confirmed', 'app_form_sent', 'signed', 'paid', 'complete'].includes(di.lifecycle_status),
+    ['confirmed', 'app_form_sent', 'signed', 'paid', 'complete'].includes(getDisplayedStatus(di)),
   ).length
 
   // Card 1: Bookbuild progress
@@ -125,53 +132,48 @@ export default function BuyDealPage({
     : '0% of target'
 
   // Card 2: Signatures
-  const signedCount   = nonDeclined.filter(di => ['signed', 'paid', 'complete'].includes(di.lifecycle_status)).length
-  const chasersCount  = nonDeclined.filter(di => di.lifecycle_status === 'chase').length
-  const signedPct     = totalActive > 0 ? Math.round((signedCount / totalActive) * 100) : 0
+  const signedCount  = nonDeclined.filter(di => ['signed', 'paid', 'complete'].includes(getDisplayedStatus(di))).length
+  const chasersCount = nonDeclined.filter(di => getDisplayedStatus(di) === 'chase').length
+  const signedPct    = totalActive > 0 ? Math.round((signedCount / totalActive) * 100) : 0
 
   // Card 3: Cash received
-  const paidInvestors     = nonDeclined.filter(di => ['paid', 'complete'].includes(di.lifecycle_status))
+  const paidInvestors     = nonDeclined.filter(di => ['paid', 'complete'].includes(getDisplayedStatus(di)))
   const cashReceivedTotal = paidInvestors.reduce((s, di) => s + (di.confirmed_amount ?? 0), 0)
   const confirmedForCash  = nonDeclined
-    .filter(di => !['soft_circled', 'chase'].includes(di.lifecycle_status))
+    .filter(di => !['soft_circled', 'chase'].includes(getDisplayedStatus(di)))
     .reduce((s, di) => s + (di.confirmed_amount ?? 0), 0)
   const cashPct   = confirmedForCash > 0 ? Math.min(Math.round((cashReceivedTotal / confirmedForCash) * 100), 100) : 0
   const paidCount = paidInvestors.length
 
   // Card 4: Completed
-  const completeCount    = nonDeclined.filter(di => di.lifecycle_status === 'complete').length
+  const completeCount    = nonDeclined.filter(di => getDisplayedStatus(di) === 'complete').length
   const completePct      = totalActive > 0 ? Math.round((completeCount / totalActive) * 100) : 0
   const outstandingCount = totalActive - completeCount
 
   // ── Tab badge counts ──────────────────────────────────────────────────────
-  const bookbuildCount    = dealInvestors.filter(di =>
-    ['soft_circled', 'confirmed', 'app_form_sent', 'chase', 'declined'].includes(di.lifecycle_status),
-  ).length
-  const closingActive     = dealInvestors.filter(di => ['signed', 'paid'].includes(di.lifecycle_status)).length
-  const closingTotal      = dealInvestors.filter(di => ['signed', 'paid', 'complete'].includes(di.lifecycle_status)).length
-  const completionActive  = dealInvestors.filter(di => di.lifecycle_status === 'paid').length
-  const completionTotal   = dealInvestors.filter(di => ['paid', 'complete'].includes(di.lifecycle_status)).length
+  const bookbuildCount   = dealInvestors.filter(di => ACTIVE_STATUSES.has(getDisplayedStatus(di))).length
+  const closingActive    = dealInvestors.filter(di => ['signed', 'paid'].includes(getDisplayedStatus(di))).length
+  const closingTotal     = dealInvestors.filter(di => ['signed', 'paid', 'complete'].includes(getDisplayedStatus(di))).length
+  const completionActive = dealInvestors.filter(di => getDisplayedStatus(di) === 'paid').length
+  const completionTotal  = dealInvestors.filter(di => ['paid', 'complete'].includes(getDisplayedStatus(di))).length
 
   // ── Header derived values ─────────────────────────────────────────────────
-  // If the team has set an internal title (e.g. "Cyclr Q2 Top-Up"), use it.
-  // Otherwise fall back to the constructed "Company — Deal type" format.
   const constructedTitle = company
     ? `${company.name} — ${DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type}`
     : (DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type)
-  const dealTitle = deal.title?.trim() ? deal.title.trim() : constructedTitle
-  const status        = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
-  const initials      = company ? getInitials(company.name) : '?'
-  const shareClassRow = shareClasses.find(sc => sc.id === deal.share_class_id)
+  const dealTitle  = deal.title?.trim() ? deal.title.trim() : constructedTitle
+  const status     = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
+  const initials   = company ? getInitials(company.name) : '?'
+  const shareClassRow  = shareClasses.find(sc => sc.id === deal.share_class_id)
   const shareClassName = shareClassRow?.name ?? deal.share_class ?? '—'
-  const eisLabel      = deal.eis_qualifying === 'yes' ? 'EIS qualifying'
-                      : deal.eis_qualifying === 'no'  ? 'Non-EIS'
-                      : 'EIS status TBC'
+  const eisLabel   = deal.eis_qualifying === 'yes' ? 'EIS qualifying'
+                   : deal.eis_qualifying === 'no'  ? 'Non-EIS'
+                   : 'EIS status TBC'
   const sharesFromTarget = targetRaise != null && deal.share_price
     ? Math.round(targetRaise / deal.share_price)
     : null
 
   // Fund type for header cell 6
-  const clientMap      = new Map(investorClients.map(c => [c.id, c]))
   const fundTypeValues = nonDeclined
     .map(di => clientMap.get(di.client_id)?.fund_type)
     .filter((ft): ft is string => !!ft)
@@ -341,7 +343,7 @@ export default function BuyDealPage({
         }}>
           <TabButton
             label="Bookbuild"
-            badge={`${bookbuildCount} / ${bookbuildCount}`}
+            badge={String(bookbuildCount)}
             active={activeTab === 'bookbuild'}
             onClick={() => handleTabClick('bookbuild')}
           />
@@ -372,11 +374,15 @@ export default function BuyDealPage({
         </div>
 
         {/* Tab body */}
-        <div style={{ padding: '28px 24px' }}>
+        <div style={{ padding: activeTab === 'bookbuild' ? 0 : '28px 24px' }}>
           {activeTab === 'bookbuild' && (
-            <TabPlaceholder
-              title="Bookbuild — Stage 3"
-              description="Investor pipeline up to and including signature, with Next-step workflow buttons."
+            <BookbuildTab
+              deal={deal}
+              dealInvestors={dealInvestors}
+              clientMap={clientMap}
+              allClients={allClients}
+              nominees={nominees}
+              onDataRefresh={() => router.refresh()}
             />
           )}
           {activeTab === 'closing' && (
