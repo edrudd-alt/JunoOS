@@ -1,8 +1,9 @@
 'use client'
 
-import Link from 'next/link'
+import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils'
+import EditDealModal from './EditDealModal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,10 +50,12 @@ interface DealRow {
   deal_type: string
   status: string
   created_at: string
+  title: string | null
   share_class: string | null
   share_class_id: string | null
   share_price: number | null
   eis_qualifying: string | null
+  notes: string | null
   company_id: string | null
 }
 
@@ -64,7 +67,7 @@ interface FundTypeRow      { id: string; name: string; exit_fee_default_pct: str
 interface Props {
   deal:             DealRow
   company:          { id: string; name: string; logo_url: string | null } | null
-  bookbuild:        { target_raise: number | null } | null
+  bookbuild:        { id: string; target_raise: number | null } | null
   shareClasses:     ShareClassRow[]
   dealInvestors:    DealInvestorRow[]
   investorClients:  InvestorClientRow[]
@@ -79,6 +82,9 @@ export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
   investorClients, fundTypes, documentCount, invoiceCount,
 }: Props) {
+  // ── Modal state ───────────────────────────────────────────────────────────
+  const [modalOpen, setModalOpen] = useState(false)
+
   // ── URL state (active tab) ────────────────────────────────────────────────
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -147,9 +153,12 @@ export default function BuyDealPage({
   const completionTotal   = dealInvestors.filter(di => ['paid', 'complete'].includes(di.lifecycle_status)).length
 
   // ── Header derived values ─────────────────────────────────────────────────
-  const dealTitle     = company
+  // If the team has set an internal title (e.g. "Cyclr Q2 Top-Up"), use it.
+  // Otherwise fall back to the constructed "Company — Deal type" format.
+  const constructedTitle = company
     ? `${company.name} — ${DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type}`
     : (DEAL_TYPE_LABELS[deal.deal_type] ?? deal.deal_type)
+  const dealTitle = deal.title?.trim() ? deal.title.trim() : constructedTitle
   const status        = STATUS_CONFIG[deal.status] ?? { label: deal.status, cls: 'pill-grey' }
   const initials      = company ? getInitials(company.name) : '?'
   const shareClassRow = shareClasses.find(sc => sc.id === deal.share_class_id)
@@ -212,9 +221,13 @@ export default function BuyDealPage({
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <span className={`pill ${status.cls}`} style={{ fontSize: 11 }}>{status.label}</span>
-            <Link href={`/deals/${deal.id}/edit`} className="btn btn-secondary" style={{ fontSize: 12 }}>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="btn btn-secondary"
+              style={{ fontSize: 12 }}
+            >
               Edit deal details
-            </Link>
+            </button>
             <button
               className="btn btn-secondary"
               style={{ fontSize: 12, padding: '5px 10px' }}
@@ -302,6 +315,20 @@ export default function BuyDealPage({
             : `${outstandingCount} outstanding`}
         />
       </div>
+
+      {/* ── Edit deal details modal ───────────────────────────────────────── */}
+      {modalOpen && (
+        <EditDealModal
+          deal={deal}
+          bookbuild={bookbuild}
+          shareClasses={shareClasses}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => {
+            setModalOpen(false)
+            router.refresh()
+          }}
+        />
+      )}
 
       {/* ── Tab strip + content ────────────────────────────────────────────── */}
       <div style={{

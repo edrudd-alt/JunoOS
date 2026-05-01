@@ -11,7 +11,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
   // Fetch deal without joins
   const { data: rawDeal, error: dealError } = await supabase
     .from('deals')
-    .select('id, deal_type, status, created_at, investment_amount, share_price, share_class, share_class_id, investment_date, eis_qualifying, completion_checklist, company_id, deferred_consideration, total_proceeds_cap')
+    .select('id, deal_type, status, created_at, investment_amount, share_price, share_class, share_class_id, investment_date, eis_qualifying, completion_checklist, company_id, deferred_consideration, total_proceeds_cap, title, notes')
     .eq('id', id)
     .maybeSingle()
 
