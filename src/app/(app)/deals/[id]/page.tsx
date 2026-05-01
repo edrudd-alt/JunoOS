@@ -32,6 +32,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       { data: buyShareClasses },
       { data: buyDealInvestors },
       { data: buyFundTypes },
+      { data: buyDocuments },
+      { data: buyInvoices },
     ] = await Promise.all([
       rawDeal.company_id
         ? supabase.from('companies').select('id, name, logo_url').eq('id', rawDeal.company_id).maybeSingle()
@@ -44,6 +46,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .select('id, client_id, soft_circle_amount, confirmed_amount, lifecycle_status')
         .eq('deal_id', id),
       supabase.from('fund_types').select('id, name, exit_fee_default_pct'),
+      supabase.from('documents').select('id').eq('deal_id', id),
+      supabase.from('invoices').select('id').eq('deal_id', id),
     ])
 
     // Sequential: investor client records — needed to derive fund type
@@ -67,6 +71,8 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           dealInvestors={(buyDealInvestors ?? []) as Parameters<typeof BuyDealPage>[0]['dealInvestors']}
           investorClients={investorClients}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
+          documentCount={(buyDocuments ?? []).length}
+          invoiceCount={(buyInvoices ?? []).length}
         />
       </Suspense>
     )
