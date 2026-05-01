@@ -85,6 +85,8 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
     .filter(di => PAST_STATUSES.has(getDisplayedStatus(di)))
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
+  const declinedCount = activeRows.length - activeRows.filter(di => getDisplayedStatus(di) !== 'declined').length
+
   // Totals — active non-declined rows
   const activeNonDeclined = activeRows.filter(di => getDisplayedStatus(di) !== 'declined')
   const totalSoftCircle   = activeNonDeclined.reduce((s, di) => s + (di.soft_circle_amount ?? 0), 0)
@@ -96,9 +98,9 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
 
   // Grid template: 13 columns (14 with EIS)
   const cols = [
-    '32px',            // checkbox
-    'minmax(0, 1fr)',  // client
-    '130px',           // vehicle
+    '32px',              // checkbox
+    'minmax(160px, 1fr)', // client — min prevents collapse to 0 when fixed cols fill width
+    '130px',             // vehicle
     '140px',           // location
     '100px',           // soft-circle
     '100px',           // confirmed
@@ -126,6 +128,9 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
           + Add investors
         </button>
       </div>
+
+      {/* Horizontally scrollable table — prevents Client column collapsing to 0px */}
+      <div style={{ overflowX: 'auto' }}>
 
       {/* Table header */}
       <div style={{
@@ -211,7 +216,8 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
         }}>
           <div />
           <TotalCell align="left" style={{ color: '#888', fontWeight: 400, fontSize: 11 }}>
-            {activeNonDeclined.length} investor{activeNonDeclined.length !== 1 ? 's' : ''}
+            {activeNonDeclined.length} active
+            {declinedCount > 0 ? ` · ${declinedCount} declined` : ''}
           </TotalCell>
           <div />
           <div />
@@ -234,6 +240,8 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
           <div />
         </div>
       )}
+
+      </div>{/* end overflow-x: auto */}
 
       {/* Add investors modal */}
       {addModalOpen && (
@@ -333,6 +341,7 @@ function InvestorRow({
           <span style={{
             fontSize: 12, fontWeight: 500, color: '#0f2744',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            flex: 1, minWidth: 0,
           }}>
             {client?.full_name ?? 'Unknown'}
           </span>
