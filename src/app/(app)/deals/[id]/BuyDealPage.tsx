@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils'
 import EditDealModal from './EditDealModal'
-import { DealInvestorFull, ClientFull, getDisplayedStatus, ACTIVE_STATUSES } from './dealUtils'
+import { DealInvestorFull, ClientFull, NomineeRow, getDisplayedStatus, ACTIVE_STATUSES } from './dealUtils'
 import BookbuildTab from './BookbuildTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -71,6 +71,7 @@ interface Props {
   shareClasses:  ShareClassRow[]
   dealInvestors: DealInvestorFull[]
   allClients:    ClientFull[]
+  nominees:      NomineeRow[]
   fundTypes:     FundTypeRow[]
   documentCount: number
   invoiceCount:  number
@@ -80,7 +81,7 @@ interface Props {
 
 export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
-  allClients, fundTypes, documentCount, invoiceCount,
+  allClients, nominees, fundTypes, documentCount, invoiceCount,
 }: Props) {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -380,6 +381,7 @@ export default function BuyDealPage({
               dealInvestors={dealInvestors}
               clientMap={clientMap}
               allClients={allClients}
+              nominees={nominees}
               onDataRefresh={() => router.refresh()}
             />
           )}

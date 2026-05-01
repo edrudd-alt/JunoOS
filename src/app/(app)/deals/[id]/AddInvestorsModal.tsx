@@ -2,31 +2,39 @@
 
 import { useState, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { ClientFull } from './dealUtils'
+import { ClientFull, NomineeRow } from './dealUtils'
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
 interface Props {
   dealId:              string
   allClients:          ClientFull[]
+  nominees:            NomineeRow[]
   existingInvestorIds: Set<string>
   onClose:             () => void
   onSaved:             () => void
 }
 
-type Screen     = 'picker' | 'entry'
-type PickerTab  = 'active' | 'other'
+type Screen    = 'picker' | 'entry'
+type PickerTab = 'active' | 'other'
 
 interface EntryRow {
   client:           ClientFull
   vehicleId:        string | null
+  nomineeId:        string | null
   softCircleAmount: string
+}
+
+const KYC_DOT_COLOR: Record<string, string> = {
+  verified:    '#1d9e75',
+  renewal_due: '#ba7517',
+  outstanding: '#a32d2d',
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AddInvestorsModal({
-  dealId, allClients, existingInvestorIds, onClose, onSaved,
+  dealId, allClients, nominees, existingInvestorIds, onClose, onSaved,
 }: Props) {
   const supabase = createClient()
 
@@ -94,7 +102,12 @@ export default function AddInvestorsModal({
     const rows: EntryRow[] = [...selected]
       .map(id => {
         const client = allClients.find(c => c.id === id)!
-        return { client, vehicleId: null, softCircleAmount: '' }
+        return {
+          client,
+          vehicleId:        null,
+          nomineeId:        client.default_nominee_id ?? null,
+          softCircleAmount: '',
+        }
       })
       .sort((a, b) => a.client.full_name.localeCompare(b.client.full_name))
     setEntryRows(rows)
@@ -113,6 +126,7 @@ export default function AddInvestorsModal({
         deal_id:              dealId,
         client_id:            r.client.id,
         investing_vehicle_id: r.vehicleId ?? null,
+        nominee_id:           r.nomineeId ?? null,
         soft_circle_amount:   r.softCircleAmount ? Number(r.softCircleAmount) : null,
         lifecycle_status:     'soft_circled',
         fee_overridden:       false,
@@ -148,7 +162,7 @@ export default function AddInvestorsModal({
     }}>
       <div style={{
         background: '#fff', borderRadius: 12,
-        width: 800, maxHeight: '82vh',
+        width: 860, maxHeight: '82vh',
         display: 'flex', flexDirection: 'column',
         boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
       }}>
@@ -313,10 +327,10 @@ export default function AddInvestorsModal({
               {/* Column labels */}
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '1fr 148px 172px',
+                gridTemplateColumns: '1fr 148px 148px 120px',
                 marginBottom: 4,
               }}>
-                {['Investor', 'Soft-circle (£)', 'Invest via'].map(h => (
+                {['Investor', 'Vehicle', 'Location', 'Soft-circle (£)'].map(h => (
                   <div key={h} style={{
                     fontSize: 10, fontWeight: 600,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -328,24 +342,75 @@ export default function AddInvestorsModal({
               </div>
 
               {entryRows.map((row, idx) => {
-                const vehicles = getVehicles(row.client.id)
+                const vehicles   = getVehicles(row.client.id)
+                const kycColor   = KYC_DOT_COLOR[row.client.kyc_status] ?? '#ccc'
+
                 return (
                   <div
                     key={row.client.id}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '1fr 148px 172px',
+                      gridTemplateColumns: '1fr 148px 148px 120px',
                       alignItems: 'center',
                       borderTop: '0.5px solid #f0f0ec',
                       padding: '8px 0',
                     }}
                   >
+                    {/* Investor name + KYC dot */}
                     <div style={{
-                      fontSize: 13, fontWeight: 500, color: '#0f2744',
+                      display: 'flex', alignItems: 'center', gap: 6,
                       padding: '0 8px',
                     }}>
-                      {row.client.full_name}
+                      <span style={{
+                        width: 6, height: 6, borderRadius: '50%',
+                        background: kycColor, flexShrink: 0,
+                      }} />
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#0f2744' }}>
+                        {row.client.full_name}
+                      </span>
                     </div>
+
+                    {/* Vehicle dropdown */}
+                    <div style={{ padding: '0 8px' }}>
+                      {vehicles.length > 0 ? (
+                        <select
+                          value={row.vehicleId ?? ''}
+                          onChange={e => updateRow(idx, { vehicleId: e.target.value || null })}
+                          style={{
+                            width: '100%', padding: '6px 8px',
+                            border: '0.5px solid var(--card-border)',
+                            borderRadius: 6, fontSize: 12, outline: 'none',
+                          }}
+                        >
+                          <option value="">Own name</option>
+                          {vehicles.map(v => (
+                            <option key={v.id} value={v.id}>{v.full_name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span style={{ fontSize: 12, color: '#aaa', paddingLeft: 4 }}>Own name</span>
+                      )}
+                    </div>
+
+                    {/* Location dropdown */}
+                    <div style={{ padding: '0 8px' }}>
+                      <select
+                        value={row.nomineeId ?? ''}
+                        onChange={e => updateRow(idx, { nomineeId: e.target.value || null })}
+                        style={{
+                          width: '100%', padding: '6px 8px',
+                          border: '0.5px solid var(--card-border)',
+                          borderRadius: 6, fontSize: 12, outline: 'none',
+                        }}
+                      >
+                        <option value="">Direct</option>
+                        {nominees.map(n => (
+                          <option key={n.id} value={n.id}>{n.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Soft-circle amount */}
                     <div style={{ padding: '0 8px' }}>
                       <input
                         type="number"
@@ -357,31 +422,11 @@ export default function AddInvestorsModal({
                         style={{
                           width: '100%', padding: '6px 8px',
                           border: '0.5px solid var(--card-border)',
-                          borderRadius: 6, fontSize: 13,
+                          borderRadius: 6, fontSize: 12,
                           outline: 'none', boxSizing: 'border-box',
                           textAlign: 'right',
                         }}
                       />
-                    </div>
-                    <div style={{ padding: '0 8px' }}>
-                      {vehicles.length > 0 ? (
-                        <select
-                          value={row.vehicleId ?? ''}
-                          onChange={e => updateRow(idx, { vehicleId: e.target.value || null })}
-                          style={{
-                            width: '100%', padding: '6px 8px',
-                            border: '0.5px solid var(--card-border)',
-                            borderRadius: 6, fontSize: 13, outline: 'none',
-                          }}
-                        >
-                          <option value="">Direct</option>
-                          {vehicles.map(v => (
-                            <option key={v.id} value={v.id}>{v.full_name}</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span style={{ fontSize: 12, color: '#aaa', paddingLeft: 4 }}>Direct</span>
-                      )}
                     </div>
                   </div>
                 )

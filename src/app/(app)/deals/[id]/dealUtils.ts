@@ -1,9 +1,15 @@
 // ── Shared types and helpers for the deal page ────────────────────────────────
 
+export interface NomineeRow {
+  id: string
+  name: string
+}
+
 export interface DealInvestorFull {
   id: string
   client_id: string
   investing_vehicle_id: string | null
+  nominee_id: string | null
   soft_circle_amount: number | null
   confirmed_amount: number | null
   shares: number | null
@@ -24,6 +30,7 @@ export interface ClientFull {
   lead_investor_id: string | null
   fund_type: string | null
   is_favourite: boolean
+  default_nominee_id: string | null
 }
 
 export type DisplayedStatus =

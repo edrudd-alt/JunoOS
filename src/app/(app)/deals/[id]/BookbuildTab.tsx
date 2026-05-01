@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import {
-  DealInvestorFull, ClientFull,
+  DealInvestorFull, ClientFull, NomineeRow,
   getDisplayedStatus, ACTIVE_STATUSES, PAST_STATUSES,
   STATUS_SORT_ORDER, DisplayedStatus,
 } from './dealUtils'
@@ -21,12 +21,6 @@ const STATUS_BADGE: Record<DisplayedStatus, { label: string; cls: string }> = {
   paid:          { label: 'Paid',           cls: 'pill-green' },
   complete:      { label: 'Complete',       cls: 'pill-green' },
   superseded:    { label: 'Superseded',     cls: 'pill-grey'  },
-}
-
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  own_name:  'Own name',
-  family:    'Family',
-  corporate: 'Corporate',
 }
 
 const KYC_DOT_COLOR: Record<string, string> = {
@@ -64,15 +58,18 @@ interface Props {
   dealInvestors: DealInvestorFull[]
   clientMap:     Map<string, ClientFull>
   allClients:    ClientFull[]
+  nominees:      NomineeRow[]
   onDataRefresh: () => void
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function BookbuildTab({ deal, dealInvestors, clientMap, allClients, onDataRefresh }: Props) {
+export default function BookbuildTab({ deal, dealInvestors, clientMap, allClients, nominees, onDataRefresh }: Props) {
   const [addModalOpen, setAddModalOpen] = useState(false)
 
   const showEis = deal.eis_qualifying === 'yes'
+
+  const nomineeMap = new Map(nominees.map(n => [n.id, n]))
 
   // Partition and sort
   const activeRows = dealInvestors
@@ -97,20 +94,21 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
     .filter(di => getDisplayedStatus(di) === 'confirmed' && di.fee_pct != null && di.confirmed_amount != null)
     .reduce((s, di) => s + (Number(di.fee_pct) * (di.confirmed_amount ?? 0)), 0)
 
-  // Grid template
+  // Grid template: 13 columns (14 with EIS)
   const cols = [
-    '32px',             // checkbox
-    'minmax(0, 1fr)',   // investor
-    '130px',            // entity
-    '110px',            // soft-circle
-    '110px',            // confirmed
-    '100px',            // shares
-    '90px',             // fee
-    '130px',            // status
-    '60px',             // poa
-    ...(showEis ? ['60px'] : []),
-    '160px',            // next step
-    '44px',             // menu
+    '32px',            // checkbox
+    'minmax(0, 1fr)',  // client
+    '130px',           // vehicle
+    '140px',           // location
+    '100px',           // soft-circle
+    '100px',           // confirmed
+    '90px',            // shares
+    '80px',            // fee
+    '120px',           // status
+    '52px',            // poa
+    ...(showEis ? ['52px'] : []),
+    '150px',           // next step
+    '44px',            // menu
   ]
   const gridTemplate = cols.join(' ')
 
@@ -138,8 +136,9 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
         background: '#fafaf8',
       }}>
         <ColHeader />
-        <ColHeader label="Investor" align="left" />
-        <ColHeader label="Entity" />
+        <ColHeader label="Client" align="left" />
+        <ColHeader label="Vehicle" />
+        <ColHeader label="Location" />
         <ColHeader label="Soft-circle" align="right" />
         <ColHeader label="Confirmed" align="right" />
         <ColHeader label="Shares" align="right" />
@@ -157,7 +156,8 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
           key={di.id}
           di={di}
           client={clientMap.get(di.client_id) ?? null}
-          vehicle={di.investing_vehicle_id ? (clientMap.get(di.investing_vehicle_id) ?? null) : null}
+          vehicleName={di.investing_vehicle_id ? (clientMap.get(di.investing_vehicle_id)?.full_name ?? null) : null}
+          nomineeName={di.nominee_id ? (nomineeMap.get(di.nominee_id)?.name ?? null) : null}
           showEis={showEis}
           gridTemplate={gridTemplate}
           dim={false}
@@ -182,7 +182,8 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
           key={di.id}
           di={di}
           client={clientMap.get(di.client_id) ?? null}
-          vehicle={di.investing_vehicle_id ? (clientMap.get(di.investing_vehicle_id) ?? null) : null}
+          vehicleName={di.investing_vehicle_id ? (clientMap.get(di.investing_vehicle_id)?.full_name ?? null) : null}
+          nomineeName={di.nominee_id ? (nomineeMap.get(di.nominee_id)?.name ?? null) : null}
           showEis={showEis}
           gridTemplate={gridTemplate}
           dim={true}
@@ -213,6 +214,7 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
             {activeNonDeclined.length} investor{activeNonDeclined.length !== 1 ? 's' : ''}
           </TotalCell>
           <div />
+          <div />
           <TotalCell align="right">
             {totalSoftCircle > 0 ? formatCurrency(totalSoftCircle) : '—'}
           </TotalCell>
@@ -238,6 +240,7 @@ export default function BookbuildTab({ deal, dealInvestors, clientMap, allClient
         <AddInvestorsModal
           dealId={deal.id}
           allClients={allClients}
+          nominees={nominees}
           existingInvestorIds={existingInvestorIds}
           onClose={() => setAddModalOpen(false)}
           onSaved={() => {
@@ -286,21 +289,21 @@ function TotalCell({
 }
 
 function InvestorRow({
-  di, client, vehicle, showEis, gridTemplate, dim,
+  di, client, vehicleName, nomineeName, showEis, gridTemplate, dim,
 }: {
   di:           DealInvestorFull
   client:       ClientFull | null
-  vehicle:      ClientFull | null
+  vehicleName:  string | null
+  nomineeName:  string | null
   showEis:      boolean
   gridTemplate: string
   dim:          boolean
 }) {
   const displayedStatus = getDisplayedStatus(di)
-  const badge     = STATUS_BADGE[displayedStatus] ?? { label: displayedStatus, cls: 'pill-grey' }
-  const kycColor  = client ? (KYC_DOT_COLOR[client.kyc_status] ?? '#ccc') : '#ccc'
-  const entity    = client?.entity_type ? (ENTITY_TYPE_LABELS[client.entity_type] ?? client.entity_type) : '—'
-  const nextStep  = NEXT_STEP_LABEL[displayedStatus] ?? ''
-  const showFee   = displayedStatus === 'confirmed' && di.fee_pct != null
+  const badge    = STATUS_BADGE[displayedStatus] ?? { label: displayedStatus, cls: 'pill-grey' }
+  const kycColor = client ? (KYC_DOT_COLOR[client.kyc_status] ?? '#ccc') : '#ccc'
+  const nextStep = NEXT_STEP_LABEL[displayedStatus] ?? ''
+  const showFee  = displayedStatus === 'confirmed' && di.fee_pct != null
 
   return (
     <div style={{
@@ -320,7 +323,7 @@ function InvestorRow({
         />
       </div>
 
-      {/* Investor */}
+      {/* Client */}
       <div style={{ padding: '10px 8px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{
@@ -334,16 +337,24 @@ function InvestorRow({
             {client?.full_name ?? 'Unknown'}
           </span>
         </div>
-        {vehicle && (
-          <div style={{ fontSize: 11, color: '#888', marginTop: 2, paddingLeft: 12 }}>
-            via {vehicle.full_name}
-          </div>
+      </div>
+
+      {/* Vehicle */}
+      <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
+        {vehicleName ? (
+          <span style={{ color: '#0f2744', fontWeight: 500 }}>{vehicleName}</span>
+        ) : (
+          <span style={{ color: '#aaa' }}>Own name</span>
         )}
       </div>
 
-      {/* Entity */}
-      <div style={{ padding: '10px 8px', fontSize: 12, color: '#555', textAlign: 'center' }}>
-        {entity}
+      {/* Location */}
+      <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
+        {nomineeName ? (
+          <span style={{ color: '#0f2744', fontWeight: 500 }}>{nomineeName}</span>
+        ) : (
+          <span style={{ color: '#aaa' }}>Direct</span>
+        )}
       </div>
 
       {/* Soft-circle */}
@@ -382,8 +393,7 @@ function InvestorRow({
 
       {/* POA */}
       <div style={{
-        padding: '10px 8px', fontSize: 12,
-        textAlign: 'center',
+        padding: '10px 8px', fontSize: 12, textAlign: 'center',
         color: di.poa_held ? '#1d9e75' : '#ccc',
         fontWeight: di.poa_held ? 600 : 400,
       }}>
