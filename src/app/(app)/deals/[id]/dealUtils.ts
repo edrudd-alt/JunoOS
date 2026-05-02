@@ -15,10 +15,15 @@ export interface DealInvestorFull {
   shares: number | null
   fee_pct: number | null
   fee_overridden: boolean
+  fee_override_reason: string | null
+  fee_override_by: string | null
+  fee_override_at: string | null
   fee_locked_at: string | null
   poa_held: boolean
+  signing_status: string | null
   lifecycle_status: string
   updated_at: string
+  updated_by: string | null
   created_at: string
 }
 
@@ -31,6 +36,8 @@ export interface ClientFull {
   fund_type: string | null
   is_favourite: boolean
   default_nominee_id: string | null
+  fee_schedule_id: string | null
+  default_fee_rate: number | null
 }
 
 export type DisplayedStatus =
