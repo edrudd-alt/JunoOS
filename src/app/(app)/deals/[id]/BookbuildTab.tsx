@@ -406,7 +406,10 @@ export default function BookbuildTab({
         handleMoveBack(di, 'signed', 'app_form_sent')
         break
       case 'move_back_to_signed':
-        handleMoveBack(di, ds, 'signed')
+        handleMoveBack(di, 'paid', 'signed')
+        break
+      case 'move_back_to_paid':
+        handleMoveBack(di, 'complete', 'paid')
         break
     }
   }

@@ -15,6 +15,7 @@ export type MenuAction =
   | { type: 'move_back_to_confirmed' }
   | { type: 'move_back_to_app_form_sent' }
   | { type: 'move_back_to_signed' }
+  | { type: 'move_back_to_paid' }
   | { type: 'decline' }
   | { type: 'undecline' }
   | { type: 'remove_from_deal' }
@@ -70,7 +71,7 @@ export default function RowMenuDropdown({
     const moveBackAction: MenuAction | null =
       status === 'signed'   ? { type: 'move_back_to_app_form_sent' } :
       status === 'paid'     ? { type: 'move_back_to_signed' } :
-      status === 'complete' ? { type: 'move_back_to_signed' } : null
+      status === 'complete' ? { type: 'move_back_to_paid' } : null
 
     if (moveBackLabel && moveBackAction) {
       items.push({ label: moveBackLabel, action: moveBackAction, dividerBefore: true })
