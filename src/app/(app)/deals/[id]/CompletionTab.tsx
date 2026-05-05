@@ -264,6 +264,7 @@ export default function CompletionTab({
 
     setModalSaving(true)
     const di = markCompleteDi
+    const client = clientMap.get(di.client_id)
     const result = await markComplete(supabase, {
       dealId:            deal.id,
       dealInvestorId:    di.id,
@@ -277,6 +278,7 @@ export default function CompletionTab({
       sharePrice:        deal.share_price,
       companyId:         deal.company_id,
       eisQualifying:     deal.eis_qualifying,
+      fundType:          client?.fund_type ?? 'syndicate',
       checklistState:    getChecklist(di),
       investmentDate:    invIso,
       completionDate:    compIso,

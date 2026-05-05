@@ -54,6 +54,7 @@ function fmtWhole(n: number | null | undefined): string {
 
 interface DealRow {
   id:            string
+  status:        string
   eis_qualifying: string | null
   company_id:    string | null
 }
@@ -114,6 +115,7 @@ export default function ClosingTab({
   const [statusFilters,  setStatusFilters]  = useState<Set<ClosingDisplayStatus>>(new Set())
   const [statusDropOpen, setStatusDropOpen] = useState(false)
 
+  const isReadOnly = deal.status === 'complete'
   const showEis    = deal.eis_qualifying === 'yes'
   const nomineeMap = new Map(nominees.map(n => [n.id, n]))
 
@@ -305,6 +307,20 @@ export default function ClosingTab({
   return (
     <div style={{ position: 'relative' }}>
 
+      {/* Deal closed banner */}
+      {isReadOnly && (
+        <div style={{
+          padding: '8px 16px',
+          background: '#f0faf6',
+          borderBottom: '0.5px solid #a8dfc9',
+          fontSize: 12, color: '#0a5a3d',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>✓</span>
+          <span><strong>Deal closed.</strong> This deal is read-only — all actions are disabled.</span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div style={{
         padding: '10px 12px', borderBottom: '0.5px solid var(--card-border)',
@@ -379,9 +395,10 @@ export default function ClosingTab({
 
         <button
           onClick={handleLateAdditionClick}
+          disabled={isReadOnly}
           className="btn btn-secondary"
-          style={{ fontSize: 12 }}
-          title="Add an investor after the bookbuild has locked"
+          style={{ fontSize: 12, opacity: isReadOnly ? 0.45 : 1, cursor: isReadOnly ? 'not-allowed' : 'pointer' }}
+          title={isReadOnly ? 'Deal is closed — read only' : 'Add an investor after the bookbuild has locked'}
         >
           + Add late addition
         </button>
@@ -435,6 +452,7 @@ export default function ClosingTab({
             showEis={showEis}
             gridTemplate={gridTemplate}
             dim={false}
+            readOnly={isReadOnly}
             selected={selectedIds.has(di.id)}
             onSelectChange={checked => {
               setSelectedIds(prev => {
@@ -690,6 +708,7 @@ interface RowProps {
   showEis:        boolean
   gridTemplate:   string
   dim:            boolean
+  readOnly?:      boolean
   selected:       boolean
   onSelectChange: (checked: boolean) => void
   onNextStep:     (di: DealInvestorFull) => void
@@ -698,7 +717,7 @@ interface RowProps {
 
 function ClosingRow({
   di, client, vehicleName, nomineeName, showEis, gridTemplate, dim,
-  selected, onSelectChange, onNextStep, onMenuClick,
+  readOnly = false, selected, onSelectChange, onNextStep, onMenuClick,
 }: RowProps) {
   const ds       = getClosingDisplayStatus(di)
   const badge    = CLOSING_STATUS_BADGE[ds]
@@ -813,7 +832,11 @@ function ClosingRow({
 
       {/* Next step */}
       <div style={{ padding: '10px 8px' }}>
-        {nextStep ? (
+        {readOnly && nextStep?.clickable ? (
+          <span style={{ fontSize: 11, color: '#ccc', fontStyle: 'italic' }} title="Deal is closed — read only">
+            {nextStep.label}
+          </span>
+        ) : nextStep ? (
           nextStep.clickable ? (
             <button
               onClick={() => onNextStep(di)}

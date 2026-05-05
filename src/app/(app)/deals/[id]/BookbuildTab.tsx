@@ -68,6 +68,7 @@ function fmtWhole(n: number | null | undefined): string {
 
 interface DealRow {
   id: string
+  status: string
   eis_qualifying: string | null
   share_price: number | null
   company_id: string | null
@@ -138,8 +139,9 @@ export default function BookbuildTab({
   const [statusDropOpen,    setStatusDropOpen]    = useState(false)
   const [vehicleDropOpen,   setVehicleDropOpen]   = useState(false)
 
-  const showEis  = deal.eis_qualifying === 'yes'
-  const locked   = isBookbuildLocked(dealInvestors)
+  const isReadOnly = deal.status === 'complete'
+  const showEis    = deal.eis_qualifying === 'yes'
+  const locked     = isBookbuildLocked(dealInvestors)
   const nomineeMap = new Map(nominees.map(n => [n.id, n]))
 
   // Unique vehicles in this deal for filter dropdown
@@ -469,8 +471,22 @@ export default function BookbuildTab({
   return (
     <div style={{ position: 'relative' }}>
 
+      {/* Deal closed banner */}
+      {isReadOnly && (
+        <div style={{
+          padding: '8px 16px',
+          background: '#f0faf6',
+          borderBottom: '0.5px solid #a8dfc9',
+          fontSize: 12, color: '#0a5a3d',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>✓</span>
+          <span><strong>Deal closed.</strong> This deal is read-only — all actions are disabled.</span>
+        </div>
+      )}
+
       {/* Auto-lock banner */}
-      {locked && (
+      {locked && !isReadOnly && (
         <div style={{
           padding: '8px 16px',
           background: '#fff8e8',
@@ -605,11 +621,11 @@ export default function BookbuildTab({
         {/* Spacer + Add investors */}
         <div style={{ flex: 1 }} />
         <button
-          onClick={() => !locked && setAddModalOpen(true)}
+          onClick={() => !locked && !isReadOnly && setAddModalOpen(true)}
           className="btn btn-primary"
-          disabled={locked}
-          style={{ fontSize: 12, opacity: locked ? 0.45 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
-          title={locked ? 'Bookbuild is locked — use "+ Add late addition" in the Closing tab' : undefined}
+          disabled={locked || isReadOnly}
+          style={{ fontSize: 12, opacity: locked || isReadOnly ? 0.45 : 1, cursor: locked || isReadOnly ? 'not-allowed' : 'pointer' }}
+          title={isReadOnly ? 'Deal is closed — read only' : locked ? 'Bookbuild is locked — use "+ Add late addition" in the Closing tab' : undefined}
         >
           + Add investors
         </button>
@@ -679,9 +695,10 @@ export default function BookbuildTab({
               else if (ds === 'confirmed') setSendAppFormDi({ di: di2, isReissue: false })
               else if (ds === 'chase') handleSendChaser(di2)
             }}
+            readOnly={isReadOnly}
             onFeeClick={(di2, rect) => {
               const ds = getDisplayedStatus(di2)
-              if (ds === 'confirmed' || di2.fee_locked_at != null) {
+              if (!isReadOnly && (ds === 'confirmed' || di2.fee_locked_at != null)) {
                 setFeePopover({ di: di2, rect })
               }
             }}
@@ -1126,6 +1143,7 @@ interface RowProps {
   showEis:      boolean
   gridTemplate: string
   dim:          boolean
+  readOnly?:    boolean
   selected:     boolean
   onSelectChange: (checked: boolean) => void
   onNextStep:   (di: DealInvestorFull) => void
@@ -1135,7 +1153,7 @@ interface RowProps {
 
 function InvestorRow({
   di, client, vehicleName, nomineeName, showEis, gridTemplate, dim,
-  selected, onSelectChange, onNextStep, onFeeClick, onMenuClick,
+  readOnly = false, selected, onSelectChange, onNextStep, onFeeClick, onMenuClick,
 }: RowProps) {
   const ds       = getDisplayedStatus(di)
   const badge    = STATUS_BADGE[ds] ?? { label: ds, cls: 'pill-grey' }
@@ -1154,7 +1172,7 @@ function InvestorRow({
   )
 
   const showFee         = (ds === 'confirmed' || ds === 'app_form_sent' || di.fee_locked_at != null) && di.fee_pct != null
-  const feeClickable    = ds === 'confirmed' || di.fee_locked_at != null
+  const feeClickable    = !readOnly && (ds === 'confirmed' || di.fee_locked_at != null)
   const isActionButton  = nextStep && ds !== 'app_form_sent' && ds !== 'declined'
 
   return (
@@ -1267,7 +1285,11 @@ function InvestorRow({
 
       {/* Next step */}
       <div style={{ padding: '10px 8px' }}>
-        {nextStep ? (
+        {readOnly && isActionButton ? (
+          <span style={{ fontSize: 11, color: '#ccc', fontStyle: 'italic' }} title="Deal is closed — read only">
+            {nextStep!.label}
+          </span>
+        ) : nextStep ? (
           isActionButton ? (
             <button
               onClick={() => onNextStep(di)}

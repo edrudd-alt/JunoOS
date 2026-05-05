@@ -142,6 +142,7 @@ export interface MarkCompleteParams {
   sharePrice: number | null
   companyId: string | null
   eisQualifying: string | null
+  fundType: string              // from client.fund_type, falls back to 'syndicate'
   checklistState: ChecklistState
   investmentDate: string
   completionDate: string
@@ -155,7 +156,7 @@ export async function markComplete(
   const {
     dealId, dealInvestorId, clientId, investingVehicleId, nomineeId,
     confirmedAmount, shares, shareClassId, shareClass, sharePrice,
-    companyId, eisQualifying, checklistState, investmentDate, completionDate, userId,
+    companyId, eisQualifying, fundType, checklistState, investmentDate, completionDate, userId,
   } = params
 
   if (!companyId) return { error: 'Deal has no company — cannot create investment record.' }
@@ -183,7 +184,7 @@ export async function markComplete(
       completion_date:      completionDate,
       eis_status:           eisStatus,
       transaction_type:     'buy',
-      fund_type:            'syndicate',
+      fund_type:            fundType,
       status:               'active',
     })
 
