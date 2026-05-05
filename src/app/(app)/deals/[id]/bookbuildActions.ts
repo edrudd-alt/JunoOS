@@ -466,10 +466,9 @@ export async function bulkDeclineInvestors(
 
 // ── Closing tab actions ────────────────────────────────────────────────────────
 
-// Updates DB to 'paid' without writing an audit log yet.
-// Caller is responsible for calling logMarkPaid after the 5-second undo window.
-export async function markPaidNoLog(
+export async function markPaid(
   supabase: Supabase,
+  dealId: string,
   dealInvestorId: string,
   userId: string,
 ): Promise<ActionResult> {
@@ -478,51 +477,9 @@ export async function markPaidNoLog(
     .update({ lifecycle_status: 'paid', updated_at: new Date().toISOString(), updated_by: userId })
     .eq('id', dealInvestorId)
   if (error) return { error: error.message }
-  return { error: null }
-}
-
-// Writes the audit log entry for a committed mark_paid action.
-export async function logMarkPaid(
-  supabase: Supabase,
-  dealId: string,
-  dealInvestorId: string,
-  userId: string,
-): Promise<void> {
   await supabase.from('deal_action_logs').insert({
     deal_id: dealId, deal_investor_id: dealInvestorId,
     action_type: 'mark_paid', from_status: 'signed', to_status: 'paid',
-    is_mock: false, actioned_by: userId,
-  })
-}
-
-// Reverts paid → signed silently (no audit log) — used when user undoes within 5 seconds.
-export async function revertPaidToSigned(
-  supabase: Supabase,
-  dealInvestorId: string,
-  userId: string,
-): Promise<ActionResult> {
-  const { error } = await supabase
-    .from('deal_investors')
-    .update({ lifecycle_status: 'signed', updated_at: new Date().toISOString(), updated_by: userId })
-    .eq('id', dealInvestorId)
-  if (error) return { error: error.message }
-  return { error: null }
-}
-
-export async function markComplete(
-  supabase: Supabase,
-  dealId: string,
-  dealInvestorId: string,
-  userId: string,
-): Promise<ActionResult> {
-  const { error } = await supabase
-    .from('deal_investors')
-    .update({ lifecycle_status: 'complete', updated_at: new Date().toISOString(), updated_by: userId })
-    .eq('id', dealInvestorId)
-  if (error) return { error: error.message }
-  await supabase.from('deal_action_logs').insert({
-    deal_id: dealId, deal_investor_id: dealInvestorId,
-    action_type: 'mark_complete', from_status: 'paid', to_status: 'complete',
     is_mock: false, actioned_by: userId,
   })
   return { error: null }

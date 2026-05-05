@@ -6,7 +6,7 @@ export type ClosingMenuAction =
   | { type: 'view_investor' }
   | { type: 'edit_deal_investor' }
   | { type: 'mark_paid' }
-  | { type: 'move_to_complete' }
+  | { type: 'go_to_completion' }
   | { type: 'move_back_to_app_form_sent' }
   | { type: 'move_back_to_signed' }
   | { type: 'move_back_to_paid' }
@@ -63,7 +63,7 @@ export default function ClosingRowMenuDropdown({ status, x, y, onAction, onClose
   } else if (status === 'paid') {
     items.push(
       { label: 'Edit deal details for this investor', action: { type: 'edit_deal_investor' } },
-      { label: 'Move to complete', action: { type: 'move_to_complete' }, dividerBefore: true },
+      { label: 'Go to Completion tab', action: { type: 'go_to_completion' }, dividerBefore: true },
       { label: 'Move back to Signed', action: { type: 'move_back_to_signed' } },
       {
         label: 'Remove from deal',

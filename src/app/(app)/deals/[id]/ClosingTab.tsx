@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/utils'
 import { DealInvestorFull, ClientFull, NomineeRow } from './dealUtils'
 import {
-  markPaidNoLog, logMarkPaid, revertPaidToSigned,
-  markComplete, sendPaymentChaser, moveBackwards, logLateAddition,
+  markPaid, sendPaymentChaser, moveBackwards, logLateAddition,
 } from './bookbuildActions'
 import AddInvestorsModal      from './AddInvestorsModal'
 import EditDealInvestorModal  from './EditDealInvestorModal'
@@ -80,6 +80,7 @@ type ConfirmDialogState = {
 export default function ClosingTab({
   deal, dealInvestors, clientMap, allClients, nominees, onDataRefresh,
 }: Props) {
+  const router   = useRouter()
   const supabase = createClient()
 
   const [userId, setUserId] = useState<string | null>(null)
@@ -95,10 +96,6 @@ export default function ClosingTab({
   function showError(msg: string) {
     setToast(`Error: ${msg}`); setTimeout(() => setToast(null), 5000)
   }
-
-  // 5-second undo state for mark_paid
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [undoMark, setUndoMark] = useState<{ diId: string; name: string } | null>(null)
 
   // Modal / overlay state
   const [rowMenu,          setRowMenu]          = useState<{ di: DealInvestorFull; x: number; y: number } | null>(null)
@@ -172,8 +169,7 @@ export default function ClosingTab({
       bulkPrimaryWarning = 'Selected rows have different statuses. Select rows with the same status to enable bulk actions.'
     } else {
       const s = [...selectedStatuses][0]
-      if (s === 'chase')  bulkPrimaryLabel = `Send payment chaser (${selectedActive.length})`
-      else if (s === 'paid') bulkPrimaryLabel = `Move to complete (${selectedActive.length})`
+      if (s === 'chase') bulkPrimaryLabel = `Send payment chaser (${selectedActive.length})`
       else bulkPrimaryWarning = "Selected rows can't be bulk-progressed."
     }
   }
@@ -196,42 +192,25 @@ export default function ClosingTab({
     return userId
   }
 
-  // ── Mark paid (5-second undo) ─────────────────────────────────────────────────
+  // ── Action handlers ───────────────────────────────────────────────────────────
 
   async function handleMarkPaid(di: DealInvestorFull) {
     const uid = requireUser(); if (!uid) return
     const name = clientMap.get(di.client_id)?.full_name ?? 'Investor'
-
-    // If another undo is pending, commit it now before proceeding
-    if (undoMark) {
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current)
-      await logMarkPaid(supabase, deal.id, undoMark.diId, uid)
-      setUndoMark(null)
-    }
-
-    const result = await markPaidNoLog(supabase, di.id, uid)
-    if (result.error) { showError(result.error); return }
-
-    undoTimeoutRef.current = setTimeout(async () => {
-      await logMarkPaid(supabase, deal.id, di.id, uid)
-      setUndoMark(null)
-    }, 5000)
-
-    setUndoMark({ diId: di.id, name })
-    onDataRefresh()
+    const amountStr = di.confirmed_amount != null ? ` (${formatCurrency(di.confirmed_amount)})` : ''
+    setConfirmDialog({
+      title: 'Confirm cash received',
+      message: `Confirm cash received for ${name}${amountStr}?`,
+      confirmLabel: 'Confirm received',
+      onConfirm: async () => {
+        const result = await markPaid(supabase, deal.id, di.id, uid)
+        if (result.error) { showError(result.error); return }
+        showToast(`${name} marked as paid.`)
+        setSelectedIds(prev => { const n = new Set(prev); n.delete(di.id); return n })
+        onDataRefresh()
+      },
+    })
   }
-
-  async function handleUndoMarkPaid() {
-    if (!undoMark) return
-    const uid = requireUser(); if (!uid) return
-    if (undoTimeoutRef.current) { clearTimeout(undoTimeoutRef.current); undoTimeoutRef.current = null }
-    const result = await revertPaidToSigned(supabase, undoMark.diId, uid)
-    if (result.error) { showError(result.error); return }
-    setUndoMark(null)
-    onDataRefresh()
-  }
-
-  // ── Other action handlers ─────────────────────────────────────────────────────
 
   async function handleSendPaymentChaser(di: DealInvestorFull) {
     const uid = requireUser(); if (!uid) return
@@ -239,23 +218,6 @@ export default function ClosingTab({
     if (result.error) { showError(result.error); return }
     showToast('Payment chaser drafted (Outlook integration coming soon). Chase timer reset.')
     onDataRefresh()
-  }
-
-  async function handleMoveToComplete(di: DealInvestorFull) {
-    const uid = requireUser(); if (!uid) return
-    const name = clientMap.get(di.client_id)?.full_name ?? 'Investor'
-    setConfirmDialog({
-      title: 'Move to complete',
-      message: `Mark ${name} as complete? This moves them out of Closing.`,
-      confirmLabel: 'Move to complete',
-      onConfirm: async () => {
-        const result = await markComplete(supabase, deal.id, di.id, uid)
-        if (result.error) { showError(result.error); return }
-        showToast(`${name} moved to complete.`)
-        setSelectedIds(prev => { const n = new Set(prev); n.delete(di.id); return n })
-        onDataRefresh()
-      },
-    })
   }
 
   async function handleMoveBack(di: DealInvestorFull, fromStatus: string, toStatus: string) {
@@ -293,8 +255,8 @@ export default function ClosingTab({
         setEditDi(di); break
       case 'mark_paid':
         handleMarkPaid(di); break
-      case 'move_to_complete':
-        handleMoveToComplete(di); break
+      case 'go_to_completion':
+        router.push('?tab=completion'); break
       case 'move_back_to_app_form_sent':
         handleMoveBack(di, 'signed', 'app_form_sent'); break
       case 'move_back_to_signed':
@@ -314,25 +276,6 @@ export default function ClosingTab({
     showToast(`Payment chaser drafted for ${selectedActive.length} investor${selectedActive.length !== 1 ? 's' : ''} (Outlook integration coming soon).`)
     setSelectedIds(new Set())
     onDataRefresh()
-  }
-
-  async function handleBulkMoveToComplete() {
-    const uid = requireUser(); if (!uid) return
-    const count = selectedActive.length
-    setConfirmDialog({
-      title: 'Move to complete',
-      message: `Mark ${count} selected investor${count !== 1 ? 's' : ''} as complete?`,
-      confirmLabel: 'Move to complete',
-      onConfirm: async () => {
-        for (const di of selectedActive) {
-          const result = await markComplete(supabase, deal.id, di.id, uid)
-          if (result.error) { showError(result.error); return }
-        }
-        showToast(`${count} investor${count !== 1 ? 's' : ''} moved to complete.`)
-        setSelectedIds(new Set())
-        onDataRefresh()
-      },
-    })
   }
 
   // ── Late addition ─────────────────────────────────────────────────────────────
@@ -503,7 +446,6 @@ export default function ClosingTab({
             onNextStep={di2 => {
               const ds = getClosingDisplayStatus(di2)
               if (ds === 'chase') handleSendPaymentChaser(di2)
-              else if (ds === 'paid') handleMoveToComplete(di2)
             }}
             onMenuClick={(di2, x, y) => setRowMenu({ di: di2, x, y })}
           />
@@ -605,7 +547,6 @@ export default function ClosingTab({
               onClick={() => {
                 const s = [...selectedStatuses][0]
                 if (s === 'chase') handleBulkPaymentChaser()
-                else if (s === 'paid') handleBulkMoveToComplete()
               }}
               style={{
                 fontSize: 12, padding: '6px 14px', borderRadius: 6, border: 'none',
@@ -694,36 +635,8 @@ export default function ClosingTab({
         />
       )}
 
-      {/* Undo mark_paid toast */}
-      {undoMark && (
-        <div style={{
-          position: 'fixed',
-          bottom: selectedActive.length > 0 ? 72 : 24,
-          left: '50%', transform: 'translateX(-50%)',
-          background: '#0f2744', color: '#fff',
-          fontSize: 12, fontWeight: 500, padding: '10px 16px',
-          borderRadius: 6, zIndex: 700,
-          display: 'flex', alignItems: 'center', gap: 12,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
-          whiteSpace: 'nowrap',
-        }}>
-          <span>{undoMark.name} marked as paid.</span>
-          <button
-            onClick={handleUndoMarkPaid}
-            style={{
-              fontSize: 12, fontWeight: 600,
-              background: 'rgba(255,255,255,0.2)', border: 'none',
-              color: '#fff', borderRadius: 4, padding: '3px 10px',
-              cursor: 'pointer',
-            }}
-          >
-            Undo
-          </button>
-        </div>
-      )}
-
-      {/* Regular toast */}
-      {toast && !undoMark && (
+      {/* Toast */}
+      {toast && (
         <div style={{
           position: 'fixed',
           bottom: selectedActive.length > 0 ? 72 : 24,
@@ -796,9 +709,9 @@ function ClosingRow({
 
   type NextStepCfg = { label: string; bg: string; color: string; italic?: boolean; clickable: boolean } | null
   const nextStep: NextStepCfg =
-    ds === 'signed' ? { label: 'Awaiting payment', bg: 'none', color: '#aaa', italic: true, clickable: false } :
-    ds === 'chase'  ? { label: 'Send payment chaser', bg: '#b87b1a', color: '#fff', clickable: true } :
-    ds === 'paid'   ? { label: 'Move to completion →', bg: '#1d8c5e', color: '#fff', clickable: true } :
+    ds === 'signed' ? { label: 'Awaiting payment',     bg: 'none', color: '#aaa', italic: true,  clickable: false } :
+    ds === 'chase'  ? { label: 'Send payment chaser',  bg: '#b87b1a', color: '#fff',              clickable: true  } :
+    ds === 'paid'   ? { label: 'In Completion tab',    bg: 'none', color: '#aaa', italic: true,  clickable: false } :
     null
 
   return (
