@@ -1,11 +1,15 @@
-# Juno OS — Deal Page Restructure Specification (v3.2)
+# Juno OS — Deal Page Restructure Specification (v3.3)
 
-**Version:** 3.2
-**Date:** 1 May 2026
-**Status:** Buildable — all design questions resolved AND database state verified
-**Supersedes:** v1, v2, v3, v3.1
+**Version:** 3.3
+**Date:** 3 May 2026
+**Status:** Buildable — Stages 1, 2a–c, 3a, 3a.1, 3b, 4a complete and merged to main
+**Supersedes:** v1, v2, v3, v3.1, v3.2
 
-**What's new in v3.2:**
+**What's new in v3.3:**
+
+Section 6 (Closing tab) and Section 7 (Completion tab) substantially rewritten to reflect Stage 4a's actual built behaviour and the agreed Stage 4b design. Key additions: the **bookbuild auto-lock derivation** (Section 6.3) — a computed-on-read state that locks Bookbuild when all non-declined investors are signed-or-beyond; the **"+ Add late addition" override** (Section 6.9) for the rare post-lock investor addition; the **5-item completion checklist with EIS auto-disable** (Section 7.3); the **Mark complete modal with manual `investment_date` and `completion_date` entry** (Section 7.5) — distinct legal dates that are usually the same for single-close rounds but differ for rolling closes; the **manual "Close the deal" action** (Section 7.8) at the deal level once all investors are complete. Section 6's "Mark payment received" updated to confirmation modal (single click → confirm → state change + audit log immediate, no 5-second undo). New Future Work item 14.13 (rolling-close UX). Note: payment reconciliation is deliberately out of scope permanently — JunoOS does not capture bank references or payment dates beyond the team's manual confirmation.
+
+**What was new in v3.2:**
 
 A structural addition to how investments are modelled. Through Stage 3a's preview review, it became clear that every investment has **three independent dimensions** rather than the two the spec previously implied. The spec now explicitly documents this Client / Vehicle / Location model, applies it to the Bookbuild table column structure (now 13 columns instead of 12), and references it as the canonical model for future work — including the eventual sell deal redesign (14.1) which will inherit the same three-dimensional structure. New Future Work items 14.9 (deal title naming convention), 14.10 (recapitalisation event handling), and 14.11 (last-deal-date in investor picker).
 
@@ -578,62 +582,160 @@ Mandatory modal — system never auto-decides.
 
 ### 6.1 Definition
 
-**Closing = the phase between signing and full completion.** An investor enters Closing when they have signed an application form. They leave when all completion items are complete.
+**Closing = the phase between signing and full completion.** An investor enters Closing when they reach `signed` (i.e. their application form has been received signed). They leave Closing when they reach `complete` (which happens via the Completion tab — see Section 7).
 
 ### 6.2 Active vs past rows
 
-**Active rows:**
-- Signed (awaiting payment)
-- Paid (awaiting completion items)
-- Chase (signed + 10 days no payment)
+**Active rows (above divider, full opacity):**
+- `lifecycle_status = 'signed'` (awaiting payment)
+- `lifecycle_status = 'paid'` (paid, awaiting completion items — these are simultaneously active in the Completion tab)
 
-**Past rows (greyed, below divider):**
-- Fully complete
+**Past rows (below divider, ~45% opacity):**
+- `lifecycle_status = 'complete'`
 
 **Hidden:**
 - Anyone not yet signed (still active in Bookbuild)
 - Declined (only ever visible in Bookbuild)
 
-### 6.3 Table columns
+Sort active rows by status priority (signed before paid), then within same status by `updated_at` ascending.
 
-1. Checkbox
-2. Investor (name + KYC indicator)
-3. Confirmed (£)
-4. Fee (%) — locked, no override
-5. App form — badge showing version + date sent
-6. Cash received — badge: "Awaited" (amber) or "£X · [date]" (green)
-7. Next step
-8. Action ("⋯")
+### 6.3 Bookbuild auto-lock derivation
 
-No Signature column — every row is signed by definition.
+**[NEW IN v3.3]** When all non-declined investors on the deal have reached `signed` or beyond, the Bookbuild tab auto-locks. This is a **derived state computed on read** — no stored flag.
 
-### 6.4 Next step logic
+Helper function (in `dealUtils.ts`):
 
-| Status | Next step button | Colour |
+```typescript
+export function isBookbuildLocked(
+  dealInvestors: Pick<DealInvestorFull, 'lifecycle_status'>[]
+): boolean {
+  const nonDeclined = dealInvestors.filter(di => di.lifecycle_status !== 'declined')
+  if (nonDeclined.length === 0) return false
+  return nonDeclined.every(di =>
+    di.lifecycle_status === 'signed' ||
+    di.lifecycle_status === 'paid' ||
+    di.lifecycle_status === 'complete',
+  )
+}
+```
+
+When `isBookbuildLocked()` returns true:
+- Bookbuild tab shows an info banner at the top: "Bookbuild auto-locked: all investors are signed or beyond. To add a late investor, go to the Closing tab and use '+ Add late addition'."
+- Bookbuild's "+ Add investors" button is **disabled** with tooltip: "Bookbuild auto-locked — all investors signed. Use Closing tab's '+ Add late addition' for exceptions."
+- All Next-step buttons in Bookbuild remain functional (someone in app_form_sent can still be marked signed via the existing flow)
+
+When `isBookbuildLocked()` returns false:
+- Bookbuild behaves normally; Closing tab's "+ Add investors" button mirrors Bookbuild's
+
+### 6.4 Table columns
+
+In order, left to right (13 columns):
+
+1. Checkbox (28px wide, disabled for past rows)
+2. **Client** — primary investor name + KYC indicator (🟢 verified / 🟡 renewal due / 🔴 outstanding). min-width 160px
+3. **Vehicle** — `investing_vehicle_id` → "Own name" if NULL, otherwise vehicle's `full_name`
+4. **Location** — `nominee_id` → "Direct" if NULL, otherwise nominee's `name`
+5. **Confirmed (£)** — right-aligned, tabular numerals (no soft-circle column — irrelevant for Closing)
+6. **Shares** — right-aligned, tabular numerals
+7. **Fee (%)** — right-aligned, always shown (always with 🔒 since fee is locked at this stage); no override possible
+8. **Status** — coloured badge (Signed / Paid / Complete)
+9. **Days since signed** — calculated from `updated_at`. Format: "3 days" / "12 days". Amber styling if > 14 days for signed rows. Empty for paid/complete rows.
+10. **POA** — purple "POA" badge if `poa_held = TRUE`
+11. **EIS** — green "EIS" badge if `deal.eis_qualifying = 'yes'`
+12. **Next step** — see Section 6.5
+13. **Action ("⋯")** — see Section 6.7
+
+### 6.5 Next step logic
+
+| Status | Next step rendering | Action |
 |---|---|---|
-| Signed, awaiting payment, < 10 days | "Awaiting payment" | Grey italic |
-| Signed, awaiting payment, ≥ 10 days (chase) | "Send payment chaser" | Amber |
-| Paid, awaiting completion items | "Move to completion →" | Green |
-| Awaiting countersignature (Juno) | "Sign now (POA)" | Green |
+| signed, ≤ 10 days since updated_at | Italic grey "Awaiting payment" | (none — passive label) |
+| signed, > 10 days since updated_at | Amber button "Send payment chaser" | Resets `updated_at` (clears 10-day chase timer); audit log entry with `action_type='send_payment_chaser'`, `is_mock=true` |
+| paid | Italic grey "In Completion tab" | (none — completion happens in Completion tab) |
+| complete | Italic grey "Complete" | (none — past row) |
 
-### 6.5 Mark payment received
+The "Mark as paid" action is NOT in the Next step column. It lives in the row "⋯" menu (Section 6.7).
 
-- Row "⋯" menu has "Mark payment as received"
-- Single click flips cash status from "Awaited" to "Received"
-- 5-second undo toast appears at bottom of screen
-- If undone within 5s, status reverts and no audit log entry created
-- After 5s, action committed to `deal_action_logs` with `is_mock = false`
+### 6.6 Mark payment received
 
-No date/reference fields captured — that data lives in Xero's bank feed.
+When the user opens the "⋯" menu on a signed row and clicks "Mark payment as received":
 
-### 6.6 Toolbar
+1. A confirmation modal opens: **"Confirm cash received for [Investor name] (£X)?"** with Cancel / Confirm buttons
+2. On Confirm:
+   - Update row: `lifecycle_status = 'paid'`, `updated_at = NOW()`, `updated_by = current user`
+   - Insert into `deal_action_logs`: `action_type='mark_paid'`, `is_mock=false` (real state change, no external send)
+   - Toast: "[Investor name] marked as paid"
+   - Modal closes; row re-renders
 
-- Search input
-- Status filter dropdown
+**No date entry, no amount entry, no bank reference, no notes.** Deliberate design — financial reconciliation lives in the team's bank statement, not in JunoOS. Audit trail captures *who* clicked *when*, which is sufficient for a high-trust internal workflow.
 
-### 6.7 Bulk actions
+### 6.7 Row "⋯" menu
 
-Same pattern as Bookbuild — bulk only when same next step.
+**For signed rows:**
+- View investor record
+- Edit deal details for this investor (amount only — fee is locked)
+- Move backwards to app_form_sent — confirmation modal, on confirm sets `lifecycle_status='app_form_sent'`, audit log
+- **Mark payment as received** — see Section 6.6
+
+**For paid rows:**
+- View investor record
+- Edit deal details for this investor (amount only — fee is locked)
+- Move backwards to signed — confirmation modal, on confirm sets `lifecycle_status='signed'`, audit log
+- **Go to Completion tab** — navigates to `?tab=completion` (the actual Mark complete action lives there, see Section 7)
+
+**For complete (past) rows:**
+- View investor record
+- Go to Completion tab
+- Move backwards to paid — confirmation modal. Note: this does NOT auto-delete the `investments` row; orphans it for review. Audit log captures the move.
+
+### 6.8 Toolbar
+
+Same pattern as Bookbuild's toolbar (Section 4.8):
+
+1. **Search input** — placeholder "Search investors, vehicles, or locations..."
+2. **Status filter dropdown** — checkboxes for: Signed, Paid, Complete
+3. **Vehicle filter dropdown** — same as Bookbuild
+4. **"+ Add investors" / "+ Add late addition" button** — see Section 6.9
+
+Filtering: substring search across client name, vehicle name, nominee name, POA holder name. Filters reset when navigating to a different deal.
+
+Empty state: "No investors match your filters. [Clear filters]"
+
+### 6.9 "+ Add investors" / "+ Add late addition" override
+
+**[NEW IN v3.3]** The Closing tab toolbar always has an Add button, but its label and behaviour vary based on whether `isBookbuildLocked()` is true:
+
+**When NOT locked (some investors still in Bookbuild stages):**
+- Button label: **"+ Add investors"**
+- Click: opens the standard Add Investors modal (same component as Bookbuild's, see Section 4.x)
+- Investors added go to `lifecycle_status = 'soft_circled'` and appear in Bookbuild
+- Identical behaviour to Bookbuild's add flow
+
+**When locked (everyone is signed or beyond):**
+- Button label: **"+ Add late addition"**
+- Click: opens an extra confirmation FIRST: "Bookbuild is auto-locked because all investors are signed or beyond. Adding a late investor is an exception that should only be done with deliberate intent. Continue?"
+- If user confirms: opens the same Add Investors modal as before
+- Investors added still go to `lifecycle_status = 'soft_circled'` and appear in Bookbuild (their lifecycle proceeds normally from there)
+- Audit log entry: `action_type='late_addition'`, with `details` JSONB capturing the deal's pre-add state for traceability
+
+Late additions are exceptions, not a separate flow. They use the same lifecycle and modals as normal additions.
+
+### 6.10 Bulk actions
+
+Same pattern as Bookbuild (Section 4.9). When ≥1 row checked, sticky navy footer appears.
+
+**For signed rows selected (all same status):**
+- Primary action: "Mark as paid (N)" — opens bulk confirmation: "Confirm cash received for [N] selected investors (£X total)?" → on confirm, updates all rows + writes audit log per row
+
+**For paid rows selected:**
+- No bulk action available (Completion tab handles their progression)
+- Footer can show: "These rows are managed in the Completion tab. [Go to Completion tab]"
+
+**For mixed selections:**
+- Primary action disabled; warning: "Selected rows have different statuses."
+
+**For complete (past) rows:**
+- Their checkboxes are disabled (consistent with Bookbuild's past rows)
 
 ---
 
@@ -641,50 +743,148 @@ Same pattern as Bookbuild — bulk only when same next step.
 
 ### 7.1 Definition
 
-**Completion = the phase after payment.** Investors here while per-investor admin items still pending.
+**Completion = the phase after payment.** An investor enters the Completion tab when they reach `lifecycle_status = 'paid'`. They leave when marked `complete` — at which point a row is created in the `investments` table with the legal investment data.
 
 ### 7.2 Active vs past rows
 
-**Active rows:**
-- Has any of the four completion items still pending
+**Active rows (above divider, full opacity):**
+- `lifecycle_status = 'paid'` — paid investors with completion items still pending
 
-**Past rows (greyed):**
-- All four completion items complete
+**Past rows (below divider, ~45% opacity):**
+- `lifecycle_status = 'complete'` — all completion items done, `investments` row created
 
 **Hidden:**
-- Anyone not yet paid
+- Anyone not yet paid (still active in Bookbuild or Closing)
 
-### 7.3 Table columns
+### 7.3 The 5-item completion checklist
+
+**[NEW IN v3.3]** Each row in the Completion tab has a per-investor checklist with 5 default items:
+
+| # | Item | Notes |
+|---|---|---|
+| 1 | Share certificate filed | Physical or digital share cert exists in JunoOS |
+| 2 | EIS3 certificate issued | **Auto-disabled** if `deal.eis_qualifying != 'yes'` (no EIS, no cert needed) |
+| 3 | Transaction statement sent to investor | The formal "this is what you bought" doc, sent to investor |
+| 4 | Investment record created | Auto-managed — created when row marked complete (Section 7.5) |
+| 5 | Documents archived to OneDrive | Manual flag for now; auto-handled when OneDrive integration lands (Future Work 14.6) |
+
+Each item per investor is **independently disable-able** by the team. For example, a non-EIS investment auto-disables item 2; an unusual investment might have item 5 manually disabled.
+
+UI: checklist visible inline in the Completion tab row (or expandable side panel — design choice in build). Each item has an icon: ✓ done / ○ pending / ⌛ awaiting third party / — disabled.
+
+### 7.4 Table columns
+
+In order (12 columns):
 
 1. Checkbox
-2. Investor
-3. Amount (£)
-4. Share cert — centred icon: ✓ / ○ / ⌛
-5. EIS cert — centred icon: ✓ / ○ / ⌛
-6. Transaction statement — centred icon: ✓ / ○ / ⌛
-7. Docs filed — centred icon: ✓ / ○
-8. Next step
-9. Action ("⋯")
+2. **Client** — primary investor name + KYC indicator. min-width 160px
+3. **Vehicle** — same as Closing (Section 6.4)
+4. **Location** — same as Closing
+5. **Confirmed (£)** — the amount that came in
+6. **Shares** — calculated count
+7. **Checklist progress** — visual bar e.g. "3 of 5" or icons inline (design choice)
+8. **POA** — same as Closing
+9. **EIS** — same as Closing
+10. **Days since paid** — calculated from `updated_at`. Format: "5 days" / "21 days"
+11. **Next step** — see Section 7.5
+12. **Action ("⋯")** — see Section 7.7
 
-Icon meanings: ✓ filed · ○ not yet (grey) · ⌛ awaited from third party (amber, e.g. HMRC).
+### 7.5 Next step logic and Mark complete
 
-### 7.4 Next step logic
-
-| Pending items | Next step button |
+| Active checklist items | Next step rendering |
 |---|---|
-| Transaction statement not generated | "Generate transaction statement →" (green) |
-| Share cert pending | "Upload share cert" (green) |
-| EIS cert pending (HMRC) | "Awaiting EIS cert (HMRC)" (grey italic) |
-| Docs filed pending | "Mark docs filed" (green) |
-| All complete | "Complete" (grey italic) |
+| At least one item pending (excluding item 4) | Items shown inline; user ticks each as completed |
+| All non-disabled items 1-3 and 5 ticked | Green button "Mark complete" enabled |
+| All non-disabled items 1-5 ticked | Green button "Mark complete" enabled (functionally same as above — item 4 is auto-handled) |
+| `lifecycle_status = 'complete'` (past row) | Italic grey "Complete" |
 
-### 7.5 Bulk upload (deferred)
+**Mark complete action — opens a modal:**
 
-For v1, simpler manual upload — user uploads each PDF and matches to investor via dropdown. Bulk AI matching deferred to Section 14.5.
+```
+┌─────────────────────────────────────────────┐
+│ Mark complete: [Investor name]              │
+│                                             │
+│ Confirm all checklist items are done.       │
+│ ✓ Share certificate filed                   │
+│ ✓ EIS3 certificate issued (or — if N/A)     │
+│ ✓ Transaction statement sent                │
+│ ✓ Documents archived                        │
+│                                             │
+│ ───────────────────────────────────────     │
+│ Investment date (legal):                    │
+│ [ DD / MM / YYYY ]                          │
+│ The legal investment date for HMRC, share   │
+│ register, and EIS3 purposes. Often the same │
+│ as completion date for single-close rounds. │
+│                                             │
+│ Completion date (round close):              │
+│ [ DD / MM / YYYY ]                          │
+│ The date the whole funding round formally   │
+│ closed. Same across all investors on this   │
+│ deal (rolling closes are an exception).     │
+│                                             │
+│        [ Cancel ]  [ Mark complete ]        │
+└─────────────────────────────────────────────┘
+```
 
-### 7.6 Manual signature upload
+On Confirm:
+1. **Create a row in `investments` table** with:
+   - `deal_investor_id` = this row's id
+   - `client_id`, `investing_vehicle_id`, `nominee_id` = from the deal_investors row
+   - `amount` = `confirmed_amount`
+   - `shares` = the deal_investors row's `shares` value
+   - `share_class_id` / `share_class` = from the deal
+   - `investment_date` = user-entered (per Section 7.5 modal — legal date)
+   - `completion_date` = user-entered (per Section 7.5 modal — round close date)
+   - `eis_qualifying` = inherited from deal at investment level (per spec — see 7.6)
+2. **Update deal_investors row:** `lifecycle_status = 'complete'`, `updated_at = NOW()`, `updated_by = current user`
+3. **Audit log:** `action_type='mark_complete'`, `is_mock=false`, `details` JSONB capturing the entered dates and the auto-disabled checklist items
+4. **Toast:** "[Investor name] marked complete"
+5. **Modal closes; row moves to past section (greyed below divider)**
 
-"Mark as signed (manual upload)" from Bookbuild "⋯" menu opens a manual upload flow for hand-signed forms. User uploads PDF, JunoOS files it, status moves to `signed`. Logged with `action_type = manual_signature_upload`.
+**Important:** the Mark complete action is the ONLY way an `investments` row gets created. The investments table is the canonical record of completed investments — it doesn't exist in earlier states.
+
+### 7.6 EIS at investment level
+
+EIS qualifying is a **deal-level flag** (`deals.eis_qualifying`) but the EIS-qualifying status of each *individual* investment lives on the `investments` row (set when complete). This allows for the rare case where a deal has both EIS and non-EIS portions (e.g. EIS allowance exhausted partway through a raise) — though most deals don't.
+
+For now (v1), the investment inherits the deal's EIS status at Mark complete time. Future Work 14.x may revisit this if needed.
+
+### 7.7 Row "⋯" menu
+
+**For paid (active) rows:**
+- View investor record
+- Edit deal details for this investor
+- Toggle checklist items (each can be checked/unchecked manually outside the Mark complete flow)
+- Disable/enable specific checklist items (e.g. "this investor doesn't need a transaction statement")
+- Move backwards to signed — confirmation, on confirm reverts to `signed` (re-enters Closing tab as active, leaves Completion tab)
+- Mark complete (same as Next step button — convenience)
+
+**For complete (past) rows:**
+- View investor record
+- Move backwards to paid — confirmation. **Important:** this does NOT auto-delete the `investments` row. The orphaned investments row remains for audit; team can manually decide whether to delete it via direct database access, or live with the orphan.
+
+### 7.8 The "Close the deal" action
+
+**[NEW IN v3.3]** Once **all active (non-declined) investors are marked complete**, a prominent button appears at the top of the Completion tab: **"Close the deal"**.
+
+- Disabled and greyed out until all active investors are complete
+- When enabled, click opens confirmation modal: "All investors are complete. Mark this deal as closed?"
+- On confirm:
+  - Update `deals.status = 'complete'`
+  - Audit log: `action_type='close_deal'`, `is_mock=false`
+  - Toast: "Deal closed"
+  - Deal becomes read-only across all tabs (no more state changes possible without explicit re-open)
+
+**This is the deliberate end-of-deal moment.** Until clicked, the deal remains in a "ready to close" state where last-minute changes are still possible.
+
+### 7.9 Manual signature upload (legacy reference)
+
+Note: "Mark as signed (manual upload)" lives in the Bookbuild "⋯" menu (Section 4.7), not Completion. Reference here for completeness — it handles hand-signed forms posted back, uploads the PDF, marks status `signed`. Audit log: `action_type='manual_signature_upload'`.
+
+### 7.10 Bulk upload (deferred)
+
+Bulk upload of share certs / EIS3 certs (e.g. when HMRC sends a batch of EIS3s for an entire deal) is deferred. v1 is per-investor manual upload. Bulk AI matching deferred to Future Work 14.5.
 
 ---
 
@@ -1066,6 +1266,16 @@ Implementation: a separate cached query that aggregates `deal_investors.created_
 
 **Trigger to start:** when there's enough real deal history to make the date meaningful (i.e. after Phase E data load).
 
+### 14.13 Rolling-close UX
+
+**[NEW IN v3.3]** The Mark complete modal (Section 7.5) asks for `investment_date` and `completion_date` per investor. For most deals (single-close rounds) these are the same date and entering them per-investor is repetitive. For rolling closes, they genuinely differ per investor.
+
+A future enhancement: at the deal level, allow setting a default `completion_date` once. When marking individual investors complete, the modal pre-fills `completion_date` from the deal-level default — only the per-investor `investment_date` differs.
+
+For rolling closes specifically, the team can override the pre-fill and enter different dates per investor.
+
+**Trigger to start:** when rolling closes become common enough to feel the friction. Until then, repeated manual entry of the same date is acceptable.
+
 ---
 
-*End of specification v3.2.*
+*End of specification v3.3.*
