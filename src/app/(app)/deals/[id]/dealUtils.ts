@@ -66,6 +66,18 @@ export function getDisplayedStatus(
 export const ACTIVE_STATUSES = new Set<string>(['soft_circled', 'confirmed', 'app_form_sent', 'chase', 'declined'])
 export const PAST_STATUSES   = new Set<string>(['signed', 'paid', 'complete'])
 
+// Bookbuild is locked once ALL non-declined investors have reached signed/paid/complete.
+// Uses stored lifecycle_status, not computed display status.
+export function isBookbuildLocked(dealInvestors: Pick<DealInvestorFull, 'lifecycle_status'>[]): boolean {
+  const nonDeclined = dealInvestors.filter(di => di.lifecycle_status !== 'declined')
+  if (nonDeclined.length === 0) return false
+  return nonDeclined.every(di =>
+    di.lifecycle_status === 'signed' ||
+    di.lifecycle_status === 'paid' ||
+    di.lifecycle_status === 'complete',
+  )
+}
+
 // Sort priority for the active section of the bookbuild table
 export const STATUS_SORT_ORDER: Record<string, number> = {
   soft_circled:  0,

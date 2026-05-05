@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, getInitials } from '@/lib/utils'
 import EditDealModal from './EditDealModal'
 import { DealInvestorFull, ClientFull, NomineeRow, getDisplayedStatus, ACTIVE_STATUSES } from './dealUtils'
 import BookbuildTab from './BookbuildTab'
+import ClosingTab   from './ClosingTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -349,7 +350,7 @@ export default function BuyDealPage({
           />
           <TabButton
             label="Closing"
-            badge={`${closingActive} / ${closingTotal}`}
+            badge={String(closingActive)}
             active={activeTab === 'closing'}
             onClick={() => handleTabClick('closing')}
           />
@@ -374,7 +375,7 @@ export default function BuyDealPage({
         </div>
 
         {/* Tab body */}
-        <div style={{ padding: activeTab === 'bookbuild' ? 0 : '28px 24px' }}>
+        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' ? 0 : '28px 24px' }}>
           {activeTab === 'bookbuild' && (
             <BookbuildTab
               deal={deal}
@@ -386,9 +387,13 @@ export default function BuyDealPage({
             />
           )}
           {activeTab === 'closing' && (
-            <TabPlaceholder
-              title="Closing — Stage 4"
-              description="Signed investors awaiting payment and completion handover."
+            <ClosingTab
+              deal={deal}
+              dealInvestors={dealInvestors}
+              clientMap={clientMap}
+              allClients={allClients}
+              nominees={nominees}
+              onDataRefresh={() => router.refresh()}
             />
           )}
           {activeTab === 'completion' && (

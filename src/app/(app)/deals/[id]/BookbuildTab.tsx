@@ -7,7 +7,7 @@ import { formatCurrency } from '@/lib/utils'
 import {
   DealInvestorFull, ClientFull, NomineeRow,
   getDisplayedStatus, ACTIVE_STATUSES, PAST_STATUSES,
-  STATUS_SORT_ORDER, DisplayedStatus,
+  STATUS_SORT_ORDER, DisplayedStatus, isBookbuildLocked,
 } from './dealUtils'
 import {
   sendChaser, sendApplicationForm, declineInvestor, removeFromDeal, moveBackwards,
@@ -138,7 +138,8 @@ export default function BookbuildTab({
   const [statusDropOpen,    setStatusDropOpen]    = useState(false)
   const [vehicleDropOpen,   setVehicleDropOpen]   = useState(false)
 
-  const showEis    = deal.eis_qualifying === 'yes'
+  const showEis  = deal.eis_qualifying === 'yes'
+  const locked   = isBookbuildLocked(dealInvestors)
   const nomineeMap = new Map(nominees.map(n => [n.id, n]))
 
   // Unique vehicles in this deal for filter dropdown
@@ -468,6 +469,24 @@ export default function BookbuildTab({
   return (
     <div style={{ position: 'relative' }}>
 
+      {/* Auto-lock banner */}
+      {locked && (
+        <div style={{
+          padding: '8px 16px',
+          background: '#fff8e8',
+          borderBottom: '0.5px solid #f0d080',
+          fontSize: 12, color: '#7a5500',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>🔒</span>
+          <span>
+            <strong>Bookbuild locked.</strong>{' '}
+            At least one investor has signed. New investors must be added via{' '}
+            &ldquo;+ Add late addition&rdquo; in the Closing tab.
+          </span>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div style={{
         padding: '10px 12px', borderBottom: '0.5px solid var(--card-border)',
@@ -586,9 +605,11 @@ export default function BookbuildTab({
         {/* Spacer + Add investors */}
         <div style={{ flex: 1 }} />
         <button
-          onClick={() => setAddModalOpen(true)}
+          onClick={() => !locked && setAddModalOpen(true)}
           className="btn btn-primary"
-          style={{ fontSize: 12 }}
+          disabled={locked}
+          style={{ fontSize: 12, opacity: locked ? 0.45 : 1, cursor: locked ? 'not-allowed' : 'pointer' }}
+          title={locked ? 'Bookbuild is locked — use "+ Add late addition" in the Closing tab' : undefined}
         >
           + Add investors
         </button>

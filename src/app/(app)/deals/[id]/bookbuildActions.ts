@@ -464,6 +464,59 @@ export async function bulkDeclineInvestors(
   return { error: null }
 }
 
+// ── Closing tab actions ────────────────────────────────────────────────────────
+
+export async function markPaid(
+  supabase: Supabase,
+  dealId: string,
+  dealInvestorId: string,
+  userId: string,
+): Promise<ActionResult> {
+  const { error } = await supabase
+    .from('deal_investors')
+    .update({ lifecycle_status: 'paid', updated_at: new Date().toISOString(), updated_by: userId })
+    .eq('id', dealInvestorId)
+  if (error) return { error: error.message }
+  await supabase.from('deal_action_logs').insert({
+    deal_id: dealId, deal_investor_id: dealInvestorId,
+    action_type: 'mark_paid', from_status: 'signed', to_status: 'paid',
+    is_mock: false, actioned_by: userId,
+  })
+  return { error: null }
+}
+
+export async function sendPaymentChaser(
+  supabase: Supabase,
+  dealId: string,
+  dealInvestorId: string,
+  userId: string,
+): Promise<ActionResult> {
+  const { error } = await supabase
+    .from('deal_investors')
+    .update({ updated_at: new Date().toISOString(), updated_by: userId })
+    .eq('id', dealInvestorId)
+  if (error) return { error: error.message }
+  await supabase.from('deal_action_logs').insert({
+    deal_id: dealId, deal_investor_id: dealInvestorId,
+    action_type: 'send_payment_chaser',
+    is_mock: true, actioned_by: userId,
+  })
+  return { error: null }
+}
+
+export async function logLateAddition(
+  supabase: Supabase,
+  dealId: string,
+  preAddCount: number,
+  userId: string,
+): Promise<void> {
+  await supabase.from('deal_action_logs').insert({
+    deal_id: dealId, action_type: 'late_addition',
+    is_mock: false, metadata: { pre_add_investor_count: preAddCount },
+    actioned_by: userId,
+  })
+}
+
 // ── Signature upload ───────────────────────────────────────────────────────────
 
 export async function uploadSignedForm(
