@@ -1293,6 +1293,23 @@ Probably a hybrid — pre-onboarding for the typical case, pre-deal for new clas
 
 **Trigger to start:** when valuation tracking is being designed (Phase D Reports), since clean share class linkage is essential for that to work properly. Or earlier if a real portfolio company gets onboarded and data hygiene becomes important.
 
+### 14.15 Share certificate one-to-many model
+
+**[NEW IN v3.3]** Share certificates are uploaded manually by the team (PDFs received from the company's registrar) and represent share ownership at the legal share-register level. Unlike most documents in JunoOS (application forms, EIS3 certificates, transaction statements — each tied to a single investor), **a share certificate can represent multiple investors simultaneously.** For example, a certificate issued to "City Partnership Nominees Ltd" might cover the underlying holdings of 5 different investors who all hold via that nominee.
+
+The current `documents` table cannot represent this: it has a single `client_id` and `deal_investor_id` column, forcing a one-to-one relationship. Additionally, the `documents.type` constraint does not currently include `share_certificate` as a valid value — a smaller schema gap that confirms share certificates were never properly modelled in v1.
+
+**A proper share certificate model needs:**
+- A new `share_certificates` table (or extension of `documents` with a flag) storing the certificate-level metadata (PDF, issue date, certificate number, holder name as printed)
+- A junction table — perhaps `share_certificate_investments` — linking one certificate to many `investments` rows
+- An upload UI that lets the team multi-select investors when uploading a certificate
+- A view UI that shows "covered investors" alongside the certificate, with the ability to drill into each underlying investment
+- The Completion tab's "Share certificate filed" checklist item (Section 7.3) needs revisiting once this model exists — checking the box per investor should derive from whether that investor's investment has any covering share certificate, rather than being a free-standing flag
+
+**Why deferred:** the design needs care. Registrar conventions vary, certificate numbering schemes vary, partial coverage cases exist (e.g. one investor's holding is split across two certs because of fractional rounding rules), and the relationship between certificates and the holding structure (own name vs vehicle vs nominee) needs explicit thought. Stage 5a (Documents tab) handles only the one-to-one document types (`application_form`, `eis_certificate`, `transaction_statement`, `investment_agreement`). Share certificates are intentionally excluded.
+
+**Trigger to start:** when real share certificates start being received from registrars and the team needs to file them. Before then, manual filing in OneDrive folders is the workaround.
+
 ---
 
 *End of specification v3.3.*
