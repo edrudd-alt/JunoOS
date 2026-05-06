@@ -64,6 +64,44 @@ export async function confirmInvestment(
     actioned_by: userId,
   })
 
+  // Auto-create a draft invoice (skip if one already exists for this deal_investor)
+  const { data: existingInvoice } = await supabase
+    .from('invoices')
+    .select('id')
+    .eq('deal_investor_id', dealInvestorId)
+    .eq('status', 'draft')
+    .maybeSingle()
+
+  if (!existingInvoice) {
+    const [{ data: diRow }, { data: dealRow }] = await Promise.all([
+      supabase.from('deal_investors').select('client_id').eq('id', dealInvestorId).maybeSingle(),
+      supabase.from('deals').select('company_id').eq('id', dealId).maybeSingle(),
+    ])
+
+    if (diRow?.client_id) {
+      const dueDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      await supabase.from('invoices').insert({
+        deal_id: dealId,
+        client_id: diRow.client_id,
+        company_id: (dealRow as Record<string, unknown> | null)?.company_id ?? null,
+        deal_investor_id: dealInvestorId,
+        investment_amount: confirmedAmount,
+        fee_percentage: feePct * 100,
+        fee_amount: confirmedAmount * feePct,
+        vat_amount: 0,
+        due_date: dueDate,
+        status: 'draft',
+      })
+      await supabase.from('deal_action_logs').insert({
+        deal_id: dealId,
+        deal_investor_id: dealInvestorId,
+        action_type: 'create_draft_invoice',
+        is_mock: false,
+        actioned_by: userId,
+      })
+    }
+  }
+
   return { error: null }
 }
 
