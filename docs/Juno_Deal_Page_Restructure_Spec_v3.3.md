@@ -1276,6 +1276,23 @@ For rolling closes specifically, the team can override the pre-fill and enter di
 
 **Trigger to start:** when rolling closes become common enough to feel the friction. Until then, repeated manual entry of the same date is acceptable.
 
+### 14.14 Share class onboarding workflow
+
+**[NEW IN v3.3]** When and how should share classes be set up for a portfolio company? The current platform has no enforced moment. Share classes can be created any time via the company record page, but there's no requirement to set them up before a deal is created or before investments are completed.
+
+This surfaced as a real issue during Stage 4b testing: the Cyclr test deal initially had no share class FK because Cyclr had no rows in `company_share_classes`. The deal record fell back to free-text (`deals.share_class = 'Ordinary'`) with a NULL `share_class_id`. When Mark complete fired and created the first `investments` row, that row also got a free-text label and NULL FK — creating fragile string-match-only linkage rather than the canonical FK relationship the schema is designed for. Manual cleanup was required to retroactively create the share class record and backfill both `deals.share_class_id` and `investments.share_class_id`.
+
+A robust workflow should probably enforce setup at one of three points:
+- **Pre-onboarding:** when a company is first added to JunoOS, all known share classes are required as part of the company setup wizard
+- **Pre-deal:** when a new deal is created, the wizard requires either picking an existing share class or creating a new one inline
+- **Pre-completion:** Mark complete blocks (or warns prominently) if the deal lacks a `share_class_id` FK
+
+Probably a hybrid — pre-onboarding for the typical case, pre-deal for new classes that emerge from a specific funding round, and pre-completion as a safety net.
+
+**Why it matters:** clean share class FK linkage is essential for valuation tracking (a single valuation update needs to know which share class it applies to — text matching is fragile, especially with class names like "Ordinary" that recur across many companies). It also matters for share-class-level analytics, EIS qualifying status validation, and any future work involving cap-table integrity.
+
+**Trigger to start:** when valuation tracking is being designed (Phase D Reports), since clean share class linkage is essential for that to work properly. Or earlier if a real portfolio company gets onboarded and data hygiene becomes important.
+
 ---
 
 *End of specification v3.3.*
