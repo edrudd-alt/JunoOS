@@ -8,6 +8,8 @@ import { DealInvestorFull, ClientFull, NomineeRow, getDisplayedStatus, ACTIVE_ST
 import BookbuildTab    from './BookbuildTab'
 import ClosingTab      from './ClosingTab'
 import CompletionTab   from './CompletionTab'
+import DocumentsTab    from './DocumentsTab'
+import type { DocumentRow } from './DocumentsTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,15 +77,15 @@ interface Props {
   allClients:    ClientFull[]
   nominees:      NomineeRow[]
   fundTypes:     FundTypeRow[]
-  documentCount: number
-  invoiceCount:  number
+  documents:    DocumentRow[]
+  invoiceCount: number
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
-  allClients, nominees, fundTypes, documentCount, invoiceCount,
+  allClients, nominees, fundTypes, documents, invoiceCount,
 }: Props) {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -363,7 +365,7 @@ export default function BuyDealPage({
           />
           <TabButton
             label="Documents"
-            badge={String(documentCount)}
+            badge={String(documents.filter(d => !d.superseded).length)}
             active={activeTab === 'documents'}
             onClick={() => handleTabClick('documents')}
           />
@@ -376,7 +378,7 @@ export default function BuyDealPage({
         </div>
 
         {/* Tab body */}
-        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' || activeTab === 'completion' ? 0 : '28px 24px' }}>
+        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' || activeTab === 'completion' || activeTab === 'documents' ? 0 : '28px 24px' }}>
           {activeTab === 'bookbuild' && (
             <BookbuildTab
               deal={deal}
@@ -408,9 +410,12 @@ export default function BuyDealPage({
             />
           )}
           {activeTab === 'documents' && (
-            <TabPlaceholder
-              title="Documents — Stage 5"
-              description="All deal documents with by-investor / by-type / by-date views and superseded filtering."
+            <DocumentsTab
+              deal={deal}
+              documents={documents}
+              dealInvestors={dealInvestors}
+              clientMap={clientMap}
+              onDataRefresh={() => router.refresh()}
             />
           )}
           {activeTab === 'invoices' && (
