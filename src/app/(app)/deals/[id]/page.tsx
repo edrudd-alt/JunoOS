@@ -53,7 +53,10 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .select('id, type, filename, version, superseded, superseded_at, superseded_reason, superseded_by_id, document_date, storage_url, client_id, deal_investor_id')
         .eq('deal_id', id)
         .order('document_date', { ascending: false }),
-      supabase.from('invoices').select('id').eq('deal_id', id),
+      supabase.from('invoices')
+        .select('id, deal_id, client_id, company_id, deal_investor_id, investment_amount, fee_percentage, fee_amount, vat_amount, due_date, issued_at, xero_invoice_id, xero_invoice_number, status, created_at')
+        .eq('deal_id', id)
+        .order('created_at'),
       // All clients in one shot — covers fund-type header, bookbuild table, and Add Investors modal
       supabase.from('clients')
         .select('id, full_name, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
@@ -73,7 +76,19 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           nominees={(buyNominees ?? []) as Parameters<typeof BuyDealPage>[0]['nominees']}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
           documents={(buyDocuments ?? []) as Parameters<typeof BuyDealPage>[0]['documents']}
-          invoiceCount={(buyInvoices ?? []).length}
+          invoices={(() => {
+            const diMap = new Map((buyDealInvestors ?? []).map(di => [di.id as string, di as Record<string, unknown>]))
+            const cMap  = new Map((buyAllClients  ?? []).map(c  => [c.id  as string, c  as Record<string, unknown>]))
+            return (buyInvoices ?? []).map(inv => {
+              const di        = inv.deal_investor_id ? diMap.get(inv.deal_investor_id as string) : null
+              const vehicleId = di?.investing_vehicle_id as string | null | undefined
+              return {
+                ...inv,
+                clientName:  (cMap.get(inv.client_id as string)?.full_name as string) ?? 'Unknown investor',
+                vehicleName: vehicleId ? ((cMap.get(vehicleId)?.full_name as string) ?? null) : null,
+              }
+            })
+          })() as Parameters<typeof BuyDealPage>[0]['invoices']}
         />
       </Suspense>
     )
