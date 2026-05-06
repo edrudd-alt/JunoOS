@@ -45,7 +45,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         ? supabase.from('company_share_classes').select('id, name').eq('company_id', rawDeal.company_id)
         : { data: [] },
       supabase.from('deal_investors')
-        .select('id, client_id, investing_vehicle_id, nominee_id, soft_circle_amount, confirmed_amount, shares, fee_pct, fee_overridden, fee_override_reason, fee_override_by, fee_override_at, fee_locked_at, poa_held, signing_status, lifecycle_status, updated_at, updated_by, created_at')
+        .select('id, client_id, investing_vehicle_id, nominee_id, soft_circle_amount, confirmed_amount, shares, fee_pct, fee_overridden, fee_override_reason, fee_override_by, fee_override_at, fee_locked_at, poa_held, signing_status, lifecycle_status, completion_checklist, updated_at, updated_by, created_at')
         .eq('deal_id', id)
         .order('created_at'),
       supabase.from('fund_types').select('id, name, exit_fee_default_pct'),

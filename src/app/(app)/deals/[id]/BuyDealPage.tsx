@@ -5,8 +5,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { formatCurrency, formatDate, getInitials } from '@/lib/utils'
 import EditDealModal from './EditDealModal'
 import { DealInvestorFull, ClientFull, NomineeRow, getDisplayedStatus, ACTIVE_STATUSES } from './dealUtils'
-import BookbuildTab from './BookbuildTab'
-import ClosingTab   from './ClosingTab'
+import BookbuildTab    from './BookbuildTab'
+import ClosingTab      from './ClosingTab'
+import CompletionTab   from './CompletionTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -375,7 +376,7 @@ export default function BuyDealPage({
         </div>
 
         {/* Tab body */}
-        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' ? 0 : '28px 24px' }}>
+        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' || activeTab === 'completion' ? 0 : '28px 24px' }}>
           {activeTab === 'bookbuild' && (
             <BookbuildTab
               deal={deal}
@@ -397,9 +398,13 @@ export default function BuyDealPage({
             />
           )}
           {activeTab === 'completion' && (
-            <TabPlaceholder
-              title="Completion — Stage 4"
-              description="Per-investor checklist for share certs, EIS certs, transaction statements, doc filing."
+            <CompletionTab
+              deal={deal}
+              dealInvestors={dealInvestors}
+              clientMap={clientMap}
+              allClients={allClients}
+              nominees={nominees}
+              onDataRefresh={() => router.refresh()}
             />
           )}
           {activeTab === 'documents' && (

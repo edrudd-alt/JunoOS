@@ -22,6 +22,7 @@ export interface DealInvestorFull {
   poa_held: boolean
   signing_status: string | null
   lifecycle_status: string
+  completion_checklist?: Record<string, unknown> | null
   updated_at: string
   updated_by: string | null
   created_at: string
