@@ -108,6 +108,7 @@ export default function DocumentsTab({
 
   // ── Menu state ────────────────────────────────────────────────────────────
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [menuPos,    setMenuPos]    = useState<{ x: number; y: number } | null>(null)
 
   // ── Modal: supersede ──────────────────────────────────────────────────────
   const [supersedeTarget,  setSupersedeTarget]  = useState<DocumentRow | null>(null)
@@ -188,6 +189,8 @@ export default function DocumentsTab({
     getDocMeta,
     openMenuId,
     setOpenMenuId,
+    menuPos,
+    setMenuPos,
     onSupersede: (doc: DocumentRow) => { setSupersedeTarget(doc); setSupersedeReason(''); setSupersedeError(null) },
     onReinstate: handleReinstate,
     onDelete:    (doc: DocumentRow) => setDeleteTarget(doc),
@@ -195,7 +198,7 @@ export default function DocumentsTab({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div onClick={() => openMenuId && setOpenMenuId(null)}>
+    <div onClick={() => { if (openMenuId) { setOpenMenuId(null); setMenuPos(null) } }}>
 
       {/* ── Toolbar ─────────────────────────────────────────────────────── */}
       <div style={{
@@ -417,6 +420,8 @@ interface SharedRowProps {
   getDocMeta:     (doc: DocumentRow) => DocMeta
   openMenuId:     string | null
   setOpenMenuId:  (id: string | null) => void
+  menuPos:        { x: number; y: number } | null
+  setMenuPos:     (pos: { x: number; y: number } | null) => void
   onSupersede:    (doc: DocumentRow) => void
   onReinstate:    (doc: DocumentRow) => Promise<void>
   onDelete:       (doc: DocumentRow) => void
@@ -615,7 +620,7 @@ function SectionHeader({
 
 function DocRow({
   doc, showInvestor, showType, borderTop,
-  getDocMeta, openMenuId, setOpenMenuId,
+  getDocMeta, openMenuId, setOpenMenuId, menuPos, setMenuPos,
   onSupersede, onReinstate, onDelete,
 }: {
   doc: DocumentRow
@@ -687,9 +692,18 @@ function DocRow({
       </span>
 
       {/* ⋯ menu */}
-      <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div style={{ flexShrink: 0 }}>
         <button
-          onClick={e => { e.stopPropagation(); setOpenMenuId(isOpen ? null : doc.id) }}
+          onClick={e => {
+            e.stopPropagation()
+            if (isOpen) {
+              setOpenMenuId(null); setMenuPos(null)
+            } else {
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              setMenuPos({ x: rect.right, y: rect.bottom + 4 })
+              setOpenMenuId(doc.id)
+            }
+          }}
           style={{
             background: isOpen ? '#f0f0ec' : 'none', border: 'none', cursor: 'pointer',
             fontSize: 16, color: '#888', padding: '2px 6px', borderRadius: 4,
@@ -700,12 +714,15 @@ function DocRow({
           ⋯
         </button>
 
-        {isOpen && (
+        {isOpen && menuPos && (
           <div
             style={{
-              position: 'absolute', right: 0, top: '100%', zIndex: 200,
+              position: 'fixed',
+              left: Math.min(menuPos.x - 190, window.innerWidth - 190 - 8),
+              top: Math.min(menuPos.y, window.innerHeight - 160 - 8),
+              zIndex: 600,
               background: '#fff', border: '0.5px solid var(--card-border)',
-              borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+              borderRadius: 8, boxShadow: '0 4px 20px rgba(0,0,0,0.14)',
               minWidth: 190, overflow: 'hidden',
             }}
             onClick={e => e.stopPropagation()}
