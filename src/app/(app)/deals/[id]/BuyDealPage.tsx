@@ -9,7 +9,9 @@ import BookbuildTab    from './BookbuildTab'
 import ClosingTab      from './ClosingTab'
 import CompletionTab   from './CompletionTab'
 import DocumentsTab    from './DocumentsTab'
+import InvoicesTab     from './InvoicesTab'
 import type { DocumentRow } from './DocumentsTab'
+import type { InvoiceRow  } from './InvoicesTab'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,15 +79,15 @@ interface Props {
   allClients:    ClientFull[]
   nominees:      NomineeRow[]
   fundTypes:     FundTypeRow[]
-  documents:    DocumentRow[]
-  invoiceCount: number
+  documents: DocumentRow[]
+  invoices:  InvoiceRow[]
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
-  allClients, nominees, fundTypes, documents, invoiceCount,
+  allClients, nominees, fundTypes, documents, invoices,
 }: Props) {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -160,6 +162,7 @@ export default function BuyDealPage({
   const closingTotal     = dealInvestors.filter(di => ['signed', 'paid', 'complete'].includes(getDisplayedStatus(di))).length
   const completionActive = dealInvestors.filter(di => getDisplayedStatus(di) === 'paid').length
   const completionTotal  = dealInvestors.filter(di => ['paid', 'complete'].includes(getDisplayedStatus(di))).length
+  const invoiceDraftCount = invoices.filter(inv => inv.status === 'draft').length
 
   // ── Header derived values ─────────────────────────────────────────────────
   const constructedTitle = company
@@ -371,14 +374,14 @@ export default function BuyDealPage({
           />
           <TabButton
             label="Invoices"
-            badge={String(invoiceCount)}
+            badge={String(invoiceDraftCount)}
             active={activeTab === 'invoices'}
             onClick={() => handleTabClick('invoices')}
           />
         </div>
 
         {/* Tab body */}
-        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' || activeTab === 'completion' || activeTab === 'documents' ? 0 : '28px 24px' }}>
+        <div style={{ padding: activeTab === 'bookbuild' || activeTab === 'closing' || activeTab === 'completion' || activeTab === 'documents' || activeTab === 'invoices' ? 0 : '28px 24px' }}>
           {activeTab === 'bookbuild' && (
             <BookbuildTab
               deal={deal}
@@ -419,9 +422,10 @@ export default function BuyDealPage({
             />
           )}
           {activeTab === 'invoices' && (
-            <TabPlaceholder
-              title="Invoices — Stage 5"
-              description="Auto-drafted fee invoices, manual push to Xero, paid status."
+            <InvoicesTab
+              deal={deal}
+              invoices={invoices}
+              onDataRefresh={() => router.refresh()}
             />
           )}
         </div>
