@@ -49,7 +49,10 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .eq('deal_id', id)
         .order('created_at'),
       supabase.from('fund_types').select('id, name, exit_fee_default_pct'),
-      supabase.from('documents').select('id').eq('deal_id', id),
+      supabase.from('documents')
+        .select('id, type, filename, version, superseded, superseded_at, superseded_reason, superseded_by_id, document_date, storage_url, client_id, deal_investor_id')
+        .eq('deal_id', id)
+        .order('document_date', { ascending: false }),
       supabase.from('invoices').select('id').eq('deal_id', id),
       // All clients in one shot — covers fund-type header, bookbuild table, and Add Investors modal
       supabase.from('clients')
@@ -69,7 +72,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           allClients={(buyAllClients ?? []) as Parameters<typeof BuyDealPage>[0]['allClients']}
           nominees={(buyNominees ?? []) as Parameters<typeof BuyDealPage>[0]['nominees']}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
-          documentCount={(buyDocuments ?? []).length}
+          documents={(buyDocuments ?? []) as Parameters<typeof BuyDealPage>[0]['documents']}
           invoiceCount={(buyInvoices ?? []).length}
         />
       </Suspense>
