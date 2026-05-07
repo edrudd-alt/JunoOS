@@ -1312,4 +1312,40 @@ The current `documents` table cannot represent this: it has a single `client_id`
 
 ---
 
+## Note on Stage 6 — re-scoped 6 May 2026
+
+**[ADDED IN v3.3 LATE]** During Stage 5b's design conversation, the scope of Stage 6 was reconsidered.
+
+The original framing was "Edit-before-send modal" — a deal-page feature, scoped at 3-4 days, replacing the mocked Send application form action with a proper review/edit/send modal.
+
+The actual scope is much larger. Stage 6 is now framed as building **the platform's document generation infrastructure** — a reusable service that:
+
+- Generates real PDF documents from templates and entity data
+- Supports an optional "edit before send" review step (used by application forms; not used by transaction statements)
+- Supports an optional "send for signing" external integration (used by application forms; not used by transaction statements)
+- Is consumed by deal-page document needs (app forms, transaction statements) AND by upcoming client-section document needs (engagement letters, suitability assessments, KYC update letters, welcome packs) AND by future portfolio-section needs
+
+**Why the change:** the user (Ed) confirmed that client-section work begins within 2-3 weeks of Phase A finishing, so building deal-only document infrastructure now would require substantial rework when client section is built. Better to build the reusable layer once.
+
+**Realistic scope:** ~10-14 days of work. Splits naturally into:
+
+- **Stage 6a** — Document generation service infrastructure (template format, merge field syntax, storage, versioning, API surface, real PDF rendering)
+- **Stage 6b** — First consumer: application forms with Edit-before-send modal, custom_terms editing, save-as-draft, replacement of Stage 3b's existing Send mock
+- **Stage 6c** — Second consumer: transaction statements, generated from deal data with no editing required (reuses 6a infrastructure)
+- **Stage 6d** — Proof-of-concept for client-section consumers: 1-2 client-doc templates (e.g. engagement letter) demonstrating that the infrastructure works for non-deal documents
+
+**Open design questions to settle before build:**
+
+- Template format: React components (react-pdf), MJML, structured HTML, or a DSL?
+- Merge field syntax: `{{investor.name}}` style? JSX expressions? Other?
+- Template storage location: code (hard-coded), database (admin-editable), or hybrid?
+- Versioning model: when a template changes, what happens to documents already generated against the old version?
+- Data fetching contract: each template declares what data it needs? Or pass everything via a common shape?
+- API surface: how do consumers call into the service (`generateDocument(type, entityId, options)`?)?
+- How "edit" and "send for signing" layer on top: middleware? Hooks? Decorator pattern?
+
+**Status:** Design conversation paused 6 May 2026 with the architectural framing locked but specific design choices unresolved. Full design + prompt-writing scheduled for next session.
+
+---
+
 *End of specification v3.3.*
