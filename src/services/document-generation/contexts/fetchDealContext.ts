@@ -24,7 +24,7 @@ export async function fetchDealContext(
     { data: dealRow,   error: dealError      },
   ] = await Promise.all([
     supabase.from('clients').select('id, full_name').in('id', clientIds),
-    supabase.from('deals').select('id, deal_id, title, company_id, share_price, share_class, eis_qualifying, completion_date').eq('id', di.deal_id).single(),
+    supabase.from('deals').select('id, title, company_id, share_price, share_class, eis_qualifying, investment_date').eq('id', di.deal_id).single(),
   ])
 
   if (dealError || !dealRow) {
@@ -56,7 +56,7 @@ export async function fetchDealContext(
       share_price: dealRow.share_price ?? null,
       share_class: dealRow.share_class ?? null,
       eis_qualifying: dealRow.eis_qualifying ?? null,
-      completion_date: dealRow.completion_date ?? null,
+      completion_date: dealRow.investment_date ?? null,
     },
     investor: {
       client_id: di.client_id,
