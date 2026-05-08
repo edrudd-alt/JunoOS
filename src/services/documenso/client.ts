@@ -14,6 +14,9 @@ export interface CreateEnvelopeOptions {
   pdfBuffer: Buffer
   recipient: DocumensoRecipient
   ccs?: DocumensoRecipient[]
+  /** Our Supabase document UUID — stored as externalId so the webhook handler
+   *  can look up the document row without relying on the Documenso numeric ID. */
+  externalId?: string
 }
 
 export interface DocumensoEnvelope {
@@ -28,6 +31,7 @@ export async function createEnvelope({
   pdfBuffer,
   recipient,
   ccs = [],
+  externalId,
 }: CreateEnvelopeOptions): Promise<DocumensoEnvelope> {
   const client = getClient()
 
@@ -38,6 +42,7 @@ export async function createEnvelope({
     },
     payload: {
       title,
+      externalId,
       meta: {
         distributionMethod: 'EMAIL',
       },
