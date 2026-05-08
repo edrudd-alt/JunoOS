@@ -10,6 +10,7 @@
     "test:docgen": "npx tsx --env-file=.env.local scripts/test-document-generation.ts"
   },
   "dependencies": {
+    "@documenso/sdk-typescript": "^0.8.0",
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.10.0",
     "@supabase/supabase-js": "^2.101.1",
