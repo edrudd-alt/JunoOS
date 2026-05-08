@@ -1,11 +1,15 @@
-# Juno OS — Deal Page Restructure Specification (v3.3)
+# Juno OS — Deal Page Restructure Specification (v3.4)
 
-**Version:** 3.3
-**Date:** 3 May 2026
-**Status:** Buildable — Stages 1, 2a–c, 3a, 3a.1, 3b, 4a complete and merged to main
-**Supersedes:** v1, v2, v3, v3.1, v3.2
+**Version:** 3.4
+**Date:** 7 May 2026
+**Status:** Buildable — Stages 1-5 complete and merged. Stage 6a complete. Stage 6b designed, awaiting application form template content + Documenso API key before build.
+**Supersedes:** v1, v2, v3, v3.1, v3.2, v3.3
 
-**What's new in v3.3:**
+**What's new in v3.4:**
+
+Substantial cleanup of the document generation story. Section 5 ("Edit-before-send modal") fully rewritten as **Review-before-send modal** — application form content is now fully data-derived with no per-investor editorial fields, the modal contains an inline PDF preview + recipient email + CC list only, and the flow uses real Documenso integration with synchronous send and full rollback on failure. POA-held investments deliberately go through the same Documenso flow because Juno's POAs are scoped to managing existing investments, not signing new application forms — clients always sign their own. Bank details fields added to `companies` and `nominees` tables (5 fields each) so application forms can include the recipient bank account, conditionally selected based on whether the investment is held directly or via a nominee. The trailing "Note on Stage 6 — re-scoped 6 May 2026" placeholder replaced with a proper Stage 6 architectural design section reflecting all decisions settled through the design conversation. Future Work item 14.2 (Application form PDF generation) marked CLOSED — the work is happening in Stage 6b. Stage 6a's actual built behaviour documented for reference.
+
+**What was new in v3.3:**
 
 Section 6 (Closing tab) and Section 7 (Completion tab) substantially rewritten to reflect Stage 4a's actual built behaviour and the agreed Stage 4b design. Key additions: the **bookbuild auto-lock derivation** (Section 6.3) — a computed-on-read state that locks Bookbuild when all non-declined investors are signed-or-beyond; the **"+ Add late addition" override** (Section 6.9) for the rare post-lock investor addition; the **5-item completion checklist with EIS auto-disable** (Section 7.3); the **Mark complete modal with manual `investment_date` and `completion_date` entry** (Section 7.5) — distinct legal dates that are usually the same for single-close rounds but differ for rolling closes; the **manual "Close the deal" action** (Section 7.8) at the deal level once all investors are complete. Section 6's "Mark payment received" updated to confirmation modal (single click → confirm → state change + audit log immediate, no 5-second undo). New Future Work item 14.13 (rolling-close UX). Note: payment reconciliation is deliberately out of scope permanently — JunoOS does not capture bank references or payment dates beyond the team's manual confirmation.
 
@@ -493,88 +497,101 @@ Fee value shown only on confirmed rows. Other rows show "—" in light grey.
 
 ---
 
-## 5. Edit-before-send modal
+## 5. Review-before-send modal
+
+**[REWRITTEN IN v3.4]** This section was originally titled "Edit-before-send modal" and described an editable design with free-text fields and Outlook email integration. That framing was reconsidered during Stage 6 design (7 May 2026) and replaced with a simpler model. The application form's content is fully derived from data — there are no per-investor editorial fields — so the modal is now a **review-and-send** modal, not an edit modal. Real PDF generation, real Documenso signing integration, and real webhook-driven status tracking are built in Stage 6b (see Section 11 for the architectural design and Section 14.2's removal note for context).
 
 ### 5.1 When it appears
 
-Opens whenever the user clicks any "Send [document]" Next-step button:
-- "Send application form →" (Bookbuild)
-- "Generate transaction statement →" (Completion)
+Opens whenever the user clicks any "Send application form" action:
+- Next-step button on a Bookbuild row whose status is `confirmed`
+- Equivalent action from the row "⋯" menu
+- "Re-issue application form" action on a previously-sent row
 
-Does NOT appear for chaser actions — those go straight to email-draft mock-toast pattern.
+Does NOT appear for the transaction statement flow (Section 7) or for chaser actions — those produce documents/emails without a review step.
 
-### 5.2 Three sub-tabs
+### 5.2 Modal structure
 
-- **Preview** (default) — read-only document view. **In v1, this is a placeholder** showing "PDF generation pending — Section 14.2. Currently using PandaDoc workflow externally." When PDF generation is built, this tab shows actual rendered PDFs.
-- **Edit** — split panel: locked structured fields (top) + editable free-text sections (below)
-- **Email** — draft email shown as it'll appear in Outlook
+A single-pane modal (no sub-tabs). Layout from top to bottom:
 
-### 5.3 Locked structured fields
+1. **PDF preview** — inline rendered preview of the auto-generated application form using PDF.js or a comparable browser-side renderer. The preview reflects exactly what the investor will receive. Approximately 60% of the modal's vertical space.
+2. **Recipient field** — single email address, pre-filled from `clients.email`, editable. The team can correct an out-of-date email or override for unusual cases.
+3. **CC field** — multi-input (chips/pills) for additional email addresses, empty by default. Useful for adding the investor's accountant, advisor, or assistant.
+4. **Footer actions** — Cancel (secondary) and "Send for signing" (primary, green).
 
-From the deal record, **cannot be edited within the modal**:
-- Investor name (from `clients.full_name`)
-- Email address (from `clients.email`)
-- Company (from `companies.name`)
-- Investment amount (from `deal_investors.confirmed_amount`)
-- Share class & share price (from `company_share_classes` + `deals.share_price`)
-- Number of shares (from `deal_investors.shares`)
-- Fee % and fee £ amount (from `deal_investors.fee_pct`)
-- EIS qualifying status (from `deals.eis_qualifying`)
-- Signing method (POA / direct — from `deal_investors.poa_held`)
+There are no editable text fields beyond recipient and CC. Custom_terms, free-text clauses, and editable email body are explicitly NOT part of this design — see Section 11.2 for the rationale.
 
-If wrong, click "Fix in deal record" — opens Edit deal details modal.
+### 5.3 What "Send for signing" does
 
-### 5.4 Editable free-text sections
+The primary button executes a synchronous flow (Section 11.4 has the full architectural detail):
 
-Bespoke per-deal, edit freely on the document:
-- Cover paragraph (default templated, editable)
-- Special clauses (optional, free text)
-- Signature block wording (default templated, editable)
+1. Generate the PDF via the document generation service (Section 11)
+2. Upload the PDF to Supabase Storage in the documents bucket (private)
+3. Create a `documents` row with `template_version='applicationForm@x.y.z'`, `signing_status='pending'`, `recipient_email`, `cc_emails`
+4. Create a Documenso signing envelope addressed to the recipient + CCs
+5. Store the Documenso `envelope_id` on the document row
+6. Update `deal_investors.lifecycle_status='app_form_sent'`
+7. Write an audit log entry
+8. Show a success toast and close the modal
 
-Free-text edits do NOT backflow to the database.
+If any step fails, the entire flow rolls back atomically — no document, no row, no envelope, no lifecycle change. The modal stays open with an error message and the user can retry.
 
-### 5.5 Email tab
+### 5.4 Lifecycle and signing state
 
-Shows the email that'll be drafted in the user's Outlook:
-- From: user's mailbox (read-only)
-- To: investor's email (read-only — from deal data)
-- Subject: editable (defaults to a template based on document type)
-- Body: editable (defaults to a template referencing the Documenso signing link placeholder)
+The lifecycle ladder for a deal_investor is unchanged: `confirmed → app_form_sent → signed → paid → complete`. The new architectural piece is **`documents.signing_status`** which tracks the granular signing state independently:
 
-### 5.6 KYC informational reminder
+- `pending` — sent to Documenso, awaiting investor signature
+- `signed` — investor has signed (set by webhook handler, Section 11.6)
+- `declined` — investor declined to sign (rare)
+- `cancelled` — envelope cancelled (e.g. document re-issued)
 
-When the modal opens and the investor's KYC is `outstanding` or `renewal_due`, an amber callout at the top of the modal body:
+When the webhook fires `envelope.signed`, JunoOS:
+- Updates the document row's `signing_status='signed'` and downloads the signed PDF
+- Updates `deal_investors.lifecycle_status='signed'`
+- Audit log entry
 
-> ⚠ **KYC outstanding** — Consider sending a KYC request alongside the application form. KYC handling is currently outside JunoOS (see your normal process).
+`deal_investors.lifecycle_status='app_form_sent'` therefore means "Documenso envelope created, awaiting signature." `lifecycle_status='signed'` means "investor signed; document is final."
+
+### 5.5 KYC informational reminder
+
+When the modal opens and the investor's KYC is `outstanding` or `renewal_due`, an amber callout appears above the recipient field:
+
+> ⚠ **KYC outstanding** — Consider sending a KYC request alongside the application form. KYC handling is currently outside JunoOS (see Future Work 14.4).
 
 Does NOT block sending. Informational only.
 
-### 5.7 Modal footer
+### 5.6 Re-issue
 
-- Footer note (left): "🔒 Sending will lock the fee on this document. Subsequent fee changes will prompt re-issue."
-- Cancel button (secondary)
-- Primary action button — text: "Draft email + create signing link" (green)
+If a deal_investor row needs the application form re-sent (fee changed, typo, investor request), the team uses the existing row "⋯" menu's re-issue action:
 
-In v1 the primary button shows a toast (Section 11) — does not call M365 or Documenso APIs. Action logged in `deal_action_logs` with `is_mock = true`.
+1. The previous document is marked `superseded=TRUE`
+2. The Documenso envelope from the old document is cancelled (if Documenso supports this; otherwise left to expire)
+3. A new PDF is generated with current data
+4. A new Documenso envelope is created and sent
+5. Investor receives a new email with the new envelope link
+6. The old document remains in the documents tab as a superseded version
 
-### 5.8 Document versioning
+The old signed PDF (if signed) is preserved unchanged — the audit trail captures both versions.
 
-- Drafts overwrite each other while user is iterating
-- When user clicks the primary button, draft is locked, given version suffix (`_v1.pdf`), saved to documents store with `documents.version = 1` and `documents.deal_investor_id` set
-- Re-issues create new version (`_v2.pdf`) and mark previous as superseded (`documents.superseded = TRUE`, `superseded_by_id` pointing to new row)
+### 5.7 Bank details requirement
 
-### 5.9 Field changes after sending
+The application form template includes the recipient bank details (where investors send funds — see Section 11.5 for how this is selected based on direct vs nominee-held investments). If the relevant bank details are missing, the modal blocks sending with an error:
 
-If a structured field changes after sending, system shows a modal:
+> ⛔ **Bank details required.** Cyclr's bank details have not been added. Investors won't know where to send funds. Please add bank details in the company record before sending.
 
-> "The application form for [investor] was sent on [date] with [field]: [old value]. The new value is [new value]. What do you want to do?"
->
-> Options:
-> - Re-issue: regenerate, send again (creates new version, marks old superseded)
-> - Don't re-issue: keep old document as-is
-> - Mark old as accepted: keep old, treat change as future-only
+The "Send for signing" button is disabled until the relevant bank record (companies or nominees) has the required fields populated.
 
-Mandatory modal — system never auto-decides.
+### 5.8 POA-held investments
+
+POAs at Juno are deliberately scoped to **managing existing investments** and do NOT extend to **signing new application forms**. Clients always sign their own application forms. POA-held investments therefore go through Documenso normally — the investor receives the email and signs.
+
+This is intentional: it preserves client comfort that Juno's authority is sensibly restricted, and ensures clients are always involved in the initial commitment to a new investment.
+
+### 5.9 Documenso configuration
+
+JunoOS connects to Documenso via API key stored as a server-side environment variable (`DOCUMENSO_API_KEY`). The webhook URL is registered in Documenso pointing at `/api/webhooks/documenso`. Webhook signatures are validated.
+
+Free tier limitations should be reviewed before substantial use (envelope volume, branding on signing emails). See Section 11.7 for operational notes.
 
 ---
 
@@ -1197,13 +1214,16 @@ The sell deal table should have similar three-column structure for the seller id
 
 **[NEW IN v3]** Note: 16 sell deals exist as test data. Both routes will coexist immediately.
 
-### 14.2 Application form PDF generation
+### 14.2 Application form PDF generation — CLOSED, MOVED TO STAGE 6b
 
-Currently handled via PandaDoc (external). PandaDoc costs are too high. Future project:
-- Design templates with structured fields and free-text sections
-- Subject template language to legal review
-- Implement PDF generation (likely jsPDF, given existing infrastructure)
-- Update Section 5.2 Preview tab to show actual rendered PDFs
+**[CLOSED IN v3.4 — 7 May 2026]** This was originally a Future Work item describing the eventual replacement of PandaDoc with in-house PDF generation. Now superseded:
+
+- Stage 6a (merged 7 May 2026) built the document generation infrastructure (React-pdf, per-domain context fetcher, immutable PDFs in private Supabase Storage, template versioning).
+- Stage 6b (designed 7 May 2026; awaiting build) implements the real application form template, the Review-before-send modal (Section 5), and Documenso integration for e-signature.
+
+The architectural pattern is documented in Section 11 (Document Generation Architecture). Legal review of the template content remains a pre-build dependency for Stage 6b — Ed is locating the existing application form template as the basis for the React-pdf component.
+
+This entry is retained as a CLOSED Future Work item rather than removed entirely, so that future readers can trace how the design evolved.
 
 **Trigger to start:** when deal page is live and stable.
 
@@ -1312,40 +1332,113 @@ The current `documents` table cannot represent this: it has a single `client_id`
 
 ---
 
-## Note on Stage 6 — re-scoped 6 May 2026
+## Stage 6 — Document Generation Architecture (settled 7 May 2026)
 
-**[ADDED IN v3.3 LATE]** During Stage 5b's design conversation, the scope of Stage 6 was reconsidered.
+**[REWRITTEN IN v3.4]** This section captures the architectural design for the platform's document generation system. Originally framed as a deal-page-only "Edit-before-send modal" feature, Stage 6 was re-scoped on 6 May 2026 to be reusable infrastructure consumed by deal, client, and portfolio sections. Stage 6a (the service layer) merged 7 May 2026. Stage 6b (application forms — first real consumer) is designed and awaits build. Stage 6c (transaction statements) and Stage 6d (client-section proof-of-concept) follow.
 
-The original framing was "Edit-before-send modal" — a deal-page feature, scoped at 3-4 days, replacing the mocked Send application form action with a proper review/edit/send modal.
+### Stage 6 build series
 
-The actual scope is much larger. Stage 6 is now framed as building **the platform's document generation infrastructure** — a reusable service that:
+| Stage | Scope | Status |
+|---|---|---|
+| **6a** | Service infrastructure: React-pdf, per-domain context, immutable PDFs in private Supabase Storage, template versioning, type-safe API. | **Merged 7 May 2026** |
+| **6b** | Application form: real template, Review-before-send modal (Section 5), Documenso integration, webhook handler. | **Designed 7 May 2026; awaiting build.** Pre-build dependencies: actual application form template content (Ed locating); Documenso API key (Ed has free tier account; key obtainable). |
+| **6c** | Transaction statement: real template, generation-only flow (no edit, no signing), wired into Mark complete in Completion tab. | Not yet designed. |
+| **6d** | Client-section proof-of-concept: 1-2 client-domain document templates (e.g. engagement letter, welcome pack) demonstrating the infrastructure works for non-deal entities. | Not yet designed. |
 
-- Generates real PDF documents from templates and entity data
-- Supports an optional "edit before send" review step (used by application forms; not used by transaction statements)
-- Supports an optional "send for signing" external integration (used by application forms; not used by transaction statements)
-- Is consumed by deal-page document needs (app forms, transaction statements) AND by upcoming client-section document needs (engagement letters, suitability assessments, KYC update letters, welcome packs) AND by future portfolio-section needs
+### Stage 6a — what was built (reference)
 
-**Why the change:** the user (Ed) confirmed that client-section work begins within 2-3 weeks of Phase A finishing, so building deal-only document infrastructure now would require substantial rework when client section is built. Better to build the reusable layer once.
+The document generation service lives at `/src/services/document-generation/`. Its public API:
 
-**Realistic scope:** ~10-14 days of work. Splits naturally into:
+```typescript
+async function generateDocument<T extends TemplateId>(
+  templateId: T,
+  context: ContextFor<T>,
+  options?: GenerationOptions
+): Promise<GenerationResult>
+```
 
-- **Stage 6a** — Document generation service infrastructure (template format, merge field syntax, storage, versioning, API surface, real PDF rendering)
-- **Stage 6b** — First consumer: application forms with Edit-before-send modal, custom_terms editing, save-as-draft, replacement of Stage 3b's existing Send mock
-- **Stage 6c** — Second consumer: transaction statements, generated from deal data with no editing required (reuses 6a infrastructure)
-- **Stage 6d** — Proof-of-concept for client-section consumers: 1-2 client-doc templates (e.g. engagement letter) demonstrating that the infrastructure works for non-deal documents
+Internally:
+1. Looks up the template in `templateRegistry`
+2. Fetches the appropriate domain context (currently only `DealDocumentContext` is implemented; client/portfolio contexts deferred to 6d onwards)
+3. Renders the React-pdf template component to a PDF buffer
+4. Uploads to the private `documents` bucket in Supabase Storage at `deals/{deal_id}/{filename}.pdf`
+5. Inserts a `documents` row with `template_version='templateId@x.y.z'`, `version=1`, `superseded=false`
+6. Returns `{ documentId, storageUrl, templateVersion, pdfBuffer }`
 
-**Open design questions to settle before build:**
+Key design decisions locked in 6a:
+- **Template format:** React components using `@react-pdf/renderer` — `.tsx` files in `/src/services/document-generation/templates/`
+- **Merge fields:** Standard JSX expressions (no separate templating language)
+- **Storage:** Code-only. Templates committed to repo; changes via Git + code review + deploy. No admin UI for editing templates.
+- **Versioning:** Documents are immutable PDFs once generated. Old documents NEVER regenerate when a template changes. New template version produces new documents; old documents reflect what was sent at the time.
+- **Data fetching:** Per-domain contexts. Each template declares which context it needs; service fetches the whole context once (DealDocumentContext, ClientDocumentContext, etc.).
+- **Migration applied (Stage 6a):** `documents.template_version TEXT NULL`
+- **Storage policies (Stage 6a):** Bucket changed from public to private; permissive policies removed; replaced with strict authenticated-only read and upload policies scoped to the documents bucket.
 
-- Template format: React components (react-pdf), MJML, structured HTML, or a DSL?
-- Merge field syntax: `{{investor.name}}` style? JSX expressions? Other?
-- Template storage location: code (hard-coded), database (admin-editable), or hybrid?
-- Versioning model: when a template changes, what happens to documents already generated against the old version?
-- Data fetching contract: each template declares what data it needs? Or pass everything via a common shape?
-- API surface: how do consumers call into the service (`generateDocument(type, entityId, options)`?)?
-- How "edit" and "send for signing" layer on top: middleware? Hooks? Decorator pattern?
+### Stage 6b — design summary (build pending)
 
-**Status:** Design conversation paused 6 May 2026 with the architectural framing locked but specific design choices unresolved. Full design + prompt-writing scheduled for next session.
+The first real consumer of the infrastructure. Replaces Stage 3b's "Send application form" mock button with a real flow.
+
+**Flow:**
+
+1. User clicks "Send application form" on a Bookbuild row
+2. The Review-before-send modal opens (Section 5)
+3. PDF preview rendered inline
+4. User reviews recipient email (pre-filled from `clients.email`, editable) and CC list (empty by default)
+5. User clicks "Send for signing"
+6. Synchronous flow (full rollback on any failure):
+   - Generate PDF via `generateDocument('applicationForm', { dealInvestorId })`
+   - Upload to Storage; create `documents` row with `signing_status='pending'`, `recipient_email`, `cc_emails`
+   - Create Documenso envelope addressed to recipient + CCs; store `documenso_envelope_id` on the document row
+   - Update `deal_investors.lifecycle_status='app_form_sent'`
+   - Audit log entry
+7. Documenso emails the investor; investor signs; Documenso fires webhook
+8. JunoOS webhook handler updates `documents.signing_status='signed'`, downloads signed PDF, updates `deal_investors.lifecycle_status='signed'`, audit log
+
+**Key design decisions for 6b:**
+
+- **No editable content per investor.** Application forms are fully derived from data. Per-investor variation comes from existing data fields (e.g. `deal_investors.fee_pct` for fee overrides), not from edit-before-send custom fields.
+- **Modal is review-only.** PDF preview + recipient email + CC list. No editable text fields beyond email addresses.
+- **POA does not extend to app form signing.** POAs at Juno are scoped to managing existing investments, not creating new ones. Clients always sign their own application forms via Documenso, including for POA-held investments.
+- **Documenso for e-signature.** Free tier signed up; integration via API key + webhook. JunoOS does not counter-sign — investor signs alone.
+- **Bank details on application form.** The template includes the recipient bank account where investors send funds. Selected conditionally based on `deal_investors.nominee_id`:
+  - If `nominee_id IS NULL` (Direct): use `companies.bank_*`
+  - If `nominee_id IS NOT NULL` (via nominee): use `nominees.bank_*`
+- **Bank details required.** Sending is blocked if the relevant bank details (companies or nominees) aren't populated. UI surfaces an explicit error: "[Company name]'s bank details have not been added. Please add bank details in the company record before sending."
+- **Reference format:** Hard-coded as `JUNO-{client_surname}` in the template (where `client_surname` is the human's surname, even for vehicle-held investments). Juno-wide convention, not per-company. No data field for this.
+- **Synchronous send with full rollback.** If Documenso API fails, no document, no row, no envelope, no lifecycle change. Modal stays open for retry.
+- **Re-issue:** Existing row "⋯" menu re-issue action. Old document marked `superseded=TRUE`, old Documenso envelope cancelled (if API supports), new PDF generated, new envelope created, investor receives new email.
+
+**Pre-build migrations (Stage 6b):**
+
+```sql
+-- Applied 7 May 2026: bank details on companies and nominees
+ALTER TABLE companies ADD COLUMN bank_account_name TEXT, ADD COLUMN bank_sort_code TEXT, ADD COLUMN bank_account_number TEXT, ADD COLUMN bank_iban TEXT, ADD COLUMN bank_swift_bic TEXT;
+ALTER TABLE nominees ADD COLUMN bank_account_name TEXT, ADD COLUMN bank_sort_code TEXT, ADD COLUMN bank_account_number TEXT, ADD COLUMN bank_iban TEXT, ADD COLUMN bank_swift_bic TEXT;
+
+-- Pending (Stage 6b prompt): document signing fields
+ALTER TABLE documents ADD COLUMN signing_status TEXT, ADD COLUMN documenso_envelope_id TEXT, ADD COLUMN recipient_email TEXT, ADD COLUMN cc_emails TEXT[];
+```
+
+**Pre-build content dependency:** the actual application form template (React-pdf component) requires Ed's existing application form content as the basis. Without it, the legal and structural content has to be invented, which is wrong for a regulated document. Stage 6b prompt-writing waits on this.
+
+### Stage 6c — transaction statement (not yet designed)
+
+Smaller scope than 6b. Transaction statements are pure data renderings — no editing, no signing, no email send (initially). Generated when an investor reaches `complete` status in the Completion tab. Reuses Stage 6a infrastructure with a new template.
+
+Design conversation deferred until Stage 6b is shipped or close to ship.
+
+### Stage 6d — client-section proof-of-concept (not yet designed)
+
+When client-section work begins, Stage 6d builds 1-2 client-domain document templates (e.g. engagement letter, welcome pack) to prove the infrastructure works for non-deal entities. Will require building a `ClientDocumentContext` and `fetchClientContext` alongside the templates.
+
+Trigger: client-section work scheduled within 2-3 weeks of Phase A completion.
+
+### Open items as of 7 May 2026
+
+- Documenso free tier limits not yet verified (envelope volume, branding on signing emails, webhook availability) — Ed to check before substantial use
+- Application form template content not yet located — Ed searching
+- Stage 6c and 6d full designs deferred
 
 ---
 
-*End of specification v3.3.*
+*End of specification v3.4.*
