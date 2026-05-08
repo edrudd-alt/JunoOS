@@ -1,4 +1,5 @@
 import { HelloWorldTemplate, helloWorldVersion } from './templates/helloWorld'
+import { ApplicationFormTemplate, applicationFormVersion } from './templates/applicationForm'
 import type { ContextDomain, TemplateId, DealDocumentContext } from './types'
 
 export interface RegistryEntry {
@@ -15,6 +16,11 @@ export const templateRegistry: Record<TemplateId, RegistryEntry> = {
     domain: 'deal',
     documentType: 'other',
   },
-  // Stage 6b: applicationForm: { component: ApplicationFormTemplate, version: ..., domain: 'deal', documentType: 'application_form' }
+  applicationForm: {
+    component: ApplicationFormTemplate,
+    version: applicationFormVersion,
+    domain: 'deal',
+    documentType: 'application_form',
+  },
   // Stage 6c: transactionStatement: { component: TransactionStatementTemplate, version: ..., domain: 'deal', documentType: 'transaction_statement' }
 }
