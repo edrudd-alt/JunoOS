@@ -16,6 +16,7 @@ import {
 import AddInvestorsModal        from './AddInvestorsModal'
 import ConfirmInvestmentModal, { BulkConfirmModal } from './ConfirmInvestmentModal'
 import SendApplicationFormModal  from './SendApplicationFormModal'
+import { retryDistributeAction }  from './applicationFormActions'
 import FeePopover                from './FeePopover'
 import RowMenuDropdown           from './RowMenuDropdown'
 import type { MenuAction }       from './RowMenuDropdown'
@@ -386,6 +387,9 @@ export default function BookbuildTab({
       case 'reissue_app_form':
         setSendAppFormDi({ dealInvestorId: di.id, isReissue: true })
         break
+      case 'retry_distribute':
+        handleRetryDistribute(di)
+        break
       case 'mark_signed':
         setSignatureDi(di)
         break
@@ -414,6 +418,13 @@ export default function BookbuildTab({
         handleMoveBack(di, 'complete', 'paid')
         break
     }
+  }
+
+  async function handleRetryDistribute(di: DealInvestorFull) {
+    const result = await retryDistributeAction(di.id)
+    if (result.error) { showError(result.error); return }
+    showToast('Application form sent — signing request emailed to investor.')
+    onDataRefresh()
   }
 
   async function handleBulkMarkPoa() {
@@ -934,6 +945,7 @@ export default function BookbuildTab({
       {rowMenu && (
         <RowMenuDropdown
           status={getDisplayedStatus(rowMenu.di)}
+          signingStatus={rowMenu.di.signing_status}
           clientId={rowMenu.di.client_id}
           hasConfirmedAmount={!!rowMenu.di.confirmed_amount}
           isPast={rowMenu.isPast}

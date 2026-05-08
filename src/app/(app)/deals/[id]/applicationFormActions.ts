@@ -4,6 +4,63 @@ import { createClient } from '@/lib/supabase/server'
 import { generateDocument } from '@/services/document-generation'
 import { createEnvelope, distributeEnvelope, cancelEnvelope } from '@/services/documenso/client'
 
+// ── Retry distribute ──────────────────────────────────────────────────────────
+
+export async function retryDistributeAction(
+  dealInvestorId: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('Not authenticated')
+
+    const { data: doc } = await supabase
+      .from('documents')
+      .select('id, deal_id, documenso_envelope_id')
+      .eq('deal_investor_id', dealInvestorId)
+      .eq('type', 'application_form')
+      .eq('signing_status', 'created_not_sent')
+      .eq('superseded', false)
+      .maybeSingle()
+
+    if (!doc?.documenso_envelope_id) {
+      throw new Error('No pending envelope found — the row may have already been resolved.')
+    }
+
+    await distributeEnvelope(parseInt(doc.documenso_envelope_id, 10))
+
+    const now = new Date().toISOString()
+    await supabase.from('documents')
+      .update({ signing_status: 'pending' })
+      .eq('id', doc.id)
+
+    await supabase.from('deal_investors').update({
+      signing_status: 'pending',
+      updated_at: now,
+      updated_by: user.id,
+    }).eq('id', dealInvestorId)
+
+    await supabase.from('deal_action_logs').insert({
+      deal_id: doc.deal_id,
+      deal_investor_id: dealInvestorId,
+      document_id: doc.id,
+      action_type: 'retry_distribute_app_form',
+      is_mock: false,
+      from_status: 'app_form_sent',
+      to_status: 'app_form_sent',
+      actioned_by: user.id,
+      metadata: { documenso_id: doc.documenso_envelope_id },
+    })
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
 // ── Preview ────────────────────────────────────────────────────────────────────
 
 export interface PreviewApplicationFormResult {

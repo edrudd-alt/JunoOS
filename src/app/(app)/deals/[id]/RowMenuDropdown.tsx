@@ -10,6 +10,7 @@ export type MenuAction =
   | { type: 'mark_confirmed' }
   | { type: 'send_app_form' }
   | { type: 'reissue_app_form' }
+  | { type: 'retry_distribute' }
   | { type: 'mark_signed' }
   | { type: 'move_back_to_soft_circled' }
   | { type: 'move_back_to_confirmed' }
@@ -23,6 +24,7 @@ export type MenuAction =
 
 interface Props {
   status: DisplayedStatus
+  signingStatus: string | null
   clientId: string
   hasConfirmedAmount: boolean
   isPast: boolean
@@ -42,7 +44,7 @@ interface MenuItem {
 }
 
 export default function RowMenuDropdown({
-  status, clientId, hasConfirmedAmount, isPast,
+  status, signingStatus, clientId, hasConfirmedAmount, isPast,
   x, y, onAction, onClose,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
@@ -125,7 +127,10 @@ export default function RowMenuDropdown({
     if (status === 'app_form_sent') {
       items.push(
         { label: 'Mark application form as signed (manual upload)', action: { type: 'mark_signed' }, dividerBefore: true },
-        { label: 'Re-issue application form', action: { type: 'reissue_app_form' } },
+        ...(signingStatus === 'created_not_sent'
+          ? [{ label: 'Retry send (distribute existing envelope)', action: { type: 'retry_distribute' } as MenuAction }]
+          : [{ label: 'Re-issue application form', action: { type: 'reissue_app_form' } as MenuAction }]
+        ),
         { label: 'Move back to confirmed (un-send)', action: { type: 'move_back_to_confirmed' } },
         { label: 'Move to declined', action: { type: 'decline' }, dividerBefore: true },
       )
