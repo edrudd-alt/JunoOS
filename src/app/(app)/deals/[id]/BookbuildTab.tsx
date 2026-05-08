@@ -1067,6 +1067,8 @@ function InvestorRow({
     ds === 'soft_circled'  ? { label: 'Confirm investment',       bg: '#fff',    color: '#0f2744' } :
     ds === 'confirmed'     ? { label: 'Send application form →',  bg: '#1d8c5e', color: '#fff'    } :
     ds === 'chase'         ? { label: 'Send chaser',              bg: '#b87b1a', color: '#fff'    } :
+    ds === 'app_form_sent' && di.signing_status === 'created_not_sent'
+                           ? { label: '⚠ Send not completed',    bg: 'none',    color: '#a32d2d', italic: true } :
     ds === 'app_form_sent' ? { label: 'Awaiting signature',       bg: 'none',    color: '#aaa', italic: true } :
     ds === 'declined'      ? { label: 'No action',                bg: 'none',    color: '#aaa', italic: true } :
     null

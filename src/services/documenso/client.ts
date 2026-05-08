@@ -80,6 +80,11 @@ export async function createEnvelope({
   }
 }
 
+export async function distributeEnvelope(documensoId: number): Promise<void> {
+  const client = getClient()
+  await client.documents.distribute({ documentId: documensoId })
+}
+
 export async function cancelEnvelope(documensoId: number): Promise<void> {
   const client = getClient()
   await client.documents.delete({ documentId: documensoId })

@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generateDocument } from '@/services/document-generation'
-import { createEnvelope, cancelEnvelope } from '@/services/documenso/client'
+import { createEnvelope, distributeEnvelope, cancelEnvelope } from '@/services/documenso/client'
 
 // ── Preview ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +62,49 @@ export async function sendApplicationFormAction({
 
     // Re-issue: supersede existing documents and cancel pending Documenso envelopes
     if (isReissue) {
+      // Retry path: if the previous send created the envelope but failed to distribute it,
+      // just distribute the existing DRAFT envelope rather than creating a new one.
+      const { data: failedDoc } = await supabase
+        .from('documents')
+        .select('id, deal_id, documenso_envelope_id')
+        .eq('deal_investor_id', dealInvestorId)
+        .eq('type', 'application_form')
+        .eq('signing_status', 'created_not_sent')
+        .eq('superseded', false)
+        .maybeSingle()
+
+      if (failedDoc?.documenso_envelope_id) {
+        const failedDocumensoId = parseInt(failedDoc.documenso_envelope_id, 10)
+        await distributeEnvelope(failedDocumensoId)
+        const now = new Date().toISOString()
+        await supabase.from('documents').update({
+          signing_status: 'pending',
+          recipient_email: recipientEmail,
+          cc_emails: ccEmails,
+        }).eq('id', failedDoc.id)
+        await supabase.from('deal_investors').update({
+          signing_status: null,
+          updated_at: now,
+          updated_by: user.id,
+        }).eq('id', dealInvestorId)
+        await supabase.from('deal_action_logs').insert({
+          deal_id: failedDoc.deal_id,
+          deal_investor_id: dealInvestorId,
+          document_id: failedDoc.id,
+          action_type: 'retry_distribute_app_form',
+          is_mock: false,
+          from_status: 'app_form_sent',
+          to_status: 'app_form_sent',
+          actioned_by: user.id,
+          metadata: {
+            documenso_id: failedDoc.documenso_envelope_id,
+            recipient_email: recipientEmail,
+            cc_emails: ccEmails,
+          },
+        })
+        return { success: true, documentId: failedDoc.id }
+      }
+
       const { data: existingDocs } = await supabase
         .from('documents')
         .select('id, documenso_envelope_id, signing_status')
@@ -103,7 +146,7 @@ export async function sendApplicationFormAction({
       cc_emails: ccEmails,
     }).eq('id', documentId)
 
-    // 3. Create Documenso envelope (sends to recipient via email immediately)
+    // 3. Create Documenso envelope (DRAFT — not yet sent)
     const envelope = await createEnvelope({
       title: `${genResult.context.deal.company_name} Application Form — ${investorDisplayName}`,
       pdfBuffer: genResult.pdfBuffer,
@@ -113,9 +156,19 @@ export async function sendApplicationFormAction({
     })
     documensoNumericId = envelope.documensoId
 
-    // 4. Store Documenso numeric ID (used for cancel/download API calls)
+    // 3b. Distribute (transitions DRAFT → PENDING and fires signing-request email)
+    let distributeError: string | null = null
+    try {
+      await distributeEnvelope(envelope.documensoId)
+    } catch (err) {
+      console.error('[send-app-form] distribute failed for envelope', envelope.documensoId, ':', err)
+      distributeError = `Envelope created in Documenso (id ${envelope.documensoId}) but the send step failed — the application form has not been emailed to the investor. Re-issue the form from the Bookbuild row to retry sending.`
+    }
+
+    // 4. Store Documenso numeric ID; mark created_not_sent if distribute failed
     await supabase.from('documents').update({
       documenso_envelope_id: envelope.documensoId.toString(),
+      ...(distributeError ? { signing_status: 'created_not_sent' } : {}),
     }).eq('id', documentId)
 
     // 5. Get current lifecycle status for audit log
@@ -126,13 +179,14 @@ export async function sendApplicationFormAction({
       .single()
     const fromStatus = diRow?.lifecycle_status ?? 'confirmed'
 
-    // 6. Advance lifecycle
+    // 6. Advance lifecycle (and flag deal_investors row if distribute failed)
     const now = new Date().toISOString()
     await supabase.from('deal_investors').update({
       lifecycle_status: 'app_form_sent',
       fee_locked_at: now,
       updated_at: now,
       updated_by: user.id,
+      ...(distributeError ? { signing_status: 'created_not_sent' } : {}),
     }).eq('id', dealInvestorId)
 
     // 7. Audit log
@@ -153,6 +207,9 @@ export async function sendApplicationFormAction({
       },
     })
 
+    if (distributeError) {
+      return { success: false, error: distributeError }
+    }
     return { success: true, documentId }
 
   } catch (error) {
