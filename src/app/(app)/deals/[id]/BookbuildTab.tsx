@@ -10,12 +10,13 @@ import {
   STATUS_SORT_ORDER, DisplayedStatus, isBookbuildLocked,
 } from './dealUtils'
 import {
-  sendChaser, sendApplicationForm, declineInvestor, removeFromDeal, moveBackwards,
+  sendChaser, declineInvestor, removeFromDeal, moveBackwards,
   markPoaHeld, bulkDeclineInvestors,
 } from './bookbuildActions'
 import AddInvestorsModal        from './AddInvestorsModal'
 import ConfirmInvestmentModal, { BulkConfirmModal } from './ConfirmInvestmentModal'
-import SendAppFormModal          from './SendAppFormModal'
+import SendApplicationFormModal  from './SendApplicationFormModal'
+import { retryDistributeAction }  from './applicationFormActions'
 import FeePopover                from './FeePopover'
 import RowMenuDropdown           from './RowMenuDropdown'
 import type { MenuAction }       from './RowMenuDropdown'
@@ -119,7 +120,7 @@ export default function BookbuildTab({
   // Modal states
   const [addModalOpen,    setAddModalOpen]    = useState(false)
   const [confirmDi,       setConfirmDi]       = useState<DealInvestorFull | null>(null)
-  const [sendAppFormDi,   setSendAppFormDi]   = useState<{ di: DealInvestorFull; isReissue: boolean } | null>(null)
+  const [sendAppFormDi,   setSendAppFormDi]   = useState<{ dealInvestorId: string; isReissue: boolean } | null>(null)
   const [feePopover,      setFeePopover]      = useState<{ di: DealInvestorFull; rect: DOMRect } | null>(null)
   const [rowMenu,         setRowMenu]         = useState<{ di: DealInvestorFull; x: number; y: number; isPast: boolean } | null>(null)
   const [editDi,          setEditDi]          = useState<DealInvestorFull | null>(null)
@@ -127,7 +128,6 @@ export default function BookbuildTab({
   const [confirmDialog,   setConfirmDialog]   = useState<ConfirmDialogState>(null)
   const [confirmDlgSaving, setConfirmDlgSaving] = useState(false)
   const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false)
-  const [bulkSendOpen,    setBulkSendOpen]    = useState(false)
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -229,7 +229,7 @@ export default function BookbuildTab({
     } else {
       const s = [...selectedStatuses][0]
       if (s === 'soft_circled') bulkPrimaryLabel = `Confirm investment (${selectedActive.length})`
-      else if (s === 'confirmed') bulkPrimaryLabel = `Send application form (${selectedActive.length})`
+      else if (s === 'confirmed') bulkPrimaryWarning = 'Send application form is per-investor only — use the row action button.'
       else if (s === 'chase') bulkPrimaryLabel = `Send chaser (${selectedActive.length})`
       else bulkPrimaryWarning = "Selected rows can't be bulk-progressed. Use individual row actions."
     }
@@ -382,10 +382,13 @@ export default function BookbuildTab({
         setConfirmDi(di)
         break
       case 'send_app_form':
-        setSendAppFormDi({ di, isReissue: false })
+        setSendAppFormDi({ dealInvestorId: di.id, isReissue: false })
         break
       case 'reissue_app_form':
-        setSendAppFormDi({ di, isReissue: true })
+        setSendAppFormDi({ dealInvestorId: di.id, isReissue: true })
+        break
+      case 'retry_distribute':
+        handleRetryDistribute(di)
         break
       case 'mark_signed':
         setSignatureDi(di)
@@ -415,6 +418,13 @@ export default function BookbuildTab({
         handleMoveBack(di, 'complete', 'paid')
         break
     }
+  }
+
+  async function handleRetryDistribute(di: DealInvestorFull) {
+    const result = await retryDistributeAction(di.id)
+    if (result.error) { showError(result.error); return }
+    showToast('Application form sent — signing request emailed to investor.')
+    onDataRefresh()
   }
 
   async function handleBulkMarkPoa() {
@@ -459,11 +469,6 @@ export default function BookbuildTab({
     showToast(`Chaser drafted for ${selectedActive.length} investor${selectedActive.length !== 1 ? 's' : ''} (Outlook integration coming soon). Timers reset.`)
     setSelectedIds(new Set())
     onDataRefresh()
-  }
-
-  async function handleBulkSendAppForm() {
-    const uid = requireUser(); if (!uid) return
-    setBulkSendOpen(true)
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -692,7 +697,7 @@ export default function BookbuildTab({
             onNextStep={di2 => {
               const ds = getDisplayedStatus(di2)
               if (ds === 'soft_circled') setConfirmDi(di2)
-              else if (ds === 'confirmed') setSendAppFormDi({ di: di2, isReissue: false })
+              else if (ds === 'confirmed') setSendAppFormDi({ dealInvestorId: di2.id, isReissue: false })
               else if (ds === 'chase') handleSendChaser(di2)
             }}
             readOnly={isReadOnly}
@@ -836,7 +841,6 @@ export default function BookbuildTab({
               onClick={() => {
                 const s = [...selectedStatuses][0]
                 if (s === 'soft_circled') setBulkConfirmOpen(true)
-                else if (s === 'confirmed') handleBulkSendAppForm()
                 else if (s === 'chase') handleBulkChaser()
               }}
               style={{
@@ -910,41 +914,18 @@ export default function BookbuildTab({
         />
       )}
 
-      {sendAppFormDi && userId && (
-        <SendAppFormModal
-          di={sendAppFormDi.di}
-          client={clientMap.get(sendAppFormDi.di.client_id) ?? null}
-          dealId={deal.id}
-          dealCompanyId={deal.company_id}
-          userId={userId}
+      {sendAppFormDi && (
+        <SendApplicationFormModal
+          dealInvestorId={sendAppFormDi.dealInvestorId}
           isReissue={sendAppFormDi.isReissue}
-          onSent={name => {
+          onSent={() => {
             setSendAppFormDi(null)
             showToast(sendAppFormDi.isReissue
-              ? `Application form re-issued for ${name}.`
-              : `Application form drafted (Outlook integration coming soon)`)
+              ? 'Application form re-issued.'
+              : 'Application form sent for signing.')
             onDataRefresh()
           }}
           onClose={() => setSendAppFormDi(null)}
-        />
-      )}
-
-      {bulkSendOpen && userId && (
-        <BulkSendAppFormConfirm
-          rows={selectedActive}
-          clientMap={clientMap}
-          dealId={deal.id}
-          dealCompanyId={deal.company_id}
-          userId={userId}
-          supabase={supabase}
-          onSent={count => {
-            setBulkSendOpen(false)
-            showToast(`Application forms drafted for ${count} investor${count !== 1 ? 's' : ''} (Outlook integration coming soon).`)
-            setSelectedIds(new Set())
-            onDataRefresh()
-          }}
-          onClose={() => setBulkSendOpen(false)}
-          onError={showError}
         />
       )}
 
@@ -964,6 +945,7 @@ export default function BookbuildTab({
       {rowMenu && (
         <RowMenuDropdown
           status={getDisplayedStatus(rowMenu.di)}
+          signingStatus={rowMenu.di.signing_status}
           clientId={rowMenu.di.client_id}
           hasConfirmedAmount={!!rowMenu.di.confirmed_amount}
           isPast={rowMenu.isPast}
@@ -1037,75 +1019,6 @@ export default function BookbuildTab({
   )
 }
 
-// ── Bulk send app form (inline) ───────────────────────────────────────────────
-
-function BulkSendAppFormConfirm({
-  rows, clientMap, dealId, dealCompanyId, userId, supabase,
-  onSent, onClose, onError,
-}: {
-  rows: DealInvestorFull[]
-  clientMap: Map<string, ClientFull>
-  dealId: string
-  dealCompanyId: string | null
-  userId: string
-  supabase: ReturnType<typeof createClient>
-  onSent: (count: number) => void
-  onClose: () => void
-  onError: (msg: string) => void
-}) {
-  const [saving, setSaving] = useState(false)
-
-  async function handleSend() {
-    setSaving(true)
-    for (const di of rows) {
-      const name = clientMap.get(di.client_id)?.full_name ?? 'Investor'
-      const result = await sendApplicationForm(supabase, dealId, di.id, dealCompanyId, di.client_id, name, userId)
-      if (result.error) { onError(result.error); setSaving(false); return }
-    }
-    setSaving(false)
-    onSent(rows.length)
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 400,
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 10, padding: '24px',
-        width: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-      }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#0f2744', marginBottom: 12 }}>
-          Send application form — {rows.length} investors
-        </div>
-        <div style={{ fontSize: 12, color: '#555', marginBottom: 16, lineHeight: 1.5 }}>
-          Send application form to{' '}
-          {rows.map(di => clientMap.get(di.client_id)?.full_name ?? 'Unknown').join(', ')}.
-          Their fees will be locked at the rates shown.
-        </div>
-        <div style={{ fontSize: 11, color: '#888', marginBottom: 20 }}>
-          🔒 Sending will lock the fee for each investor. Outlook integration coming soon.
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={onClose} className="btn btn-secondary" style={{ fontSize: 12 }} disabled={saving}>
-            Cancel
-          </button>
-          <button
-            onClick={handleSend} disabled={saving}
-            style={{
-              fontSize: 12, padding: '6px 16px', borderRadius: 6, border: 'none',
-              background: '#1d8c5e', color: '#fff', fontWeight: 600,
-              cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1,
-            }}
-          >
-            {saving ? 'Sending…' : `Send to ${rows.length} investors`}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function ColHeader({ label, align }: { label?: string; align?: 'left' | 'right' | 'center' }) {
@@ -1166,6 +1079,8 @@ function InvestorRow({
     ds === 'soft_circled'  ? { label: 'Confirm investment',       bg: '#fff',    color: '#0f2744' } :
     ds === 'confirmed'     ? { label: 'Send application form →',  bg: '#1d8c5e', color: '#fff'    } :
     ds === 'chase'         ? { label: 'Send chaser',              bg: '#b87b1a', color: '#fff'    } :
+    ds === 'app_form_sent' && di.signing_status === 'created_not_sent'
+                           ? { label: '⚠ Send not completed',    bg: 'none',    color: '#a32d2d', italic: true } :
     ds === 'app_form_sent' ? { label: 'Awaiting signature',       bg: 'none',    color: '#aaa', italic: true } :
     ds === 'declined'      ? { label: 'No action',                bg: 'none',    color: '#aaa', italic: true } :
     null

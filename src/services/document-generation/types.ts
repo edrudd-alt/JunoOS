@@ -1,7 +1,7 @@
 // ── Template identifiers ───────────────────────────────────────────────────────
 
-export type TemplateId = 'helloWorld'
-// Extended in later stages: | 'applicationForm' | 'transactionStatement' | ...
+export type TemplateId = 'helloWorld' | 'applicationForm' | 'applicationFormV1_1'
+// Extended in later stages: | 'transactionStatement' | ...
 
 export type ContextDomain = 'deal' | 'client' | 'portfolio'
 
@@ -14,6 +14,7 @@ export interface DealDocumentContext {
     company_name: string
     share_price: number | null
     share_class: string | null
+    share_class_name: string | null  // from company_share_classes.name via share_class_id
     eis_qualifying: string | null
     completion_date: string | null
   }
@@ -24,6 +25,11 @@ export interface DealDocumentContext {
     investing_vehicle_name: string | null
     nominee_id: string | null
     nominee_name: string | null
+    address_line1: string | null
+    address_line2: string | null
+    postcode: string | null
+    email: string | null
+    kyc_status: string | null
   }
   investment: {
     deal_investor_id: string
@@ -32,13 +38,24 @@ export interface DealDocumentContext {
     shares: number | null
     lifecycle_status: string
   }
+  /** Bank details for the account investors send funds to.
+   *  Source: companies.bank_* when nominee_id IS NULL (direct investment),
+   *          nominees.bank_*  when nominee_id IS NOT NULL (nominee-held). */
+  bankDetails: {
+    account_name: string | null
+    sort_code: string | null
+    account_number: string | null
+    iban: string | null
+    swift_bic: string | null
+  }
 }
 
 // ── Per-template input shapes ──────────────────────────────────────────────────
 
 export interface ContextMap {
   helloWorld: { dealInvestorId: string }
-  // Stage 6b: applicationForm: { dealInvestorId: string; customTerms?: string }
+  applicationForm: { dealInvestorId: string }
+  applicationFormV1_1: { dealInvestorId: string }
   // Stage 6c: transactionStatement: { dealInvestorId: string }
 }
 
@@ -47,6 +64,9 @@ export type ContextFor<T extends TemplateId> = ContextMap[T]
 // ── Generation options & result ────────────────────────────────────────────────
 
 export interface GenerationOptions {
+  /** When true, generates the PDF buffer without uploading or creating a documents row.
+   *  Used by the Review-before-send modal to render an inline preview. */
+  previewOnly?: boolean
   saveAsDraft?: boolean
 }
 
@@ -55,4 +75,5 @@ export interface GenerationResult {
   storageUrl: string
   templateVersion: string
   pdfBuffer: Buffer
+  context: DealDocumentContext
 }

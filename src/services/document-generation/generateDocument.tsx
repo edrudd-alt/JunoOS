@@ -31,6 +31,18 @@ export async function generateDocument<T extends TemplateId>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfBuffer = await renderToBuffer(element as any)
 
+  // Preview-only mode: return buffer + context without uploading or creating a row.
+  // Used by the Review-before-send modal for inline PDF preview.
+  if (options.previewOnly) {
+    return {
+      documentId: '',
+      storageUrl: '',
+      templateVersion: `${templateId}@${entry.version}`,
+      pdfBuffer,
+      context: domainContext,
+    }
+  }
+
   // 3. Build storage path (immutable — never overwrite existing documents)
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase()
   const filename = `${templateId}-${Date.now()}-${suffix}.pdf`
@@ -71,6 +83,7 @@ export async function generateDocument<T extends TemplateId>(
     storageUrl: storagePath,
     templateVersion,
     pdfBuffer,
+    context: domainContext,
   }
 }
 
