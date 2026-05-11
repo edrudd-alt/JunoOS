@@ -161,6 +161,7 @@ function Footer() {
       <Text style={styles.footerCenter}>Juno Capital Partners LLP</Text>
       <Text
         style={styles.footerRight}
+        fixed
         render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
       />
     </View>
