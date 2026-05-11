@@ -50,10 +50,10 @@ async function findDocumentByDocumensoId(
 }
 
 /**
- * Two-step document resolver with [WEBHOOK_DEBUG] logging.
+ * Two-step document resolver.
  * 1. Primary: externalId → documents.id
  * 2. Fallback: payload.id → documents.documenso_envelope_id
- * Returns null (and logs) if neither path finds a row.
+ * Returns null if neither path finds a row.
  */
 async function resolveDocumentFromPayload(
   supabase: ReturnType<typeof getServiceClient>,
@@ -64,17 +64,10 @@ async function resolveDocumentFromPayload(
   if (externalId) {
     try {
       const doc = await findDocumentByExternalId(supabase, externalId)
-      if (doc) {
-        console.warn('[WEBHOOK_DEBUG] document resolved via externalId', externalId, `→ found (id=${doc.id}, signing_status=${doc.signing_status})`)
-        return doc
-      }
-      console.warn('[WEBHOOK_DEBUG] externalId lookup returned 0 rows; falling back to documenso_envelope_id')
+      if (doc) return doc
     } catch (err) {
-      console.warn('[WEBHOOK_DEBUG] externalId lookup threw:', err instanceof Error ? err.message : err)
       throw err
     }
-  } else {
-    console.warn('[WEBHOOK_DEBUG] externalId absent; skipping primary lookup — trying documenso_envelope_id fallback')
   }
 
   // Fallback path: payload.id → documents.documenso_envelope_id
@@ -82,20 +75,12 @@ async function resolveDocumentFromPayload(
     const idStr = String(documensoPayloadId)
     try {
       const doc = await findDocumentByDocumensoId(supabase, idStr)
-      if (doc) {
-        console.warn('[WEBHOOK_DEBUG] document resolved via documenso_envelope_id fallback', idStr, `→ found (id=${doc.id}, signing_status=${doc.signing_status})`)
-        return doc
-      }
-      console.warn('[WEBHOOK_DEBUG] documenso_envelope_id fallback also returned 0 rows')
+      if (doc) return doc
     } catch (err) {
-      console.warn('[WEBHOOK_DEBUG] documenso_envelope_id fallback lookup threw:', err instanceof Error ? err.message : err)
       throw err
     }
-  } else {
-    console.warn('[WEBHOOK_DEBUG] documenso payload id also absent; cannot attempt fallback')
   }
 
-  console.warn('[WEBHOOK_DEBUG] no matching document found via externalId or documenso_envelope_id')
   return null
 }
 
@@ -104,62 +89,50 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
   const p = payload as DocumensoWebhookPayload
   const externalId = p.externalId
 
-  console.warn('[WEBHOOK_DEBUG] handleCompletedEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
-
   const supabase = getServiceClient()
   const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
   if (!doc) return
 
   // Download signed PDF from Documenso
   const documensoId = doc.documenso_envelope_id ? parseInt(doc.documenso_envelope_id, 10) : null
-  console.warn('[WEBHOOK_DEBUG] documenso_envelope_id on doc:', doc.documenso_envelope_id, '→ parsed int:', documensoId)
 
   let signedStorageUrl: string | null = null
 
   if (documensoId && !isNaN(documensoId)) {
     try {
       const signedPdfBuffer = await downloadSignedPdf(documensoId)
-      console.warn('[WEBHOOK_DEBUG] PDF download success; byte size:', signedPdfBuffer.length)
 
-      // Store signed PDF alongside original (new path, never overwrite)
       const signedPath = `deals/${doc.deal_id}/${doc.id}.signed.pdf`
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(signedPath, signedPdfBuffer, {
           contentType: 'application/pdf',
-          upsert: false,
+          upsert: true,
         })
 
       if (uploadError) {
-        console.warn('[WEBHOOK_DEBUG] storage upload FAILED:', uploadError.message)
         console.error('[documenso-webhook] signed PDF upload failed:', uploadError.message)
       } else {
-        console.warn('[WEBHOOK_DEBUG] storage upload success; path:', signedPath)
         signedStorageUrl = signedPath
       }
     } catch (err) {
-      console.warn('[WEBHOOK_DEBUG] PDF download/upload threw:', err instanceof Error ? err.message : err)
       console.error('[documenso-webhook] signed PDF download failed:', err)
     }
-  } else {
-    console.warn('[WEBHOOK_DEBUG] skipping PDF download: documensoId is', documensoId, '(null or NaN)')
   }
 
   // Update document row
-  const { data: docUpdateData, error: docUpdateError } = await supabase
+  await supabase
     .from('documents')
     .update({
       signing_status: 'signed',
       ...(signedStorageUrl ? { signed_storage_url: signedStorageUrl } : {}),
     })
     .eq('id', doc.id)
-    .select('id')
-  console.warn('[WEBHOOK_DEBUG] documents UPDATE rows affected:', docUpdateData?.length ?? 0, '| error:', docUpdateError?.message ?? 'none')
 
   // Advance deal_investor lifecycle to 'signed'
   if (doc.deal_investor_id) {
     const now = new Date().toISOString()
-    const { data: diUpdateData, error: diUpdateError } = await supabase
+    await supabase
       .from('deal_investors')
       .update({
         lifecycle_status: 'signed',
@@ -167,11 +140,9 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
         updated_at: now,
       })
       .eq('id', doc.deal_investor_id)
-      .select('id')
-    console.warn('[WEBHOOK_DEBUG] deal_investors UPDATE rows affected:', diUpdateData?.length ?? 0, '| error:', diUpdateError?.message ?? 'none')
 
     // Audit log
-    const { error: logError } = await supabase.from('deal_action_logs').insert({
+    await supabase.from('deal_action_logs').insert({
       deal_id: doc.deal_id,
       deal_investor_id: doc.deal_investor_id,
       document_id: doc.id,
@@ -188,9 +159,6 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
         attributed_to_owner: true,
       },
     })
-    console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
-  } else {
-    console.warn('[WEBHOOK_DEBUG] skipping deal_investors update: deal_investor_id is null')
   }
 }
 
@@ -199,29 +167,23 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
   const p = payload as DocumensoWebhookPayload
   const externalId = p.externalId
 
-  console.warn('[WEBHOOK_DEBUG] handleRejectedEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
-
   const supabase = getServiceClient()
   const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
   if (!doc) return
 
-  const { data: updateData, error: updateError } = await supabase
+  await supabase
     .from('documents')
     .update({ signing_status: 'declined' })
     .eq('id', doc.id)
-    .select('id')
-  console.warn('[WEBHOOK_DEBUG] documents UPDATE rows affected:', updateData?.length ?? 0, '| error:', updateError?.message ?? 'none')
 
   // Lifecycle stays at app_form_sent — team follows up manually
   if (doc.deal_investor_id) {
-    const { data: diUpdateData, error: diUpdateError } = await supabase
+    await supabase
       .from('deal_investors')
       .update({ signing_status: 'declined' })
       .eq('id', doc.deal_investor_id)
-      .select('id')
-    console.warn('[WEBHOOK_DEBUG] deal_investors UPDATE rows affected:', diUpdateData?.length ?? 0, '| error:', diUpdateError?.message ?? 'none')
 
-    const { error: logError } = await supabase.from('deal_action_logs').insert({
+    await supabase.from('deal_action_logs').insert({
       deal_id: doc.deal_id,
       deal_investor_id: doc.deal_investor_id,
       document_id: doc.id,
@@ -232,7 +194,6 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
       actioned_by: WEBHOOK_ACTOR_ID,
       metadata: { documenso_id: doc.documenso_envelope_id, source: 'documenso_webhook', attributed_to_owner: true },
     })
-    console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
   }
 }
 
@@ -241,28 +202,22 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
   const p = payload as DocumensoWebhookPayload
   const externalId = p.externalId
 
-  console.warn('[WEBHOOK_DEBUG] handleCancelledEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
-
   const supabase = getServiceClient()
   const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
   if (!doc) return
 
-  const { data: updateData, error: updateError } = await supabase
+  await supabase
     .from('documents')
     .update({ signing_status: 'cancelled' })
     .eq('id', doc.id)
-    .select('id')
-  console.warn('[WEBHOOK_DEBUG] documents UPDATE rows affected:', updateData?.length ?? 0, '| error:', updateError?.message ?? 'none')
 
   if (doc.deal_investor_id) {
-    const { data: diUpdateData, error: diUpdateError } = await supabase
+    await supabase
       .from('deal_investors')
       .update({ signing_status: 'cancelled' })
       .eq('id', doc.deal_investor_id)
-      .select('id')
-    console.warn('[WEBHOOK_DEBUG] deal_investors UPDATE rows affected:', diUpdateData?.length ?? 0, '| error:', diUpdateError?.message ?? 'none')
 
-    const { error: logError } = await supabase.from('deal_action_logs').insert({
+    await supabase.from('deal_action_logs').insert({
       deal_id: doc.deal_id,
       deal_investor_id: doc.deal_investor_id,
       document_id: doc.id,
@@ -273,6 +228,5 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
       actioned_by: WEBHOOK_ACTOR_ID,
       metadata: { documenso_id: doc.documenso_envelope_id, source: 'documenso_webhook', attributed_to_owner: true },
     })
-    console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
   }
 }
