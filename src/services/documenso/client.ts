@@ -95,19 +95,17 @@ export async function getEnvelopeStatus(documensoId: number) {
   return client.documents.get({ documentId: documensoId })
 }
 
-/** Downloads the signed PDF. Returns raw bytes as a Buffer. */
+/** Downloads the signed PDF. Returns raw bytes as a Buffer.
+ *  Bypasses the SDK — the Speakeasy-generated client rejects application/pdf
+ *  responses as an unexpected content-type even when the status is 200.
+ */
 export async function downloadSignedPdf(documensoId: number): Promise<Buffer> {
-  const client = getClient()
-  const response = await client.documents.download({ documentId: documensoId, version: 'signed' })
-
-  // The SDK types result as `any` — the endpoint returns the PDF bytes.
-  // In practice this is an ArrayBuffer, Buffer, or base64 string depending on the runtime.
-  // Adjust extraction here if the actual shape differs during testing.
-  const raw = response.result
-  if (!raw) throw new Error('Documenso download returned empty result')
-  if (Buffer.isBuffer(raw)) return raw
-  if (raw instanceof ArrayBuffer) return Buffer.from(raw)
-  if (typeof raw === 'string') return Buffer.from(raw, 'base64')
-  if (raw?.data) return Buffer.isBuffer(raw.data) ? raw.data : Buffer.from(raw.data)
-  throw new Error(`Unexpected Documenso download response shape: ${typeof raw}`)
+  const url = `https://app.documenso.com/api/v2/document/${documensoId}/download?version=signed`
+  const response = await fetch(url, {
+    headers: { Authorization: process.env.DOCUMENSO_API_KEY! },
+  })
+  if (!response.ok) {
+    throw new Error(`Documenso download failed: ${response.status} ${response.statusText}`)
+  }
+  return Buffer.from(await response.arrayBuffer())
 }
