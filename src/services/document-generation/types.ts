@@ -1,6 +1,6 @@
 // ── Template identifiers ───────────────────────────────────────────────────────
 
-export type TemplateId = 'helloWorld' | 'applicationForm'
+export type TemplateId = 'helloWorld' | 'applicationForm' | 'applicationFormV1_1'
 // Extended in later stages: | 'transactionStatement' | ...
 
 export type ContextDomain = 'deal' | 'client' | 'portfolio'
@@ -55,6 +55,7 @@ export interface DealDocumentContext {
 export interface ContextMap {
   helloWorld: { dealInvestorId: string }
   applicationForm: { dealInvestorId: string }
+  applicationFormV1_1: { dealInvestorId: string }
   // Stage 6c: transactionStatement: { dealInvestorId: string }
 }
 

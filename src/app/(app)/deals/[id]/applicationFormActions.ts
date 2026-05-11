@@ -78,7 +78,7 @@ export async function previewApplicationForm(
     const supabase = await createClient()
     const result = await generateDocument(
       supabase,
-      'applicationForm',
+      'applicationFormV1_1',
       { dealInvestorId },
       { previewOnly: true },
     )
@@ -188,7 +188,7 @@ export async function sendApplicationFormAction({
     }
 
     // 1. Generate PDF (real: uploads to Storage, inserts documents row)
-    const genResult = await generateDocument(supabase, 'applicationForm', { dealInvestorId })
+    const genResult = await generateDocument(supabase, 'applicationFormV1_1', { dealInvestorId })
     documentId = genResult.documentId
     storageUrl = genResult.storageUrl
 
