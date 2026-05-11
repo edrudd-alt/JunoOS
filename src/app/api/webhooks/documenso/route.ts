@@ -46,6 +46,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'invalid JSON' }, { status: 400 })
   }
 
+  console.warn('[WEBHOOK_DEBUG] event type:', event.event)
+
   // Documenso webhook event names use UPPER_SNAKE_CASE with DOCUMENT_ prefix.
   switch (event.event) {
     case 'DOCUMENT_COMPLETED':
