@@ -34,8 +34,8 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1a1a1a',
     borderBottomStyle: 'solid',
   },
-  headerLeft: { flex: 1 },
-  headerCompany: { fontSize: 22, marginBottom: 4 },
+  headerLeft: { flex: 1, flexDirection: 'column' },
+  headerCompany: { fontSize: 22, marginBottom: 8 },
   headerSubtitle: { fontSize: 16 },
   headerLogo: { height: 50, objectFit: 'contain' },
   // ── Footer ────────────────────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ function lastName(fullName: string): string {
 
 function Header({ companyName }: { companyName: string }) {
   return (
-    <View style={styles.header} fixed>
+    <View style={styles.header}>
       <View style={styles.headerLeft}>
         <Text style={styles.headerCompany}>{companyName}</Text>
         <Text style={styles.headerSubtitle}>Application Form</Text>
@@ -158,7 +158,7 @@ function Header({ companyName }: { companyName: string }) {
 
 function Footer() {
   return (
-    <View style={styles.footer} fixed>
+    <View style={styles.footer}>
       <View style={styles.footerSpacer} />
       <Text style={styles.footerCenter}>Juno Capital Partners LLP</Text>
       <Text
@@ -310,25 +310,33 @@ export function ApplicationFormV1_1Template({
           </View>
         </View>
 
-        <Text style={styles.sectionHeading}>Investment Details</Text>
-        <Text style={styles.para}>
-          <Text style={styles.bold}>Important: </Text>Please check the figures below, then
-          transfer the share purchase amount to {deal.company_name} and the investment fee to Juno
-        </Text>
+        {/* Investment Details heading + table + fee line — must not split across pages */}
+        <View wrap={false}>
+          <Text style={styles.sectionHeading}>Investment Details</Text>
+          <Text style={styles.para}>
+            <Text style={styles.bold}>Important: </Text>Please check the figures below, then
+            transfer the share purchase amount to {deal.company_name} and the investment fee to Juno
+          </Text>
 
-        <View style={styles.investTable} wrap={false}>
-          <View style={styles.investHeaderRow}>
-            <Text style={[styles.iColName, styles.iHeaderText]}>Name</Text>
-            <Text style={[styles.iColPrice, styles.iHeaderText]}>Price Per Share</Text>
-            <Text style={[styles.iColQty, styles.iHeaderText]}>Quantity</Text>
-            <Text style={[styles.iColCost, styles.iHeaderText]}>Cost</Text>
+          <View style={styles.investTable}>
+            <View style={styles.investHeaderRow}>
+              <Text style={[styles.iColName, styles.iHeaderText]}>Name</Text>
+              <Text style={[styles.iColPrice, styles.iHeaderText]}>Price Per Share</Text>
+              <Text style={[styles.iColQty, styles.iHeaderText]}>Quantity</Text>
+              <Text style={[styles.iColCost, styles.iHeaderText]}>Cost</Text>
+            </View>
+            <View style={styles.investDataRow}>
+              <Text style={styles.iColName}>{shareLabel}</Text>
+              <Text style={styles.iColPrice}>{fmt(deal.share_price)}</Text>
+              <Text style={styles.iColQty}>{fmtNum(investment.shares)}</Text>
+              <Text style={styles.iColCost}>{fmt(cost)}</Text>
+            </View>
           </View>
-          <View style={styles.investDataRow}>
-            <Text style={styles.iColName}>{shareLabel}</Text>
-            <Text style={styles.iColPrice}>{fmt(deal.share_price)}</Text>
-            <Text style={styles.iColQty}>{fmtNum(investment.shares)}</Text>
-            <Text style={styles.iColCost}>{fmt(cost)}</Text>
-          </View>
+
+          <Text style={styles.feeLine}>
+            {`Juno Fee (${feePctDisplay}) `}
+            <Text style={styles.bold}>{fmt(feeAmount)}</Text>
+          </Text>
         </View>
 
         <Footer />
@@ -337,11 +345,6 @@ export function ApplicationFormV1_1Template({
       {/* ── Page 2 ──────────────────────────────────────────────────────────── */}
       <Page size="A4" style={styles.page}>
         <Header companyName={deal.company_name} />
-
-        <Text style={styles.feeLine}>
-          {`Juno Fee (${feePctDisplay}) `}
-          <Text style={styles.bold}>{fmt(feeAmount)}</Text>
-        </Text>
 
         <View style={{ height: 30 }} />
 
