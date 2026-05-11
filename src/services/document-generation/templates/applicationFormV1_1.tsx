@@ -16,12 +16,13 @@ const H_PAD = 71  // ~25 mm in points
 const styles = StyleSheet.create({
   page: {
     paddingTop: 48,
-    paddingBottom: 62,
+    paddingBottom: 24,
     paddingHorizontal: H_PAD,
     fontFamily: 'Helvetica',
     fontSize: 10,
     color: '#1a1a1a',
     lineHeight: 1.35,
+    flexDirection: 'column',
   },
   // ── Header ────────────────────────────────────────────────────────────────────
   header: {
@@ -35,15 +36,12 @@ const styles = StyleSheet.create({
     borderBottomStyle: 'solid',
   },
   headerLeft: { flex: 1, flexDirection: 'column' },
-  headerCompany: { fontSize: 22, marginBottom: 8 },
+  headerCompany: { fontSize: 22, marginBottom: 12 },
   headerSubtitle: { fontSize: 16 },
   headerLogo: { height: 50, objectFit: 'contain' },
-  // ── Footer ────────────────────────────────────────────────────────────────────
+  // ── Footer — marginTop:auto pushes it to the bottom of each explicit page ─────
   footer: {
-    position: 'absolute',
-    bottom: 24,
-    left: H_PAD,
-    right: H_PAD,
+    marginTop: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     borderTopWidth: 0.5,
@@ -121,7 +119,7 @@ const styles = StyleSheet.create({
   iColQty: { flex: 1.5, textAlign: 'right' },
   iColCost: { flex: 2, textAlign: 'right' },
   iHeaderText: { fontFamily: 'Helvetica-Bold' },
-  // ── Page 2 ───────────────────────────────────────────────────────────────────
+  // ── Misc ─────────────────────────────────────────────────────────────────────
   feeLine: { textAlign: 'right', marginTop: 10 },
   signerName: { marginTop: 4 },
 })
@@ -244,7 +242,55 @@ export function ApplicationFormV1_1Template({
   return (
     <Document>
 
-      {/* ── Page 1 ──────────────────────────────────────────────────────────── */}
+      {/* ── Page 1: who you are + what you're buying ────────────────────────── */}
+      <Page size="A4" style={styles.page}>
+        <Header companyName={deal.company_name} />
+
+        <Text style={styles.sectionHeading}>Investor Details</Text>
+        <View style={styles.detailsTable}>
+          <View style={styles.detailsRowDivider}>
+            <Text style={styles.detailsLabel}>Name</Text>
+            <Text style={styles.detailsValue}>{displayName}</Text>
+          </View>
+          <View style={styles.detailsRowLast}>
+            <Text style={styles.detailsLabel}>Address</Text>
+            <Text style={styles.detailsValue}>{addressParts || '—'}</Text>
+          </View>
+        </View>
+
+        {/* Investment Details heading + table + fee line — must not split across pages */}
+        <View wrap={false}>
+          <Text style={styles.sectionHeading}>Investment Details</Text>
+          <Text style={styles.para}>
+            <Text style={styles.bold}>Important: </Text>Please check the figures below, then
+            transfer the share purchase amount to {deal.company_name} and the investment fee to Juno
+          </Text>
+
+          <View style={styles.investTable}>
+            <View style={styles.investHeaderRow}>
+              <Text style={[styles.iColName, styles.iHeaderText]}>Name</Text>
+              <Text style={[styles.iColPrice, styles.iHeaderText]}>Price Per Share</Text>
+              <Text style={[styles.iColQty, styles.iHeaderText]}>Quantity</Text>
+              <Text style={[styles.iColCost, styles.iHeaderText]}>Cost</Text>
+            </View>
+            <View style={styles.investDataRow}>
+              <Text style={styles.iColName}>{shareLabel}</Text>
+              <Text style={styles.iColPrice}>{fmt(deal.share_price)}</Text>
+              <Text style={styles.iColQty}>{fmtNum(investment.shares)}</Text>
+              <Text style={styles.iColCost}>{fmt(cost)}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.feeLine}>
+            {`Juno Fee (${feePctDisplay}) `}
+            <Text style={styles.bold}>{fmt(feeAmount)}</Text>
+          </Text>
+        </View>
+
+        <Footer />
+      </Page>
+
+      {/* ── Page 2: how to pay + sign ────────────────────────────────────────── */}
       <Page size="A4" style={styles.page}>
         <Header companyName={deal.company_name} />
 
@@ -297,56 +343,6 @@ export function ApplicationFormV1_1Template({
           If you have any queries about these payments, please contact us on 020 3011 0783 or
           by email.
         </Text>
-
-        <Text style={styles.sectionHeading}>Investor Details</Text>
-        <View style={styles.detailsTable}>
-          <View style={styles.detailsRowDivider}>
-            <Text style={styles.detailsLabel}>Name</Text>
-            <Text style={styles.detailsValue}>{displayName}</Text>
-          </View>
-          <View style={styles.detailsRowLast}>
-            <Text style={styles.detailsLabel}>Address</Text>
-            <Text style={styles.detailsValue}>{addressParts || '—'}</Text>
-          </View>
-        </View>
-
-        {/* Investment Details heading + table + fee line — must not split across pages */}
-        <View wrap={false}>
-          <Text style={styles.sectionHeading}>Investment Details</Text>
-          <Text style={styles.para}>
-            <Text style={styles.bold}>Important: </Text>Please check the figures below, then
-            transfer the share purchase amount to {deal.company_name} and the investment fee to Juno
-          </Text>
-
-          <View style={styles.investTable}>
-            <View style={styles.investHeaderRow}>
-              <Text style={[styles.iColName, styles.iHeaderText]}>Name</Text>
-              <Text style={[styles.iColPrice, styles.iHeaderText]}>Price Per Share</Text>
-              <Text style={[styles.iColQty, styles.iHeaderText]}>Quantity</Text>
-              <Text style={[styles.iColCost, styles.iHeaderText]}>Cost</Text>
-            </View>
-            <View style={styles.investDataRow}>
-              <Text style={styles.iColName}>{shareLabel}</Text>
-              <Text style={styles.iColPrice}>{fmt(deal.share_price)}</Text>
-              <Text style={styles.iColQty}>{fmtNum(investment.shares)}</Text>
-              <Text style={styles.iColCost}>{fmt(cost)}</Text>
-            </View>
-          </View>
-
-          <Text style={styles.feeLine}>
-            {`Juno Fee (${feePctDisplay}) `}
-            <Text style={styles.bold}>{fmt(feeAmount)}</Text>
-          </Text>
-        </View>
-
-        <Footer />
-      </Page>
-
-      {/* ── Page 2 ──────────────────────────────────────────────────────────── */}
-      <Page size="A4" style={styles.page}>
-        <Header companyName={deal.company_name} />
-
-        <View style={{ height: 30 }} />
 
         <Text style={styles.para}>
           I confirm that I am investing in {deal.company_name}
