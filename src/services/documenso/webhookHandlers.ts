@@ -26,8 +26,71 @@ async function findDocumentByExternalId(
     .select('id, deal_investor_id, deal_id, documenso_envelope_id, signing_status')
     .eq('id', externalId)  // externalId = our Supabase document UUID
     .maybeSingle()
-  if (error) throw new Error(`Document lookup failed: ${error.message}`)
+  if (error) throw new Error(`Document lookup by externalId failed: ${error.message}`)
   return data
+}
+
+async function findDocumentByDocumensoId(
+  supabase: ReturnType<typeof getServiceClient>,
+  documensoId: string,
+) {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, deal_investor_id, deal_id, documenso_envelope_id, signing_status')
+    .eq('documenso_envelope_id', documensoId)
+    .maybeSingle()
+  if (error) throw new Error(`Document lookup by documenso_envelope_id failed: ${error.message}`)
+  return data
+}
+
+/**
+ * Two-step document resolver with [WEBHOOK_DEBUG] logging.
+ * 1. Primary: externalId → documents.id
+ * 2. Fallback: payload.id → documents.documenso_envelope_id
+ * Returns null (and logs) if neither path finds a row.
+ */
+async function resolveDocumentFromPayload(
+  supabase: ReturnType<typeof getServiceClient>,
+  externalId: string | null | undefined,
+  documensoPayloadId: number | undefined,
+): Promise<Awaited<ReturnType<typeof findDocumentByExternalId>>> {
+  // Primary path: externalId → documents.id
+  if (externalId) {
+    try {
+      const doc = await findDocumentByExternalId(supabase, externalId)
+      if (doc) {
+        console.warn('[WEBHOOK_DEBUG] document resolved via externalId', externalId, `→ found (id=${doc.id}, signing_status=${doc.signing_status})`)
+        return doc
+      }
+      console.warn('[WEBHOOK_DEBUG] externalId lookup returned 0 rows; falling back to documenso_envelope_id')
+    } catch (err) {
+      console.warn('[WEBHOOK_DEBUG] externalId lookup threw:', err instanceof Error ? err.message : err)
+      throw err
+    }
+  } else {
+    console.warn('[WEBHOOK_DEBUG] externalId absent; skipping primary lookup — trying documenso_envelope_id fallback')
+  }
+
+  // Fallback path: payload.id → documents.documenso_envelope_id
+  if (documensoPayloadId != null) {
+    const idStr = String(documensoPayloadId)
+    try {
+      const doc = await findDocumentByDocumensoId(supabase, idStr)
+      if (doc) {
+        console.warn('[WEBHOOK_DEBUG] document resolved via documenso_envelope_id fallback', idStr, `→ found (id=${doc.id}, signing_status=${doc.signing_status})`)
+        return doc
+      }
+      console.warn('[WEBHOOK_DEBUG] documenso_envelope_id fallback also returned 0 rows')
+    } catch (err) {
+      console.warn('[WEBHOOK_DEBUG] documenso_envelope_id fallback lookup threw:', err instanceof Error ? err.message : err)
+      throw err
+    }
+  } else {
+    console.warn('[WEBHOOK_DEBUG] documenso payload id also absent; cannot attempt fallback')
+  }
+
+  console.warn('[WEBHOOK_DEBUG] no matching document found via externalId or documenso_envelope_id')
+  return null
 }
 
 /** Fires when all recipients have signed (DOCUMENT_COMPLETED). */
@@ -37,29 +100,9 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
 
   console.warn('[WEBHOOK_DEBUG] handleCompletedEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
 
-  if (!externalId) {
-    console.warn('[WEBHOOK_DEBUG] early return: missing externalId in payload')
-    console.warn('[documenso-webhook] DOCUMENT_COMPLETED missing externalId — cannot correlate')
-    return
-  }
-
   const supabase = getServiceClient()
-  let doc: Awaited<ReturnType<typeof findDocumentByExternalId>>
-  try {
-    doc = await findDocumentByExternalId(supabase, externalId)
-  } catch (err) {
-    console.warn('[WEBHOOK_DEBUG] document lookup threw:', err instanceof Error ? err.message : err)
-    throw err
-  }
-
-  console.warn('[WEBHOOK_DEBUG] document lookup for externalId', externalId, '→', doc
-    ? `found (id=${doc.id}, signing_status=${doc.signing_status})`
-    : 'NOT FOUND — 0 rows')
-
-  if (!doc) {
-    console.warn('[documenso-webhook] DOCUMENT_COMPLETED: no document found for externalId', externalId)
-    return
-  }
+  const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
+  if (!doc) return
 
   // Download signed PDF from Documenso
   const documensoId = doc.documenso_envelope_id ? parseInt(doc.documenso_envelope_id, 10) : null
@@ -146,31 +189,11 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
   const p = payload as DocumensoWebhookPayload
   const externalId = p.externalId
 
-  console.warn('[WEBHOOK_DEBUG] handleRejectedEvent fired; externalId:', externalId ?? 'undefined')
-
-  if (!externalId) {
-    console.warn('[WEBHOOK_DEBUG] early return: missing externalId')
-    console.warn('[documenso-webhook] DOCUMENT_REJECTED missing externalId')
-    return
-  }
+  console.warn('[WEBHOOK_DEBUG] handleRejectedEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
 
   const supabase = getServiceClient()
-  let doc: Awaited<ReturnType<typeof findDocumentByExternalId>>
-  try {
-    doc = await findDocumentByExternalId(supabase, externalId)
-  } catch (err) {
-    console.warn('[WEBHOOK_DEBUG] document lookup threw:', err instanceof Error ? err.message : err)
-    throw err
-  }
-
-  console.warn('[WEBHOOK_DEBUG] document lookup for externalId', externalId, '→', doc
-    ? `found (id=${doc.id}, signing_status=${doc.signing_status})`
-    : 'NOT FOUND — 0 rows')
-
-  if (!doc) {
-    console.warn('[documenso-webhook] DOCUMENT_REJECTED: no document found for externalId', externalId)
-    return
-  }
+  const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
+  if (!doc) return
 
   const { data: updateData, error: updateError } = await supabase
     .from('documents')
@@ -200,31 +223,11 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
   const p = payload as DocumensoWebhookPayload
   const externalId = p.externalId
 
-  console.warn('[WEBHOOK_DEBUG] handleCancelledEvent fired; externalId:', externalId ?? 'undefined')
-
-  if (!externalId) {
-    console.warn('[WEBHOOK_DEBUG] early return: missing externalId')
-    console.warn('[documenso-webhook] DOCUMENT_CANCELLED missing externalId')
-    return
-  }
+  console.warn('[WEBHOOK_DEBUG] handleCancelledEvent fired; externalId:', externalId ?? 'undefined', '| documenso document id:', p.id ?? 'undefined')
 
   const supabase = getServiceClient()
-  let doc: Awaited<ReturnType<typeof findDocumentByExternalId>>
-  try {
-    doc = await findDocumentByExternalId(supabase, externalId)
-  } catch (err) {
-    console.warn('[WEBHOOK_DEBUG] document lookup threw:', err instanceof Error ? err.message : err)
-    throw err
-  }
-
-  console.warn('[WEBHOOK_DEBUG] document lookup for externalId', externalId, '→', doc
-    ? `found (id=${doc.id}, signing_status=${doc.signing_status})`
-    : 'NOT FOUND — 0 rows')
-
-  if (!doc) {
-    console.warn('[documenso-webhook] DOCUMENT_CANCELLED: no document found for externalId', externalId)
-    return
-  }
+  const doc = await resolveDocumentFromPayload(supabase, externalId, p.id)
+  if (!doc) return
 
   const { data: updateData, error: updateError } = await supabase
     .from('documents')
