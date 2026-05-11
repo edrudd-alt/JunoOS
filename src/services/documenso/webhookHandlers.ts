@@ -157,6 +157,7 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
       .from('deal_investors')
       .update({
         lifecycle_status: 'signed',
+        signing_status: 'signed',
         updated_at: now,
       })
       .eq('id', doc.deal_investor_id)
@@ -172,6 +173,7 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'signed',
+      actioned_by: '00000000-0000-0000-0000-000000000000',
       metadata: {
         documenso_id: doc.documenso_envelope_id,
         completed_at: p.completedAt ?? new Date().toISOString(),
@@ -204,6 +206,13 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
 
   // Lifecycle stays at app_form_sent — team follows up manually
   if (doc.deal_investor_id) {
+    const { data: diUpdateData, error: diUpdateError } = await supabase
+      .from('deal_investors')
+      .update({ signing_status: 'declined' })
+      .eq('id', doc.deal_investor_id)
+      .select('id')
+    console.warn('[WEBHOOK_DEBUG] deal_investors UPDATE rows affected:', diUpdateData?.length ?? 0, '| error:', diUpdateError?.message ?? 'none')
+
     const { error: logError } = await supabase.from('deal_action_logs').insert({
       deal_id: doc.deal_id,
       deal_investor_id: doc.deal_investor_id,
@@ -212,6 +221,7 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'app_form_sent',
+      actioned_by: '00000000-0000-0000-0000-000000000000',
       metadata: { documenso_id: doc.documenso_envelope_id },
     })
     console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
@@ -237,6 +247,13 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
   console.warn('[WEBHOOK_DEBUG] documents UPDATE rows affected:', updateData?.length ?? 0, '| error:', updateError?.message ?? 'none')
 
   if (doc.deal_investor_id) {
+    const { data: diUpdateData, error: diUpdateError } = await supabase
+      .from('deal_investors')
+      .update({ signing_status: 'cancelled' })
+      .eq('id', doc.deal_investor_id)
+      .select('id')
+    console.warn('[WEBHOOK_DEBUG] deal_investors UPDATE rows affected:', diUpdateData?.length ?? 0, '| error:', diUpdateError?.message ?? 'none')
+
     const { error: logError } = await supabase.from('deal_action_logs').insert({
       deal_id: doc.deal_id,
       deal_investor_id: doc.deal_investor_id,
@@ -245,6 +262,7 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'app_form_sent',
+      actioned_by: '00000000-0000-0000-0000-000000000000',
       metadata: { documenso_id: doc.documenso_envelope_id },
     })
     console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
