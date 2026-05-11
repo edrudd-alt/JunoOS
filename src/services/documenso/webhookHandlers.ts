@@ -1,6 +1,12 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { downloadSignedPdf } from './client'
 
+// TODO: replace with a dedicated service-account row in auth.users once one is created.
+// actioned_by cannot be null (FK to auth.users) and webhook calls have no real user session,
+// so the platform owner's ID is used as a temporary stand-in. Filter webhook-attributed
+// audit rows via metadata.source = 'documenso_webhook'.
+const WEBHOOK_ACTOR_ID = '71b8ef49-8d32-4d0b-baa8-8aa8f9a42fae'
+
 // Service-role client — webhook calls have no user session
 function getServiceClient() {
   return createSupabaseClient(
@@ -173,11 +179,13 @@ export async function handleCompletedEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'signed',
-      actioned_by: '00000000-0000-0000-0000-000000000000',
+      actioned_by: WEBHOOK_ACTOR_ID,
       metadata: {
         documenso_id: doc.documenso_envelope_id,
         completed_at: p.completedAt ?? new Date().toISOString(),
         signed_storage_url: signedStorageUrl,
+        source: 'documenso_webhook',
+        attributed_to_owner: true,
       },
     })
     console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
@@ -221,8 +229,8 @@ export async function handleRejectedEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'app_form_sent',
-      actioned_by: '00000000-0000-0000-0000-000000000000',
-      metadata: { documenso_id: doc.documenso_envelope_id },
+      actioned_by: WEBHOOK_ACTOR_ID,
+      metadata: { documenso_id: doc.documenso_envelope_id, source: 'documenso_webhook', attributed_to_owner: true },
     })
     console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
   }
@@ -262,8 +270,8 @@ export async function handleCancelledEvent(payload: unknown): Promise<void> {
       is_mock: false,
       from_status: 'app_form_sent',
       to_status: 'app_form_sent',
-      actioned_by: '00000000-0000-0000-0000-000000000000',
-      metadata: { documenso_id: doc.documenso_envelope_id },
+      actioned_by: WEBHOOK_ACTOR_ID,
+      metadata: { documenso_id: doc.documenso_envelope_id, source: 'documenso_webhook', attributed_to_owner: true },
     })
     console.warn('[WEBHOOK_DEBUG] deal_action_logs INSERT error:', logError?.message ?? 'none')
   }
