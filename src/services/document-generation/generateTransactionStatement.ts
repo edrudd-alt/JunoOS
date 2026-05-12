@@ -2,6 +2,7 @@ import React from 'react'
 import { renderToBuffer } from '@react-pdf/renderer'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { TransactionStatementTemplate, transactionStatementVersion } from './templates/transactionStatement'
+import { sanitiseStorageKey } from './storage'
 import type { TransactionDocumentContext } from './types'
 
 const TEMPLATE_VERSION = `transactionStatement@${transactionStatementVersion}`
@@ -71,11 +72,14 @@ export async function generateTransactionStatement(
   const pdfBuffer = await renderToBuffer(React.createElement(TransactionStatementTemplate, ctx) as any)
 
   // 6. Build filename + storage path
+  // filename  — human-facing display name (em dashes preserved, stored in documents.filename)
+  // storageKey — Supabase Storage-safe key (em dashes → hyphens, spaces → underscores)
   const statementDate = new Date().toISOString().slice(0, 10)
   const safeName    = clientResult.data.full_name.replace(/[\\/:*?"<>|]/g, '').trim()
   const safeCompany = company.name.replace(/[\\/:*?"<>|]/g, '').trim()
   const filename    = `${statementDate} — ${safeName} — ${safeCompany} — Transaction Statement.pdf`
-  const storagePath = `deals/${di.deal_id}/transaction-statements/${filename}`
+  const storageKey  = sanitiseStorageKey(filename)
+  const storagePath = `deals/${di.deal_id}/transaction-statements/${storageKey}`
 
   // 7. Find existing non-superseded transaction statements for this deal + client
   const { data: existing } = await supabase
