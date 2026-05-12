@@ -1396,7 +1396,7 @@ Documenso is the e-signature platform used for all documents requiring investor 
 4. On signature, Documenso notifies the platform via webhook
 5. Platform receives the signed PDF, files it to OneDrive and the relevant record, and updates the deal status
 
-**POA signing:** where Juno holds POA for an investor, Juno signs on their behalf via Documenso. This is configurable per investor per deal.
+**POA signing for application forms:** out of scope. Clients always sign their own application forms. POAs at Juno are deliberately scoped to managing existing investments, not authorising new commitments. See `Juno_Deal_Page_Restructure_Spec_v3.5.md` Section 5.8 for the canonical rule.
 
 **Change detection on return:** when a signed application form is returned, Claude reads the signed PDF and compares it against the original sent version. If differences are detected, the team is notified with a summary of what changed. The team confirms whether to update the deal record before any changes are written.
 
