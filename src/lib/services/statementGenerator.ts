@@ -1,3 +1,4 @@
+// LEGACY: April 2026 jsPDF generator. Superseded by transactionStatement@1.0.0 (Stage 6c). Retained only because InvestmentCockpit.tsx imports it. To be removed when the cockpit page is deprecated.
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 

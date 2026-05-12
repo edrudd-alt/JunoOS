@@ -1,7 +1,6 @@
 // ── Template identifiers ───────────────────────────────────────────────────────
 
 export type TemplateId = 'helloWorld' | 'applicationForm' | 'applicationFormV1_1'
-// Extended in later stages: | 'transactionStatement' | ...
 
 export type ContextDomain = 'deal' | 'client' | 'portfolio'
 
@@ -56,7 +55,28 @@ export interface ContextMap {
   helloWorld: { dealInvestorId: string }
   applicationForm: { dealInvestorId: string }
   applicationFormV1_1: { dealInvestorId: string }
-  // Stage 6c: transactionStatement: { dealInvestorId: string }
+}
+
+// ── Transaction statement context ─────────────────────────────────────────────
+// Not in the generic registry pipeline — has its own generation path (superseded
+// handling, investments-table source, specific storage prefix).
+
+export interface TransactionDocumentContext {
+  investor: {
+    full_name: string
+  }
+  company: {
+    name: string
+  }
+  investment: {
+    investment_date: string     // YYYY-MM-DD from investments.investment_date
+    share_class: string
+    original_share_price: number
+    shares_purchased: number
+    sum_subscribed: number
+    eis_status: string          // 'yes' | 'no' | 'tbc'
+    fee_pct: number | null      // decimal (0.05 = 5%) from deal_investors
+  }
 }
 
 export type ContextFor<T extends TemplateId> = ContextMap[T]

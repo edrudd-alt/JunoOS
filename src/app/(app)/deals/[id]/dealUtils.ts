@@ -26,6 +26,8 @@ export interface DealInvestorFull {
   updated_at: string
   updated_by: string | null
   created_at: string
+  // Transaction-level EIS status from the investments row (distinct from deal.eis_qualifying)
+  transactionEisStatus?: string | null
 }
 
 export interface ClientFull {

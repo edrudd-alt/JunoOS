@@ -15,6 +15,7 @@ import EditDealInvestorModal  from './EditDealInvestorModal'
 import CompletionRowMenuDropdown from './CompletionRowMenuDropdown'
 import type { CompletionMenuAction } from './CompletionRowMenuDropdown'
 import ConfirmDialog          from './ConfirmDialog'
+import { generateTransactionStatementAction, markTransactionStatementSentAction } from './transactionStatementActions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export default function CompletionTab({
   const [confirmDialog,    setConfirmDialog]    = useState<ConfirmDialogState>(null)
   const [confirmDlgSaving, setConfirmDlgSaving] = useState(false)
   const [closeDealPending, setCloseDealPending] = useState(false)
+  const [generatingTsId,   setGeneratingTsId]   = useState<string | null>(null)
 
   // Mark-complete modal fields
   const [investmentDate, setInvestmentDate] = useState('')
@@ -293,6 +295,25 @@ export default function CompletionTab({
     onDataRefresh()
   }
 
+  async function handleGenerateTs(di: DealInvestorFull) {
+    setGeneratingTsId(di.id)
+    try {
+      const result = await generateTransactionStatementAction(di.id)
+      if (result.error) { showError(result.error); return }
+      showToast('Transaction statement generated.')
+      onDataRefresh()
+    } finally {
+      setGeneratingTsId(null)
+    }
+  }
+
+  async function handleMarkTsSent(di: DealInvestorFull) {
+    const result = await markTransactionStatementSentAction(deal.id, di.id)
+    if (result.error) { showError(result.error); return }
+    showToast('Transaction statement marked as sent.')
+    onDataRefresh()
+  }
+
   async function handleCloseDeal() {
     const uid = requireUser(); if (!uid) return
     setCloseDealPending(false)
@@ -322,6 +343,10 @@ export default function CompletionTab({
         openMarkCompleteModal(di); break
       case 'move_back_to_paid':
         handleMoveBack(di, 'complete', 'paid'); break
+      case 'generate_transaction_statement':
+        handleGenerateTs(di); break
+      case 'mark_transaction_statement_sent':
+        handleMarkTsSent(di); break
     }
   }
 
@@ -640,6 +665,7 @@ export default function CompletionTab({
           status={rowMenu.di.lifecycle_status as 'paid' | 'complete'}
           checklistState={getChecklist(rowMenu.di)}
           eisQualifying={eisQualifying}
+          transactionEisStatus={rowMenu.di.transactionEisStatus ?? null}
           canMarkComplete={isMarkCompleteEnabled(getChecklist(rowMenu.di), eisQualifying)}
           x={rowMenu.x}
           y={rowMenu.y}
@@ -758,6 +784,24 @@ function ChecklistCell({
               }}
             >
               {CHECKLIST_SHORT[key]}
+            </span>
+          )
+        }
+
+        if (key === 'transaction_statement_sent') {
+          return (
+            <span
+              key={key}
+              title="Use the row menu to generate or mark as sent"
+              style={{
+                fontSize: 10, fontWeight: 600,
+                padding: '2px 4px', borderRadius: 3,
+                background: checked ? '#d0f0e6' : '#f0f0ec',
+                color: checked ? '#0a5a3d' : '#888',
+                cursor: 'default',
+              }}
+            >
+              {checked ? '✓' : CHECKLIST_SHORT[key]}
             </span>
           )
         }
