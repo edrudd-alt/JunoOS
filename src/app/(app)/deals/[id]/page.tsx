@@ -36,6 +36,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       { data: buyInvoices },
       { data: buyAllClients },
     { data: buyNominees },
+      { data: buyInvestments },
     ] = await Promise.all([
       rawDeal.company_id
         ? supabase.from('companies').select('id, name, logo_url').eq('id', rawDeal.company_id).maybeSingle()
@@ -62,7 +63,20 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .select('id, full_name, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
         .order('full_name'),
       supabase.from('nominees').select('id, name').eq('active', true).order('name'),
+      supabase.from('investments')
+        .select('client_id, eis_status')
+        .eq('deal_id', id)
+        .order('created_at', { ascending: false }),
     ])
+
+    // Build client_id → eis_status map (most-recent investment wins, matching service logic)
+    const buyClientEisMap = new Map<string, string>()
+    for (const inv of (buyInvestments ?? [])) {
+      const ci = inv.client_id as string
+      if (!buyClientEisMap.has(ci)) {
+        buyClientEisMap.set(ci, (inv.eis_status as string | null) ?? 'tbc')
+      }
+    }
 
     return (
       <Suspense>
@@ -71,7 +85,10 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           company={(buyCompany ?? null) as Parameters<typeof BuyDealPage>[0]['company']}
           bookbuild={(buyBookbuild ?? null) as Parameters<typeof BuyDealPage>[0]['bookbuild']}
           shareClasses={(buyShareClasses ?? []) as Parameters<typeof BuyDealPage>[0]['shareClasses']}
-          dealInvestors={(buyDealInvestors ?? []) as Parameters<typeof BuyDealPage>[0]['dealInvestors']}
+          dealInvestors={(buyDealInvestors ?? []).map(di => ({
+            ...di,
+            transactionEisStatus: buyClientEisMap.get(di.client_id as string) ?? null,
+          })) as Parameters<typeof BuyDealPage>[0]['dealInvestors']}
           allClients={(buyAllClients ?? []) as Parameters<typeof BuyDealPage>[0]['allClients']}
           nominees={(buyNominees ?? []) as Parameters<typeof BuyDealPage>[0]['nominees']}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}

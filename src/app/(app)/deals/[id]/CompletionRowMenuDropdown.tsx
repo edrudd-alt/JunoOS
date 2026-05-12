@@ -13,18 +13,21 @@ export type CompletionMenuAction =
   | { type: 'move_back_to_signed' }
   | { type: 'mark_complete' }
   | { type: 'move_back_to_paid' }
+  | { type: 'generate_transaction_statement' }
+  | { type: 'mark_transaction_statement_sent' }
 
 type CompletionStatus = 'paid' | 'complete'
 
 interface Props {
-  status:         CompletionStatus
-  checklistState: ChecklistState
-  eisQualifying:  boolean
-  canMarkComplete: boolean
-  x:              number
-  y:              number
-  onAction:       (action: CompletionMenuAction) => void
-  onClose:        () => void
+  status:              CompletionStatus
+  checklistState:      ChecklistState
+  eisQualifying:        boolean
+  transactionEisStatus: string | null  // from investments row: 'yes' | 'no' | 'tbc' | null
+  canMarkComplete:     boolean
+  x:                   number
+  y:                   number
+  onAction:            (action: CompletionMenuAction) => void
+  onClose:             () => void
 }
 
 interface MenuItem {
@@ -38,11 +41,11 @@ interface MenuItem {
 }
 
 const MANUALLY_DISABLEABLE: ChecklistItemKey[] = [
-  'share_cert_filed', 'transaction_statement_sent', 'documents_archived',
+  'share_cert_filed', 'documents_archived',
 ]
 
 export default function CompletionRowMenuDropdown({
-  status, checklistState, eisQualifying, canMarkComplete, x, y, onAction, onClose,
+  status, checklistState, eisQualifying, transactionEisStatus, canMarkComplete, x, y, onAction, onClose,
 }: Props) {
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -63,7 +66,7 @@ export default function CompletionRowMenuDropdown({
 
     // Checklist toggles
     const checklistKeys: ChecklistItemKey[] = [
-      'share_cert_filed', 'eis3_issued', 'transaction_statement_sent', 'documents_archived',
+      'share_cert_filed', 'eis3_issued', 'documents_archived',
     ]
     items.push({ label: '── Checklist ──', action: { type: 'view_investor' }, disabled: true, dividerBefore: true, dimmed: true })
     for (const key of checklistKeys) {
@@ -89,6 +92,26 @@ export default function CompletionRowMenuDropdown({
           : { type: 'disable_item', item: key },
       })
     }
+
+    // Transaction statement
+    const tsSent         = !!checklistState.transaction_statement_sent
+    const tsEisBlocked   = transactionEisStatus === 'tbc'
+    const tsNoInvestment = transactionEisStatus === null
+    items.push({ label: '── Transaction statement ──', action: { type: 'view_investor' }, disabled: true, dividerBefore: true, dimmed: true })
+    items.push({
+      label: 'Generate transaction statement',
+      action: { type: 'generate_transaction_statement' },
+      disabled: tsEisBlocked || tsNoInvestment,
+      disabledTip: tsNoInvestment ? 'Investment record not found'
+                 : tsEisBlocked   ? 'Confirm EIS status before generating'
+                 : undefined,
+    })
+    items.push({
+      label: tsSent ? '✓ Marked as sent' : 'Mark as sent',
+      action: { type: 'mark_transaction_statement_sent' },
+      disabled: tsSent,
+      disabledTip: tsSent ? 'Already marked as sent' : undefined,
+    })
 
     items.push(
       {
