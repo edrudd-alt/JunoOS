@@ -92,8 +92,10 @@ export default function CompletionRowMenuDropdown({
           : { type: 'disable_item', item: key },
       })
     }
+  }
 
-    // Transaction statement
+  // Transaction statement — visible for both paid and complete rows
+  if (status === 'paid' || status === 'complete') {
     const tsSent         = !!checklistState.transaction_statement_sent
     const tsEisBlocked   = transactionEisStatus === 'tbc'
     const tsNoInvestment = transactionEisStatus === null
@@ -112,7 +114,9 @@ export default function CompletionRowMenuDropdown({
       disabled: tsSent,
       disabledTip: tsSent ? 'Already marked as sent' : undefined,
     })
+  }
 
+  if (status === 'paid') {
     items.push(
       {
         label: 'Move back to Signed',
