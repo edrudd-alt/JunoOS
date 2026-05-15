@@ -1,13 +1,17 @@
-# Juno OS — Deal Page Restructure Specification (v3.5)
+# Juno OS — Deal Page Restructure Specification (v3.6)
 
 > **Spec scope note:** This document covers the deal page redesign (primary scope, Sections 1–10 and 12) and the document generation infrastructure (Section 11, platform-wide scope). The master platform spec covering all transaction types — buy, sell, transfer, CLN, ASA, dividends, capital events — is `docs/specs/TRANSACTION_WORKFLOW_SPEC.md`. Where the two specs touch the same topic, this deal page spec takes precedence for anything relating to buy deals, application form signing, and document generation.
 
-**Version:** 3.5
-**Date:** 12 May 2026
-**Status:** Buildable — Stages 1–6b complete and merged. Stage 6c (transaction statements) and Stage 6d (client-section proof-of-concept) not yet designed.
-**Supersedes:** v1, v2, v3, v3.1, v3.2, v3.3, v3.4
+**Version:** 3.6
+**Date:** 15 May 2026
+**Status:** Buildable — Stages 1–6c complete and merged. Stage 6d (client-section proof-of-concept) not yet designed. Stage 7 (cutover) ahead.
+**Supersedes:** v1, v2, v3, v3.1, v3.2, v3.3, v3.4, v3.5
 
-**What's new in v3.5:**
+**What's new in v3.6:**
+
+Stage 6c (transaction statement PDF generation, template `transactionStatement@1.0.0`) was built and merged on 12 May 2026, on the same day v3.5 was finalised and therefore not captured in v3.5. This version reconciles the spec with what was actually built. Key updates: Stage 6c marked as merged in the build sequence (Section 12) and Future Work registry (Section 14); a new Stage 6c subsection added to the Stage 6 architectural design (Section 11) documenting the actual implementation — manual trigger from the Completion tab row menu rather than automatic generation, dedicated `generateTransactionStatement()` function with its own context type (deliberately outside the generic `ContextMap` registry from Stage 6a), regeneration with supersedure logic, and the post-merge fixes (em dash sanitisation in Supabase Storage keys, menu section visibility fix). The `sanitiseStorageKey()` pattern is documented as platform-wide guidance since any new document type will face the same Supabase Storage constraints (Section 11). Three new Future Work items added: 14.16 (deprecate `InvestmentCockpit` and legacy `statementGenerator.ts`), 14.17 (platform-wide storage key sanitisation policy), 14.18 (reconcile Stage 6c divergence from the generic document registry — accept as pattern or refactor). The Stage 6c stub in old Section 14 has been removed since the work is now done; the architectural detail lives in Section 11 alongside 6a and 6b.
+
+**What was new in v3.5:**
 
 Stage 6b (Documenso integration with application form template v1.1.0) has been built and merged (11 May 2026). This version reconciles the spec with what was actually built. Key updates: Documenso removed from the not-in-scope list (Section 1.3); the two-step envelope creation/distribution flow and `created_not_sent` partial-failure state documented (Section 5.3, 5.10); dual `signing_status` field updates and declined/cancelled webhook behaviour documented (Section 5.4); Stage 6b design summary updated with confirmed implementation details including the nil UUID webhook actor pattern, auth guard path exception for `/api/webhooks/`, and idempotent signed PDF upload (Section 11); Stage 6b marked as merged in the build table (Section 11) and build sequence (Section 12); Documenso marked as done in Future Work (Section 14.3). A header scope note has been added clarifying the relationship between this spec and `TRANSACTION_WORKFLOW_SPEC.md`. The POA-signing contradiction in `TRANSACTION_WORKFLOW_SPEC.md` Section 7.6 has been corrected in that file.
 
@@ -1191,7 +1195,7 @@ Ed reviews proposed SQL. Claude Code applies via Supabase MCP after explicit app
 
 - **Stage 6a — Merged 7 May 2026.** Service infrastructure: React-pdf, per-domain context, immutable PDFs in private Supabase Storage, template versioning, type-safe API.
 - **Stage 6b — Merged 11 May 2026.** Application form template (`applicationForm@1.1.0`), Review-before-send modal (Section 5), Documenso integration, webhook handlers for signed/declined/cancelled events.
-- **Stage 6c** — Transaction statements: not yet designed.
+- **Stage 6c — Merged 12 May 2026.** Transaction statement template (`transactionStatement@1.0.0`), manual generation from Completion tab row menu, manual mark-as-sent action, regeneration with supersedure of prior statements. Generation-only — no signing, no email send. See Section 11 for architectural detail and the `sanitiseStorageKey()` pattern.
 - **Stage 6d** — Client-section proof-of-concept: not yet designed.
 
 ### Stage 7 — Cutover (1-2 days)
@@ -1366,11 +1370,45 @@ The current `documents` table cannot represent this: it has a single `client_id`
 
 **Trigger to start:** when real share certificates start being received from registrars and the team needs to file them. Before then, manual filing in OneDrive folders is the workaround.
 
+### 14.16 Deprecate `InvestmentCockpit` and legacy `statementGenerator.ts`
+
+**[NEW IN v3.6]** Stage 6c left in place a legacy jsPDF-based statement generator at `src/lib/services/statementGenerator.ts`. It is no longer the platform's primary path for generating transaction statements (that is now `src/services/document-generation/templates/transactionStatement.tsx` via the React-pdf pipeline), but it is still imported by `InvestmentCockpit.tsx` and therefore still in production code. The file carries a `LEGACY` marker comment so developers know not to add to it.
+
+Removal is a single PR: delete the legacy generator, remove the `InvestmentCockpit.tsx` import, and replace whatever still calls into it. This was deferred because the cleaner moment is when `InvestmentCockpit` itself is deprecated or replaced, rather than as a one-off file removal that leaves a dangling component.
+
+**Trigger to start:** whenever `InvestmentCockpit` is next touched substantively, or as a small housekeeping PR if 6 months pass without that happening.
+
+### 14.17 Platform-wide storage key sanitisation policy
+
+**[NEW IN v3.6]** Stage 6c discovered (the hard way, at runtime, ~1 hour after merge) that Supabase Storage rejects em dashes and certain other Unicode characters in object keys. The fix was `sanitiseStorageKey()` in `src/services/document-generation/storage.ts`, applied at the upload site for transaction statements. The pattern is documented in Section 11.
+
+The open question is whether to **enforce** this across the platform rather than relying on developers to remember to apply it. Options:
+
+- **Lint rule** — a custom ESLint rule that flags any direct call to `supabase.storage.from(...).upload(...)` whose path argument hasn't passed through `sanitiseStorageKey()`. Catches the issue at development time.
+- **Typed wrapper** — a `uploadDocument()` helper that always sanitises its path argument internally, and use of the raw Supabase Storage client is discouraged via a code-review convention. Catches the issue by construction.
+- **Status quo** — convention-only, documented in `AGENTS.md` and Section 11. Cheap but relies on memory.
+
+The wider list of forbidden characters beyond em dash also needs codifying — the current `sanitiseStorageKey()` may not catch every edge case. Worth a short audit when this work happens.
+
+**Trigger to start:** when the next new document type (engagement letter / EIS certificate / exit statement) is being scoped — gives a natural point to lift the pattern from a one-off helper into a platform-wide policy. Or sooner if a second instance of the same Storage key bug bites in production.
+
+### 14.18 Reconcile Stage 6c divergence from generic document registry
+
+**[NEW IN v3.6]** Stage 6a (merged 7 May 2026) established a generic document generation pipeline: a `ContextMap` type, a `generateDocument<T>()` entry point, per-template context fetchers. Stage 6b (application forms) used this pipeline.
+
+Stage 6c deliberately did **not** use it. `TransactionDocumentContext` sits outside `ContextMap`; there is a dedicated `generateTransactionStatement()` function with its own data-fetching path. A comment in `types.ts` documents this as intentional. The reason given at the time: transaction statements are lightweight, generation-only, read from `investments` rather than `deal_investors`, and don't fit the pipeline's signing/envelope concerns cleanly.
+
+This leaves the platform with **two parallel pipelines** for document generation. That is fine if it's the deliberate pattern — "use the registry for documents that need signing and complex context; use the dedicated path for generation-only documents with simple context." But it should be a settled architectural choice, not an accident.
+
+**Decision needed:** either (a) write the divergence up as the deliberate pattern and document the rule for which path new document types take, or (b) refactor Stage 6c to fit the registry, accepting that the registry types need to flex slightly to accommodate context types that don't need signing fields.
+
+**Trigger to start:** when Stage 6d (or any subsequent new document type) is being scoped — the question of "which pipeline does this go in" forces the decision. Before then, the current state is liveable.
+
 ---
 
-## Stage 6 — Document Generation Architecture (settled 7 May 2026; Stage 6b merged 11 May 2026)
+## Stage 6 — Document Generation Architecture (settled 7 May 2026; Stage 6c merged 12 May 2026)
 
-**[REWRITTEN IN v3.4; UPDATED IN v3.5]** This section captures the architectural design for the platform's document generation system. Originally framed as a deal-page-only "Edit-before-send modal" feature, Stage 6 was re-scoped on 6 May 2026 to be reusable infrastructure consumed by deal, client, and portfolio sections. Stage 6a (the service layer) merged 7 May 2026. Stage 6b (application forms — first real consumer) merged 11 May 2026. Stage 6c (transaction statements) and Stage 6d (client-section proof-of-concept) follow.
+**[REWRITTEN IN v3.4; UPDATED IN v3.5 AND v3.6]** This section captures the architectural design for the platform's document generation system. Originally framed as a deal-page-only "Edit-before-send modal" feature, Stage 6 was re-scoped on 6 May 2026 to be reusable infrastructure consumed by deal, client, and portfolio sections. Stage 6a (the service layer) merged 7 May 2026. Stage 6b (application forms — first real consumer) merged 11 May 2026. Stage 6c (transaction statements — generation-only) merged 12 May 2026. Stage 6d (client-section proof-of-concept) follows.
 
 ### Stage 6 build series
 
@@ -1378,7 +1416,7 @@ The current `documents` table cannot represent this: it has a single `client_id`
 |---|---|---|
 | **6a** | Service infrastructure: React-pdf, per-domain context, immutable PDFs in private Supabase Storage, template versioning, type-safe API. | **Merged 7 May 2026** |
 | **6b** | Application form: real template (`applicationForm@1.1.0`), Review-before-send modal (Section 5), Documenso integration, webhook handlers for signed/declined/cancelled events. | **Merged 11 May 2026** |
-| **6c** | Transaction statement: real template, generation-only flow (no edit, no signing), wired into Mark complete in Completion tab. | Not yet designed. |
+| **6c** | Transaction statement: real template (`transactionStatement@1.0.0`), generation-only flow (no edit, no signing, no email send), manual trigger from Completion tab row ⋯ menu, regeneration with supersedure of prior statements. | **Merged 12 May 2026** |
 | **6d** | Client-section proof-of-concept: 1-2 client-domain document templates (e.g. engagement letter, welcome pack) demonstrating the infrastructure works for non-deal entities. | Not yet designed. |
 
 ### Stage 6a — what was built (reference)
@@ -1461,11 +1499,77 @@ ALTER TABLE nominees ADD COLUMN bank_account_name TEXT, ADD COLUMN bank_sort_cod
 ALTER TABLE documents ADD COLUMN signing_status TEXT, ADD COLUMN documenso_envelope_id TEXT, ADD COLUMN recipient_email TEXT, ADD COLUMN cc_emails TEXT[];
 ```
 
-### Stage 6c — transaction statement (not yet designed)
+### Stage 6c — transaction statement (merged 12 May 2026)
 
-Smaller scope than 6b. Transaction statements are pure data renderings — no editing, no signing, no email send (initially). Generated when an investor reaches `complete` status in the Completion tab. Reuses Stage 6a infrastructure with a new template.
+**[NEW IN v3.6 — replaces previous "not yet designed" stub]**
 
-Design conversation deferred until Stage 6b is shipped or close to ship.
+Stage 6c built the transaction statement template (`transactionStatement@1.0.0`) and its surrounding generation flow. Smaller scope than 6b — generation-only, no signing, no email send. PDF is generated to Supabase Storage; the team delivers it to the investor manually.
+
+**Trigger.** Manual, not automatic. The user clicks "Generate transaction statement" from the row ⋯ menu on a Completion tab row. Two preconditions gate the menu item:
+
+- `deal_investors.lifecycle_status = 'complete'`
+- `investments.eis_status` is not `'tbc'` (EIS outcome must be confirmed as yes or no before a statement can be issued)
+
+A separate "Mark as sent" action — also in the row ⋯ menu — is a second manual step the team takes after sending the PDF to the investor by email. It sets `completion_checklist.transaction_statement_sent = true` and writes an audit log entry. The corresponding checklist pill on the Completion tab is rendered as a read-only `<span>` rather than a toggle: it can only be flipped via the "Mark as sent" menu action, not via the standard checklist toggle pattern used elsewhere.
+
+**Storage and database linkage.**
+
+PDF is stored in the existing private `documents` bucket. Path pattern: `deals/{deal_id}/transaction-statements/{storageKey}`. The `documents` row carries:
+
+- `type = 'transaction_statement'`
+- `deal_id`, `client_id`, `deal_investor_id` (all three FKs populated)
+- `filename` — human-facing display name (em-dashed)
+- `storage_url` — the sanitised storage key path
+- `template_version = 'transactionStatement@1.0.0'`
+- `superseded = false`
+- Signing-related columns (`signing_status`, `documenso_envelope_id`, `recipient_email`, `cc_emails`) are **NULL** — this document type is generation-only
+
+**File naming (two separate forms).**
+
+The two forms exist because Supabase Storage rejects certain characters (notably em dashes) in object keys, but the human-facing filename should still use em dashes as separators for readability.
+
+| | Pattern | Example |
+|---|---|---|
+| **Human-facing** (stored in `documents.filename`) | `YYYY-MM-DD — Investor — Company — Transaction Statement.pdf` | `2026-05-12 — Bob Smith — Acme Ltd — Transaction Statement.pdf` |
+| **Storage key** (stored in `documents.storage_url`) | Sanitised — em/en dashes → hyphens, spaces → underscores, non-word chars stripped | `2026-05-12-Bob_Smith-Acme_Ltd-Transaction_Statement.pdf` |
+
+The `sanitiseStorageKey()` helper lives in `src/services/document-generation/storage.ts`. See platform-wide note below — this pattern applies to every document type going forward.
+
+**Regeneration and supersedure.**
+
+If a transaction statement needs regenerating (e.g. an EIS status correction after the original was issued), generating a new statement marks any prior non-superseded statement for the same `(deal_id, client_id)` as `superseded = true`, sets `superseded_at` and `superseded_by_id`, and renames the old file in storage with a `_superseded_YYYYMMDD-HHMMSS` suffix. The storage rename is best-effort: if it fails, the DB row is still marked superseded at the original path. The new statement is uploaded fresh under its own filename.
+
+**Deliberate divergences from the v3.5 stub.**
+
+The v3.5 stub described the eventual implementation. The actual build diverged in several intentional ways, captured here so future readers understand why the live code does not look like the original sketch:
+
+- **Trigger:** stub said "generated when an investor reaches complete status" (implying automatic). Built as fully manual — generate and mark-as-sent are both discrete row menu actions.
+- **Integration point:** stub said "wired into Mark complete." It was not. Generation sits alongside Mark complete but is independent of it. Mark complete does not generate a statement.
+- **Generation pipeline:** the implementation does **not** use the generic `generateDocument<T>()` registry pipeline from Stage 6a. `TransactionDocumentContext` is explicitly outside the `ContextMap` type, and there is a dedicated `generateTransactionStatement()` function with its own data-fetching path (reading from `investments`, not from the generic `DealDocumentContext`). A comment in `types.ts` documents this as intentional. The decision to either accept this as the pattern for "lightweight" generation-only document types, or refactor it back into the registry, is open (see Future Work 14.18).
+
+**Legacy code retained.**
+
+The legacy `src/lib/services/statementGenerator.ts` (jsPDF-based) was not deleted in this stage. It is still imported by `InvestmentCockpit.tsx` and carries a `LEGACY` marker comment. Removal is deferred to the PR that deprecates `InvestmentCockpit` (see Future Work 14.16).
+
+**Post-merge fixes (all in production).**
+
+| Commit | Date | Fix |
+|---|---|---|
+| `04be2d6` | 12 May 2026 (~1 hour post-merge) | **Em dash sanitisation in Storage keys.** Every upload was failing because Supabase Storage rejects em dashes in object keys. Added `sanitiseStorageKey()` and threaded it through the upload path. Display filename unchanged; only the storage path uses the sanitised form. |
+| `e8001ae` | 12 May 2026 | **Transaction statement menu section visibility.** Generate and Mark as sent items were incorrectly nested inside the `if (status === 'paid')` block, so they never appeared for `complete` rows (the primary use case). Extracted into `if (status === 'paid' \|\| status === 'complete')`. |
+
+### Platform-wide note: Supabase Storage key sanitisation
+
+**[NEW IN v3.6]**
+
+Stage 6c surfaced a Supabase Storage constraint that applies platform-wide: certain characters that are perfectly legal in filenames are rejected when used in storage object keys. The most common offender is the em dash (U+2014), which the platform uses as a separator in human-facing filenames following the convention `YYYY-MM-DD — [Document type] — [Optional descriptor].pdf`.
+
+**The rule:** every document upload to Supabase Storage must pass its filename through `sanitiseStorageKey()` (in `src/services/document-generation/storage.ts`) before constructing the storage path. The `documents` table retains two columns:
+
+- `filename` — the human-facing display name, with em dashes preserved (this is what users see in download UI, what gets used as the email attachment name)
+- `storage_url` — the sanitised storage key path (this is the actual Supabase Storage location)
+
+Future document types (engagement letters, EIS certificates, exit statements, etc.) must follow this pattern from the start, not discover it the hard way as Stage 6c did. See Future Work 14.17 for the open question of whether to enforce this via a typed wrapper around the Storage client.
 
 ### Stage 6d — client-section proof-of-concept (not yet designed)
 
@@ -1476,12 +1580,13 @@ Trigger: client-section work scheduled within 2-3 weeks of Phase A completion.
 ### Open items
 
 - Documenso free tier limits not yet verified for production volumes (envelope volume, branding on signing emails) — verify before substantial use
-- Stage 6c and 6d full designs deferred
+- Stage 6d full design deferred until client-section work begins
 
 ---
 
 ## 15. Version history
 
+- **v3.6 (15 May 2026)** — Stage 6c reconciliation. Transaction statement template `transactionStatement@1.0.0` documented as built (merged 12 May 2026). Manual trigger from Completion tab row menu, regeneration with supersedure logic, dedicated generation pipeline outside the generic `ContextMap` registry. Two-form filename pattern (em-dashed display name + sanitised storage key) documented. Em dash sanitisation in Supabase Storage keys lifted to platform-wide guidance. Three new Future Work items: 14.16 (deprecate `InvestmentCockpit` and legacy `statementGenerator.ts`), 14.17 (platform-wide storage key sanitisation policy), 14.18 (reconcile Stage 6c divergence from the generic document registry).
 - **v3.5 (12 May 2026)** — Stage 6b reconciliation. Documenso integration documented as built. Application form template `applicationForm@1.1.0` in production. Webhook patterns (auth path exception, nil UUID actor, idempotency, dual signing_status update) documented. `created_not_sent` partial-failure state documented. POA-signing contradiction with `TRANSACTION_WORKFLOW_SPEC.md` flagged and corrected in that file.
 - **v3.4 (7 May 2026)** — Stage 6b designed. Review-before-send modal fully rewritten. Documenso integration designed end-to-end. Bank details fields added to companies and nominees. Stage 6 architectural design section added.
 - **v3.3** — Bookbuild auto-lock, 5-item completion checklist, Mark complete modal, Close the deal action, rolling-close UX, share certificate one-to-many model, share class onboarding workflow.
@@ -1491,4 +1596,4 @@ Trigger: client-section work scheduled within 2-3 weeks of Phase A completion.
 
 ---
 
-*End of specification v3.5.*
+*End of specification v3.6.*
