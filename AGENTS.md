@@ -9,7 +9,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Platform-wide rules for how JunoOS is built. Read this before writing any code. Where this file and a stage spec disagree, the stage spec wins for that stage; this file wins for everything else.
 
-The canonical living spec is `docs/Juno_Deal_Page_Restructure_Spec_v3_6.md` (and successors). Per-stage build prompts live in `docs/Prompts/`. The master transaction-type spec is `docs/specs/TRANSACTION_WORKFLOW_SPEC.md`.
+The canonical living spec is `docs/Juno_Deal_Page_Restructure_Spec_v3_7.md` (and successors). Per-stage build prompts live in `docs/Prompts/`. The master transaction-type spec is `docs/specs/TRANSACTION_WORKFLOW_SPEC.md`.
 
 ---
 
