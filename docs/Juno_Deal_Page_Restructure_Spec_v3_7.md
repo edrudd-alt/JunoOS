@@ -1446,6 +1446,14 @@ This leaves the platform with **two parallel pipelines** for document generation
 
 **Trigger to start:** when Stage 6d (or any subsequent new document type) is being scoped — the question of "which pipeline does this go in" forces the decision. Before then, the current state is liveable.
 
+### 14.19 Fix nominee name resolution in `fetchDealContext.ts`
+
+**[NEW — nominee FK fix, 18 May 2026]** `fetchDealContext.ts` lines 97–98 resolve `nominee_name` by looking up `di.nominee_id` in the `clientMap`, which always returns null since `deal_investors.nominee_id` references `nominees`, not `clients`. Query 3 in the same file already fetches from the `nominees` table but only selects bank fields. Fix by extending Query 3 to also select `name`, and changing the resolution to use the nominees lookup instead of the clients map.
+
+Small, surgical fix. Likely affects every generated deal document that references a nominee — nominee names are currently missing from all generated application forms and transaction statements where a nominee is involved.
+
+**Trigger to start:** next time `fetchDealContext.ts` is touched, or as a small standalone PR if nominee-name-in-documents becomes a user-facing issue.
+
 ---
 
 ## Stage 6 — Document Generation Architecture (settled 7 May 2026; Stage 6c merged 12 May 2026)
