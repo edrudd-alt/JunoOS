@@ -1,422 +1,169 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
-import Link from 'next/link'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { useMemo } from 'react'
 import { Breadcrumb } from '@/components/Breadcrumb'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { getInitials } from '@/lib/utils'
-import type { Client, PortfolioRow, Document } from '@/types'
+import type { Client } from '@/types'
+import ClientHeader from './ClientHeader'
+import StatusStrip from './StatusStrip'
+import HeadlineStats from './HeadlineStats'
+import EntityFilter from './EntityFilter'
+import ClientTabs, { type TabKey } from './ClientTabs'
 import OverviewTab from './tabs/OverviewTab'
-import DetailsTab from './tabs/DetailsTab'
 import InvestmentsTab from './tabs/InvestmentsTab'
 import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
 import NotesTab from './tabs/NotesTab'
-import PendingActionsTab from './tabs/PendingActionsTab'
 
-// Re-export as ClientRow so existing imports from this file keep working.
-export type { ClientRow } from '@/types'
-// Local alias used throughout this component.
-type ClientRow = Client
-
-type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'details' | 'pending_actions'
-
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview',        label: 'Overview' },
-  { key: 'investments',     label: 'Investments' },
-  { key: 'investment_docs', label: 'Investment docs' },
-  { key: 'updates_sent',    label: 'Updates sent' },
-  { key: 'notes',           label: 'Notes' },
-  { key: 'details',         label: 'Details' },
-]
-
-function KycBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    verified:    { label: 'KYC verified',     cls: 'pill-green' },
-    renewal_due: { label: 'KYC renewal due',  cls: 'pill-amber' },
-    outstanding: { label: 'KYC outstanding',  cls: 'pill-red'   },
-  }
-  const { label, cls } = map[status] ?? { label: status, cls: 'pill-grey' }
-  return <span className={`pill ${cls}`}>{label}</span>
+export interface InvestmentRecord {
+  id: string
+  client_id: string
+  company_id: string
+  share_class: string
+  investment_date: string
+  original_share_price: number
+  shares_purchased: number
+  sum_subscribed: number
+  eis_status: string
+  holding_location: string
+  holding_entity: string | null
+  status: string
+  transaction_type: string | null
+  fund_type: string | null
 }
 
-function TaxBadge({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    eis: 'EIS', seis: 'SEIS', both: 'EIS/SEIS', neither: 'No EIS/SEIS',
-  }
-  return <span className="pill pill-blue">{map[status] ?? status}</span>
+export interface NoteRecord {
+  id: string
+  client_id: string
+  note_text: string
+  flag_for_followup: boolean
+  created_by: string | null
+  created_at: string
+}
+
+export interface DocumentRecord {
+  id: string
+  client_id: string
+  type: string
+  filename: string
+  storage_url: string | null
+  document_date: string | null
+}
+
+export interface ValuationRecord {
+  company_id: string
+  share_price: number
+  valuation_date: string
 }
 
 interface Props {
-  client: ClientRow
-  lead: ClientRow | null
-  linkedEntities: ClientRow[]
-  portfolioRows: PortfolioRow[]
-  investments: Record<string, unknown>[]
-  valuations: Record<string, unknown>[]
-  documents: Record<string, unknown>[]
-  updateRecipients: Record<string, unknown>[]
-  notes: Record<string, unknown>[]
-  membershipDocs: Document[]
-  pendingInvestments: Record<string, unknown>[]
-  activeDeals: Record<string, unknown>[]
-  followUpNotes: Record<string, unknown>[]
-  lastActivity: string | null
-  relationships: Record<string, unknown>[]
-  feeSchedules: { id: string; name: string }[]
-  nominees: { id: string; name: string }[]
+  lead: Client
+  linkedEntities: Client[]
+  investments: InvestmentRecord[]
+  notes: NoteRecord[]
+  documents: DocumentRecord[]
+  valuations: ValuationRecord[]
+}
+
+const VALID_TABS: TabKey[] = ['overview', 'investments', 'investment_docs', 'updates_sent', 'notes']
+
+// Entity type display order: own_name first, then corporate, pension, family, trust
+const ENTITY_TYPE_ORDER: Record<string, number> = {
+  own_name: 0, corporate: 1, pension: 2, family: 3, trust: 4,
 }
 
 export default function ClientRecord({
-  client, lead, linkedEntities, portfolioRows, investments,
-  valuations, documents, updateRecipients, notes, membershipDocs,
-  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules, nominees,
+  lead, linkedEntities, investments, notes, documents, valuations,
 }: Props) {
-  const router = useRouter()
-  const supabase = createClient()
+  const searchParams = useSearchParams()
+  const router       = useRouter()
 
-  const [tab, setTab] = useState<Tab>('overview')
-  const [actionsOpen, setActionsOpen] = useState(false)
-  const [showFundTypeModal, setShowFundTypeModal] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
+  const rawTab      = searchParams.get('tab')
+  const activeTab   = (VALID_TABS.includes(rawTab as TabKey) ? rawTab : 'overview') as TabKey
+  const selectedEntity = searchParams.get('entity') ?? 'all'
 
-  function showToast(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(null), 3500)
+  function navigate(tab: TabKey, entity: string) {
+    router.push(`?tab=${tab}&entity=${entity}`, { scroll: false })
   }
 
-  function closeActions() { setActionsOpen(false) }
+  // Sort linked entities: by entity_type order, then alphabetically within type
+  const sortedLinkedEntities = useMemo(
+    () =>
+      [...linkedEntities].sort((a, b) => {
+        const ao = ENTITY_TYPE_ORDER[a.entity_type] ?? 99
+        const bo = ENTITY_TYPE_ORDER[b.entity_type] ?? 99
+        if (ao !== bo) return ao - bo
+        return a.full_name.localeCompare(b.full_name)
+      }),
+    [linkedEntities],
+  )
 
-  // Read ?tab= from URL on mount
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const t = params.get('tab') as Tab | null
-    if (t && TABS.some(tab => tab.key === t)) setTab(t)
-  }, [])
+  // Investments filtered to the selected entity scope
+  const filteredInvestments = useMemo(
+    () =>
+      selectedEntity === 'all'
+        ? investments
+        : investments.filter(i => i.client_id === selectedEntity),
+    [investments, selectedEntity],
+  )
 
-  const switchTab = useCallback((key: Tab) => {
-    setTab(key)
-    const url = new URL(window.location.href)
-    url.searchParams.set('tab', key)
-    window.history.replaceState(null, '', url.toString())
-  }, [])
+  // All entity IDs (lead + linked) — used in HeadlineStats entity count computation
+  const allEntityIds = useMemo(
+    () => [lead.id, ...sortedLinkedEntities.map(e => e.id)],
+    [lead.id, sortedLinkedEntities],
+  )
 
-  const clientId = client.id
-  const fullName = client.full_name
-  const initials = getInitials(fullName)
+  // Scope entity IDs: all when filter is 'all', else just the selected entity
+  const scopeEntityIds = selectedEntity === 'all' ? allEntityIds : [selectedEntity]
 
   return (
     <div>
-      <Breadcrumb items={[{ label: 'Clients', href: '/clients' }, { label: fullName }]} />
+      <Breadcrumb items={[{ label: 'Clients', href: '/clients' }, { label: lead.full_name }]} />
 
-      {/* Header card */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            {/* Avatar */}
-            <div
-              style={{
-                width: 48, height: 48, borderRadius: '50%',
-                background: '#1d9e75', color: '#fff',
-                fontSize: 16, fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              {initials}
-            </div>
-
-            {/* Name + badges */}
-            <div>
-              <h1 style={{ fontSize: 17, fontWeight: 600, margin: 0 }}>{fullName}</h1>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 5, flexWrap: 'wrap' }}>
-                {client.investor_reference && (
-                  <span style={{ fontSize: 11, color: '#888' }}>Ref: {client.investor_reference}</span>
-                )}
-                <span className="pill pill-grey">{entityTypeLabel(client.entity_type)}</span>
-                <KycBadge status={client.kyc_status} />
-                <TaxBadge status={client.tax_status} />
-              </div>
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-            <div style={{ position: 'relative' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setActionsOpen(o => !o)}
-              >
-                Actions ▾
-              </button>
-              {actionsOpen && (
-                <div
-                  style={{
-                    position: 'absolute', right: 0, top: '100%', marginTop: 4,
-                    background: '#fff', border: '0.5px solid #e8e7e0',
-                    borderRadius: 6, boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                    zIndex: 50, minWidth: 220, padding: '6px 0',
-                  }}
-                  onMouseLeave={() => setActionsOpen(false)}
-                >
-                  <ActionGroup label="Reporting">
-                    <ActionItem label="Generate portfolio statement" href={`/reports/portfolio-statement?client=${clientId}`} />
-                    <ActionItem label="Generate investor update letter" href="/reports/investor-update" />
-                    <ActionItem label="Generate EIS confirmation" onClick={() => { closeActions(); showToast('EIS confirmation generation coming soon') }} />
-                  </ActionGroup>
-                  <ActionDivider />
-                  <ActionGroup label="Investments">
-                    <ActionItem label="Add new investment" href="/deals/new" />
-                  </ActionGroup>
-                  <ActionDivider />
-                  <ActionGroup label="Documents & signatures">
-                    <ActionItem label="Send document for signature" onClick={() => { closeActions(); showToast('Document signing coming soon — Documenso integration required') }} />
-                    <ActionItem label="Upload document" onClick={() => { closeActions(); showToast('Document upload coming soon') }} />
-                  </ActionGroup>
-                  <ActionDivider />
-                  <ActionGroup label="Client">
-                    <ActionItem label="Add note" onClick={() => { switchTab('notes'); setActionsOpen(false) }} />
-                    <ActionItem label="Edit client details" href={`/clients/${clientId}/edit`} />
-                    <ActionItem label="Edit fund type" onClick={() => { setShowFundTypeModal(true); setActionsOpen(false) }} />
-                  </ActionGroup>
-                </div>
-              )}
-            </div>
-
-            <button className="btn btn-primary">Generate report</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ borderBottom: '0.5px solid #e8e7e0', marginBottom: 0 }}>
-        <div style={{ display: 'flex', gap: 0 }}>
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              onClick={() => switchTab(t.key)}
-              style={{
-                padding: '9px 16px',
-                fontSize: 12,
-                fontWeight: tab === t.key ? 600 : 400,
-                color: tab === t.key ? '#0f2744' : '#666',
-                background: 'none',
-                border: 'none',
-                borderBottom: tab === t.key ? '2px solid #0f2744' : '2px solid transparent',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Tab content */}
-      <div style={{ paddingTop: 16 }}>
-        {tab === 'overview' && (
-          <OverviewTab
-            client={client}
-            investments={investments}
-            valuations={valuations}
-            pendingDeals={activeDeals}
-            membershipDocs={membershipDocs as unknown as { id: string; type: string; company_id: string | null }[]}
-            onSwitchToInvestments={() => switchTab('investments')}
-          />
-        )}
-        {tab === 'investments' && (
-          <InvestmentsTab
-            investments={investments}
-            valuations={valuations}
-            linkedEntities={linkedEntities}
-          />
-        )}
-        {tab === 'details' && (
-          <DetailsTab
-            client={client}
-            linkedEntities={linkedEntities}
-            portfolioRows={portfolioRows}
-            membershipDocs={membershipDocs}
-            lastActivity={lastActivity}
-            investments={investments}
-            relationships={relationships}
-            feeSchedules={feeSchedules}
-            nominees={nominees}
-          />
-        )}
-        {tab === 'investment_docs' && (
-          <InvestmentDocsTab documents={documents} />
-        )}
-        {tab === 'updates_sent' && (
-          <UpdatesSentTab updateRecipients={updateRecipients} />
-        )}
-        {tab === 'notes' && (
-          <NotesTab notes={notes} clientId={clientId} />
-        )}
-        {tab === 'pending_actions' && (
-          <PendingActionsTab
-            clientId={clientId}
-            kycExpiry={client.kyc_expiry}
-            pendingInvestments={pendingInvestments as unknown as Parameters<typeof PendingActionsTab>[0]['pendingInvestments']}
-            activeDeals={activeDeals as unknown as Parameters<typeof PendingActionsTab>[0]['activeDeals']}
-            followUpNotes={followUpNotes as unknown as Parameters<typeof PendingActionsTab>[0]['followUpNotes']}
-            investments={investments}
-            documents={documents}
-          />
-        )}
-      </div>
-
-      {/* Toast notification */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: '#0f2744', color: '#fff', fontSize: 12, fontWeight: 500,
-          padding: '10px 20px', borderRadius: 6, zIndex: 2000,
-          boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-          whiteSpace: 'nowrap',
-        }}>
-          {toast}
-        </div>
-      )}
-
-      {/* Edit fund type modal */}
-      {showFundTypeModal && (
-        <EditFundTypeModal
-          clientId={client.id}
-          currentFundType={client.fund_type ?? 'syndicate'}
-          currentActiveFundType={client.active_fund_type ?? null}
-          onClose={() => setShowFundTypeModal(false)}
-          onSaved={() => { setShowFundTypeModal(false); router.refresh() }}
-        />
-      )}
-    </div>
-  )
-}
-
-function EditFundTypeModal({
-  clientId, currentFundType, currentActiveFundType, onClose, onSaved,
-}: {
-  clientId: string
-  currentFundType: string
-  currentActiveFundType: string | null
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const supabase = createClient()
-  const [fundType,       setFundType]       = useState(currentFundType)
-  const [activeFundType, setActiveFundType] = useState(currentActiveFundType ?? 'syndicate')
-  const [saving,         setSaving]         = useState(false)
-  const [err,            setErr]            = useState('')
-
-  const inputSt: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: '#fff' }
-  const labelSt: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#555', marginBottom: 4 }
-
-  async function handleSave() {
-    setSaving(true); setErr('')
-    const { error } = await supabase.from('clients').update({
-      fund_type: fundType,
-      active_fund_type: fundType === 'both' ? activeFundType : null,
-    }).eq('id', clientId)
-    setSaving(false)
-    if (error) { setErr(error.message); return }
-    onSaved()
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="card" style={{ width: 400, padding: '24px 28px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Edit fund type</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#aaa' }}>×</button>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelSt}>Fund type</label>
-          <select value={fundType} onChange={e => setFundType(e.target.value)} style={inputSt}>
-            <option value="syndicate">Syndicate</option>
-            <option value="multi_manager">Multi Manager</option>
-            <option value="eis_fund">EIS Fund</option>
-            <option value="both">Both</option>
-          </select>
-        </div>
-        {fundType === 'both' && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>Currently active fund type</label>
-            <select value={activeFundType} onChange={e => setActiveFundType(e.target.value)} style={inputSt}>
-              <option value="syndicate">Syndicate</option>
-              <option value="multi_manager">Multi Manager</option>
-            </select>
-          </div>
-        )}
-        {fundType === 'multi_manager' && (
-          <div style={{ background: '#fffbeb', border: '0.5px solid #f0c674', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78500a' }}>
-            Multi Manager is closed to new clients. Only assign this to existing Multi Manager investors.
-          </div>
-        )}
-        {err && <div style={{ fontSize: 11, color: '#a32d2d', marginBottom: 10 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: 12 }}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function ActionGroup({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', padding: '6px 14px 3px' }}>
-        {label}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function ActionDivider() {
-  return <div style={{ borderTop: '0.5px solid #e8e7e0', margin: '4px 0' }} />
-}
-
-function ActionItem({ label, onClick, href }: { label: string; onClick?: () => void; href?: string }) {
-  const itemStyle: React.CSSProperties = {
-    display: 'block', width: '100%', textAlign: 'left',
-    padding: '6px 14px', fontSize: 12, color: '#333',
-    background: 'none', border: 'none', cursor: 'pointer',
-    textDecoration: 'none',
-  }
-  if (href) {
-    return (
-      <Link
-        href={href}
-        style={itemStyle}
-        onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
-        onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+      {/* Header card — avatar, name, meta row, actions + status strip inside */}
+      <div
+        style={{
+          background: '#fff', border: '0.5px solid #e8e7e0',
+          borderRadius: 8, padding: '18px 20px', marginBottom: 14,
+        }}
       >
-        {label}
-      </Link>
-    )
-  }
-  return (
-    <button
-      onClick={onClick}
-      style={itemStyle}
-      onMouseEnter={e => (e.currentTarget.style.background = '#f5f5f2')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-    >
-      {label}
-    </button>
-  )
-}
+        <ClientHeader lead={lead} linkedEntityCount={linkedEntities.length} />
+        <StatusStrip lead={lead} notes={notes} documents={documents} />
+      </div>
 
-function entityTypeLabel(type: string) {
-  const map: Record<string, string> = {
-    own_name: 'Own name', family: 'Family', corporate: 'Corporate',
-  }
-  return map[type] ?? type
+      <HeadlineStats
+        investments={filteredInvestments}
+        valuations={valuations}
+        scopeEntityIds={scopeEntityIds}
+        notes={notes}
+        documents={documents}
+        lead={lead}
+      />
+
+      <EntityFilter
+        lead={lead}
+        linkedEntities={sortedLinkedEntities}
+        allInvestments={investments}
+        selectedEntity={selectedEntity}
+        onSelect={entity => navigate(activeTab, entity)}
+      />
+
+      <ClientTabs
+        activeTab={activeTab}
+        onTabChange={tab => navigate(tab, selectedEntity)}
+        investmentCount={filteredInvestments.length}
+        investmentDocsCount={0}
+        updatesSentCount={0}
+        notesCount={notes.length}
+      />
+
+      <div style={{ paddingTop: 16 }}>
+        {activeTab === 'overview'        && <OverviewTab lead={lead} />}
+        {activeTab === 'investments'     && <InvestmentsTab />}
+        {activeTab === 'investment_docs' && <InvestmentDocsTab />}
+        {activeTab === 'updates_sent'    && <UpdatesSentTab />}
+        {activeTab === 'notes'           && <NotesTab />}
+      </div>
+    </div>
+  )
 }
