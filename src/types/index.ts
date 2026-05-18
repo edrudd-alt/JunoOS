@@ -34,6 +34,7 @@ export interface Client {
   holding_location: string
   reporting_entity_defaults: string[]
   report_delivery_method: string
+  report_delivery_frequency: string
   notes: string | null
   fund_type: string
   active_fund_type: string | null

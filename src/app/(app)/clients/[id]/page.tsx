@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
-import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord } from './ClientRecord'
+import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord } from './ClientRecord'
 import type { Client } from '@/types'
 
 interface Props {
@@ -49,6 +49,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: investmentsData },
     { data: notesData },
     { data: documentsData },
+    { data: feeSchedulesData },
   ] = await Promise.all([
     supabase
       .from('investments')
@@ -66,12 +67,18 @@ export default async function ClientRecordPage({ params }: Props) {
       .in('client_id', allGroupIds)
       .order('created_at', { ascending: false }),
 
-    // Membership documents used for the status strip (KYC/POA pills)
+    // Membership documents used for the status strip (KYC/POA pills) and Overview tab
     supabase
       .from('documents')
       .select('id, client_id, type, filename, storage_url, document_date')
       .in('client_id', allGroupIds)
       .in('type', ['kyc', 'poa', 'membership_agreement', 'suitability_assessment', 'source_of_funds']),
+
+    supabase
+      .from('fee_schedules')
+      .select('id, name')
+      .eq('active', true)
+      .order('name'),
   ])
 
   // 5. Fetch current valuations — needs investment company IDs first
@@ -80,12 +87,23 @@ export default async function ClientRecordPage({ params }: Props) {
     ...new Set(typedInvestments.map(i => i.company_id).filter(Boolean)),
   ]
 
-  const { data: valuationsData } = companyIds.length > 0
-    ? await supabase
-        .from('company_current_valuations')
-        .select('company_id, share_price, valuation_date')
-        .in('company_id', companyIds)
-    : { data: [] as { company_id: string; share_price: number; valuation_date: string }[] }
+  const [{ data: valuationsData }, { data: feeItemsData }] = await Promise.all([
+    companyIds.length > 0
+      ? supabase
+          .from('company_current_valuations')
+          .select('company_id, share_price, valuation_date')
+          .in('company_id', companyIds)
+      : Promise.resolve({ data: [] as { company_id: string; share_price: number; valuation_date: string }[] }),
+
+    // Fee items for the lead's schedule (for displaying the rate in Contact Details)
+    lead.fee_schedule_id
+      ? supabase
+          .from('fee_schedule_items')
+          .select('fee_type, rate, label')
+          .eq('fee_schedule_id', lead.fee_schedule_id)
+          .eq('fee_type', 'buy')
+      : Promise.resolve({ data: [] as { fee_type: string; rate: number; label: string }[] }),
+  ])
 
   return (
     <Suspense>
@@ -96,6 +114,8 @@ export default async function ClientRecordPage({ params }: Props) {
         notes={(notesData ?? []) as unknown as NoteRecord[]}
         documents={(documentsData ?? []) as unknown as DocumentRecord[]}
         valuations={(valuationsData ?? []) as unknown as ValuationRecord[]}
+        feeSchedules={(feeSchedulesData ?? []) as unknown as FeeScheduleRecord[]}
+        feeScheduleItems={(feeItemsData ?? []) as unknown as FeeScheduleItemRecord[]}
       />
     </Suspense>
   )

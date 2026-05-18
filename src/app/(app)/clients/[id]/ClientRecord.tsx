@@ -56,6 +56,17 @@ export interface ValuationRecord {
   valuation_date: string
 }
 
+export interface FeeScheduleRecord {
+  id: string
+  name: string
+}
+
+export interface FeeScheduleItemRecord {
+  fee_type: string
+  rate: number
+  label: string
+}
+
 interface Props {
   lead: Client
   linkedEntities: Client[]
@@ -63,6 +74,8 @@ interface Props {
   notes: NoteRecord[]
   documents: DocumentRecord[]
   valuations: ValuationRecord[]
+  feeSchedules: FeeScheduleRecord[]
+  feeScheduleItems: FeeScheduleItemRecord[]
 }
 
 const VALID_TABS: TabKey[] = ['overview', 'investments', 'investment_docs', 'updates_sent', 'notes']
@@ -74,6 +87,7 @@ const ENTITY_TYPE_ORDER: Record<string, number> = {
 
 export default function ClientRecord({
   lead, linkedEntities, investments, notes, documents, valuations,
+  feeSchedules, feeScheduleItems,
 }: Props) {
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -164,7 +178,18 @@ export default function ClientRecord({
       />
 
       <div style={{ paddingTop: 16 }}>
-        {activeTab === 'overview'        && <OverviewTab lead={lead} />}
+        {activeTab === 'overview' && (
+          <OverviewTab
+            lead={lead}
+            linkedEntities={sortedLinkedEntities}
+            investments={investments}
+            valuations={valuations}
+            documents={leadDocuments}
+            feeSchedules={feeSchedules}
+            feeScheduleItems={feeScheduleItems}
+            onSaved={() => router.refresh()}
+          />
+        )}
         {activeTab === 'investments'     && <InvestmentsTab />}
         {activeTab === 'investment_docs' && <InvestmentDocsTab />}
         {activeTab === 'updates_sent'    && <UpdatesSentTab />}
