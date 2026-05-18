@@ -1446,6 +1446,30 @@ This leaves the platform with **two parallel pipelines** for document generation
 
 **Trigger to start:** when Stage 6d (or any subsequent new document type) is being scoped — the question of "which pipeline does this go in" forces the decision. Before then, the current state is liveable.
 
+### 14.20 CSV export for Investments tab
+
+**[NEW — Phase B Stage 1.4]** The Investments tab has no export capability in v1. The team may want to export the current filtered view (By Company / By Share Class / Flat List) as a CSV for offline analysis or to populate reports.
+
+**Scope:** button in the toolbar; export uses the currently filtered + grouped data from `investmentsAggregations.ts`. No server round-trip — compute from existing client-side state.
+
+**Trigger to start:** when the team asks for an ad-hoc "give me a spreadsheet" workflow.
+
+### 14.21 Sortable column headers in Investments tab Flat List view
+
+**[NEW — Phase B Stage 1.4]** The Flat List view header cells are not currently sortable. Sort interaction (click header → ascending; click again → descending) is straightforward client-side work using the existing `RichInvestment[]` array.
+
+**Scope:** implement sort state in `InvestmentsTab`, apply to `FlatListView` render only. By Company and By Share Class views sort alphabetically already; their sort behaviour is not changing.
+
+**Trigger to start:** when the team reports friction finding specific investments in the flat list.
+
+### 14.22 URL-synced filters and view mode in Investments tab
+
+**[NEW — Phase B Stage 1.4]** View mode (By Company / By Share Class / Flat List) and toolbar filters (EIS, location) are currently component-local state and reset on every tab switch. URL-syncing would let the team share deep links to a specific filtered view.
+
+**Scope:** add `view`, `eis`, `loc` query params alongside the existing `tab` and `entity` params. Requires extending the `navigate()` helper in `ClientRecord` and reading those params in `InvestmentsTab`.
+
+**Trigger to start:** when the team wants to share filtered views or needs the filter to persist across navigations.
+
 ---
 
 ## Stage 6 — Document Generation Architecture (settled 7 May 2026; Stage 6c merged 12 May 2026)

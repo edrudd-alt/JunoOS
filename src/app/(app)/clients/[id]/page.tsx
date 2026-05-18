@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
-import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord, NomineeRecord } from './ClientRecord'
+import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord, NomineeRecord, CompanyRecord } from './ClientRecord'
 import type { Client } from '@/types'
 
 interface Props {
@@ -56,7 +56,7 @@ export default async function ClientRecordPage({ params }: Props) {
       .select(
         'id, client_id, company_id, share_class, investment_date, original_share_price, ' +
         'shares_purchased, sum_subscribed, eis_status, holding_location, holding_entity, ' +
-        'status, transaction_type, fund_type',
+        'nominee_id, status, transaction_type, fund_type',
       )
       .in('client_id', allGroupIds)
       .order('investment_date', { ascending: false }),
@@ -81,22 +81,30 @@ export default async function ClientRecordPage({ params }: Props) {
       .order('name'),
   ])
 
-  // 5. Fetch current valuations, fee items, and nominees in parallel
+  // 5. Fetch current valuations, fee items, nominees, and companies in parallel
   const typedInvestments = (investmentsData ?? []) as unknown as InvestmentRecord[]
   const companyIds = [
     ...new Set(typedInvestments.map(i => i.company_id).filter(Boolean)),
   ]
 
-  // Distinct non-null nominee IDs from all entities in the group
+  // Distinct non-null nominee IDs: entity defaults + investment-level overrides
   const nomineeIds = [
-    ...new Set(
-      (groupData ?? [])
+    ...new Set([
+      ...(groupData ?? [])
         .map(c => c.default_nominee_id as string | null)
         .filter((id): id is string => id != null),
-    ),
+      ...typedInvestments
+        .map(i => i.nominee_id)
+        .filter((id): id is string => id != null),
+    ]),
   ]
 
-  const [{ data: valuationsData }, { data: feeItemsData }, { data: nomineesData }] = await Promise.all([
+  const [
+    { data: valuationsData },
+    { data: feeItemsData },
+    { data: nomineesData },
+    { data: companiesData },
+  ] = await Promise.all([
     companyIds.length > 0
       ? supabase
           .from('company_current_valuations')
@@ -119,6 +127,13 @@ export default async function ClientRecordPage({ params }: Props) {
           .select('id, name')
           .in('id', nomineeIds)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+
+    companyIds.length > 0
+      ? supabase
+          .from('companies')
+          .select('id, name, logo_url, sector')
+          .in('id', companyIds)
+      : Promise.resolve({ data: [] as CompanyRecord[] }),
   ])
 
   return (
@@ -133,6 +148,7 @@ export default async function ClientRecordPage({ params }: Props) {
         feeSchedules={(feeSchedulesData ?? []) as unknown as FeeScheduleRecord[]}
         feeScheduleItems={(feeItemsData ?? []) as unknown as FeeScheduleItemRecord[]}
         nominees={(nomineesData ?? []) as unknown as NomineeRecord[]}
+        companies={(companiesData ?? []) as unknown as CompanyRecord[]}
       />
     </Suspense>
   )

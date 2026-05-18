@@ -27,9 +27,17 @@ export interface InvestmentRecord {
   eis_status: string
   holding_location: string
   holding_entity: string | null
+  nominee_id: string | null
   status: string
   transaction_type: string | null
   fund_type: string | null
+}
+
+export interface CompanyRecord {
+  id: string
+  name: string
+  logo_url: string | null
+  sector: string | null
 }
 
 export interface NoteRecord {
@@ -82,6 +90,7 @@ interface Props {
   feeSchedules: FeeScheduleRecord[]
   feeScheduleItems: FeeScheduleItemRecord[]
   nominees: NomineeRecord[]
+  companies: CompanyRecord[]
 }
 
 const VALID_TABS: TabKey[] = ['overview', 'investments', 'investment_docs', 'updates_sent', 'notes']
@@ -93,7 +102,7 @@ const ENTITY_TYPE_ORDER: Record<string, number> = {
 
 export default function ClientRecord({
   lead, linkedEntities, investments, notes, documents, valuations,
-  feeSchedules, feeScheduleItems, nominees,
+  feeSchedules, feeScheduleItems, nominees, companies,
 }: Props) {
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -135,6 +144,12 @@ export default function ClientRecord({
 
   // Scope entity IDs: all when filter is 'all', else just the selected entity
   const scopeEntityIds = selectedEntity === 'all' ? allEntityIds : [selectedEntity]
+
+  // All entity records in display order (lead first), passed to InvestmentsTab
+  const allEntities = useMemo(
+    () => [lead, ...sortedLinkedEntities],
+    [lead, sortedLinkedEntities],
+  )
 
   // POA and KYC checks are always about the lead's own documents, not linked entities.
   const leadDocuments = useMemo(
@@ -197,7 +212,17 @@ export default function ClientRecord({
             onSaved={() => router.refresh()}
           />
         )}
-        {activeTab === 'investments'     && <InvestmentsTab />}
+        {activeTab === 'investments' && (
+          <InvestmentsTab
+            investments={investments}
+            companies={companies}
+            valuations={valuations}
+            nominees={nominees}
+            allEntities={allEntities}
+            selectedEntity={selectedEntity}
+            onEntityChange={entity => navigate(activeTab, entity)}
+          />
+        )}
         {activeTab === 'investment_docs' && <InvestmentDocsTab />}
         {activeTab === 'updates_sent'    && <UpdatesSentTab />}
         {activeTab === 'notes'           && <NotesTab />}
