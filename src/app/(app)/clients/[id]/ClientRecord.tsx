@@ -67,6 +67,11 @@ export interface FeeScheduleItemRecord {
   label: string
 }
 
+export interface NomineeRecord {
+  id: string
+  name: string
+}
+
 interface Props {
   lead: Client
   linkedEntities: Client[]
@@ -76,6 +81,7 @@ interface Props {
   valuations: ValuationRecord[]
   feeSchedules: FeeScheduleRecord[]
   feeScheduleItems: FeeScheduleItemRecord[]
+  nominees: NomineeRecord[]
 }
 
 const VALID_TABS: TabKey[] = ['overview', 'investments', 'investment_docs', 'updates_sent', 'notes']
@@ -87,7 +93,7 @@ const ENTITY_TYPE_ORDER: Record<string, number> = {
 
 export default function ClientRecord({
   lead, linkedEntities, investments, notes, documents, valuations,
-  feeSchedules, feeScheduleItems,
+  feeSchedules, feeScheduleItems, nominees,
 }: Props) {
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -187,6 +193,7 @@ export default function ClientRecord({
             documents={leadDocuments}
             feeSchedules={feeSchedules}
             feeScheduleItems={feeScheduleItems}
+            nominees={nominees}
             onSaved={() => router.refresh()}
           />
         )}

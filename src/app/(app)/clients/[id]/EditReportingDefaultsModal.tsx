@@ -4,10 +4,18 @@ import { useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Client } from '@/types'
+import type { NomineeRecord } from './ClientRecord'
+
+function holdingLocationLabel(entity: Client, nomineeMap: Map<string, string>): string {
+  if (entity.holding_location !== 'nominee') return 'Direct'
+  const name = entity.default_nominee_id ? nomineeMap.get(entity.default_nominee_id) : null
+  return name ? `Nominee · ${name}` : 'Nominee'
+}
 
 interface Props {
   lead: Client
-  allEntities: Client[]   // [lead, ...linkedEntities] in display order
+  allEntities: Client[]     // [lead, ...linkedEntities] in display order
+  nominees: NomineeRecord[]
   onClose: () => void
   onSaved: () => void
 }
@@ -18,7 +26,8 @@ interface FormState {
   frequency: string
 }
 
-export default function EditReportingDefaultsModal({ lead, allEntities, onClose, onSaved }: Props) {
+export default function EditReportingDefaultsModal({ lead, allEntities, nominees, onClose, onSaved }: Props) {
+  const nomineeMap = new Map(nominees.map(n => [n.id, n.name]))
   const [form, setForm] = useState<FormState>({
     selectedIds:    lead.reporting_entity_defaults ?? [],
     deliveryMethod: lead.report_delivery_method ?? 'email',
@@ -98,7 +107,7 @@ export default function EditReportingDefaultsModal({ lead, allEntities, onClose,
               </div>
               {allEntities.map(entity => {
                 const checked = form.selectedIds.includes(entity.id)
-                const locationLabel = entity.holding_location === 'nominee' ? 'Nominee' : 'Direct'
+                const locationLabel = holdingLocationLabel(entity, nomineeMap)
                 return (
                   <div
                     key={entity.id}

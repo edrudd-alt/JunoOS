@@ -10,6 +10,7 @@ import type {
   DocumentRecord,
   FeeScheduleRecord,
   FeeScheduleItemRecord,
+  NomineeRecord,
 } from '../ClientRecord'
 import EditClientModal from '../EditClientModal'
 import EditReportingDefaultsModal from '../EditReportingDefaultsModal'
@@ -24,6 +25,7 @@ interface Props {
   documents: DocumentRecord[]     // lead's membership docs only
   feeSchedules: FeeScheduleRecord[]
   feeScheduleItems: FeeScheduleItemRecord[] // buy items for lead's fee_schedule_id
+  nominees: NomineeRecord[]
   onSaved: () => void
 }
 
@@ -105,6 +107,15 @@ function docTypeInfo(type: string): { label: string; bg: string; color: string }
   }
 }
 
+function holdingLocationLabel(
+  entity: Client,
+  nomineeMap: Map<string, string>,
+): string {
+  if (entity.holding_location !== 'nominee') return 'Direct'
+  const name = entity.default_nominee_id ? nomineeMap.get(entity.default_nominee_id) : null
+  return name ? `Nominee · ${name}` : 'Nominee'
+}
+
 function resolveFee(
   lead: Client,
   feeSchedules: FeeScheduleRecord[],
@@ -152,7 +163,7 @@ function StubModal({ message, onClose }: { message: string; onClose: () => void 
 
 export default function OverviewTab({
   lead, linkedEntities, investments, valuations, documents,
-  feeSchedules, feeScheduleItems, onSaved,
+  feeSchedules, feeScheduleItems, nominees, onSaved,
 }: Props) {
   const [editClientOpen, setEditClientOpen]       = useState(false)
   const [editReportingOpen, setEditReportingOpen] = useState(false)
@@ -167,6 +178,12 @@ export default function OverviewTab({
   const valMap = useMemo(
     () => new Map(valuations.map(v => [v.company_id, v.share_price])),
     [valuations],
+  )
+
+  // Nominee name lookup map (id → name)
+  const nomineeMap = useMemo(
+    () => new Map(nominees.map(n => [n.id, n.name])),
+    [nominees],
   )
 
   // Per-entity stats for linked entities panel
@@ -359,9 +376,8 @@ export default function OverviewTab({
               <tbody>
                 {entityStats.map(({ entity, invested, currentValue, change }) => {
                   const isLead = entity.id === lead.id
-                  const typeStyle = entityTypeTagStyle(entity.entity_type)
-                  // TODO: fetch nominee name via entity.default_nominee_id for "Nominee [Name]" label
-                  const locationLabel = entity.holding_location === 'nominee' ? 'Nominee' : 'Direct'
+                  const typeStyle     = entityTypeTagStyle(entity.entity_type)
+                  const locationLabel = holdingLocationLabel(entity, nomineeMap)
                   const changeColor   = change >= 0 ? '#0f6e56' : '#a32d2d'
 
                   return (
@@ -433,8 +449,8 @@ export default function OverviewTab({
               Entities included in routine portfolio statements:
             </div>
             {allEntities.map(entity => {
-              const checked = defaultIds.has(entity.id)
-              const locationLabel = entity.holding_location === 'nominee' ? 'Nominee' : 'Direct'
+              const checked       = defaultIds.has(entity.id)
+              const locationLabel = holdingLocationLabel(entity, nomineeMap)
               return (
                 <div
                   key={entity.id}
@@ -500,6 +516,7 @@ export default function OverviewTab({
         <EditReportingDefaultsModal
           lead={lead}
           allEntities={allEntities}
+          nominees={nominees}
           onClose={() => setEditReportingOpen(false)}
           onSaved={handleSaved}
         />

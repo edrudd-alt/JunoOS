@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
-import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord } from './ClientRecord'
+import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord, NomineeRecord } from './ClientRecord'
 import type { Client } from '@/types'
 
 interface Props {
@@ -81,13 +81,22 @@ export default async function ClientRecordPage({ params }: Props) {
       .order('name'),
   ])
 
-  // 5. Fetch current valuations — needs investment company IDs first
+  // 5. Fetch current valuations, fee items, and nominees in parallel
   const typedInvestments = (investmentsData ?? []) as unknown as InvestmentRecord[]
   const companyIds = [
     ...new Set(typedInvestments.map(i => i.company_id).filter(Boolean)),
   ]
 
-  const [{ data: valuationsData }, { data: feeItemsData }] = await Promise.all([
+  // Distinct non-null nominee IDs from all entities in the group
+  const nomineeIds = [
+    ...new Set(
+      (groupData ?? [])
+        .map(c => c.default_nominee_id as string | null)
+        .filter((id): id is string => id != null),
+    ),
+  ]
+
+  const [{ data: valuationsData }, { data: feeItemsData }, { data: nomineesData }] = await Promise.all([
     companyIds.length > 0
       ? supabase
           .from('company_current_valuations')
@@ -103,6 +112,13 @@ export default async function ClientRecordPage({ params }: Props) {
           .eq('fee_schedule_id', lead.fee_schedule_id)
           .eq('fee_type', 'buy')
       : Promise.resolve({ data: [] as { fee_type: string; rate: number; label: string }[] }),
+
+    nomineeIds.length > 0
+      ? supabase
+          .from('nominees')
+          .select('id, name')
+          .in('id', nomineeIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ])
 
   return (
@@ -116,6 +132,7 @@ export default async function ClientRecordPage({ params }: Props) {
         valuations={(valuationsData ?? []) as unknown as ValuationRecord[]}
         feeSchedules={(feeSchedulesData ?? []) as unknown as FeeScheduleRecord[]}
         feeScheduleItems={(feeItemsData ?? []) as unknown as FeeScheduleItemRecord[]}
+        nominees={(nomineesData ?? []) as unknown as NomineeRecord[]}
       />
     </Suspense>
   )
