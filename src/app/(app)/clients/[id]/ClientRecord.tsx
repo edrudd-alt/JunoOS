@@ -116,6 +116,12 @@ export default function ClientRecord({
   // Scope entity IDs: all when filter is 'all', else just the selected entity
   const scopeEntityIds = selectedEntity === 'all' ? allEntityIds : [selectedEntity]
 
+  // POA and KYC checks are always about the lead's own documents, not linked entities.
+  const leadDocuments = useMemo(
+    () => documents.filter(d => d.client_id === lead.id),
+    [documents, lead.id],
+  )
+
   return (
     <div>
       <Breadcrumb items={[{ label: 'Clients', href: '/clients' }, { label: lead.full_name }]} />
@@ -128,7 +134,7 @@ export default function ClientRecord({
         }}
       >
         <ClientHeader lead={lead} linkedEntityCount={linkedEntities.length} />
-        <StatusStrip lead={lead} notes={notes} documents={documents} />
+        <StatusStrip lead={lead} notes={notes} documents={leadDocuments} />
       </div>
 
       <HeadlineStats
@@ -136,7 +142,7 @@ export default function ClientRecord({
         valuations={valuations}
         scopeEntityIds={scopeEntityIds}
         notes={notes}
-        documents={documents}
+        documents={leadDocuments}
         lead={lead}
       />
 
