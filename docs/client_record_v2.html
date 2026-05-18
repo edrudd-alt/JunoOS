@@ -1,0 +1,1742 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Client — Barry O'Brien</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: sans-serif; background: #f7f7f5; font-size: 13px; color: #333; }
+
+/* Top bar — matches portfolio_list_v3 exactly */
+.topbar { background: #0f2744; padding: 0 24px; height: 48px; display: flex; align-items: center; justify-content: space-between; }
+.topbar-logo { color: #fff; font-size: 14px; font-weight: 500; display: flex; align-items: center; gap: 9px; }
+.topbar-badge { width: 26px; height: 26px; border-radius: 5px; background: #1d9e75; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 500; }
+.topbar-nav { display: flex; gap: 20px; }
+.topbar-nav span { color: rgba(255,255,255,0.5); font-size: 12px; cursor: pointer; }
+.topbar-nav span.active { color: #fff; }
+.topbar-user { width: 26px; height: 26px; border-radius: 50%; background: #1d4e8f; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 11px; font-weight: 500; }
+
+.main { padding: 16px 24px 40px; }
+.breadcrumb { font-size: 11px; color: #999; margin-bottom: 14px; }
+.breadcrumb a { color: #185fa5; text-decoration: none; cursor: pointer; }
+.breadcrumb a:hover { text-decoration: underline; }
+
+/* ── Client header ── */
+.client-header { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; padding: 18px 20px; margin-bottom: 14px; }
+.ch-top { display: flex; align-items: flex-start; gap: 16px; }
+.ch-avatar { width: 48px; height: 48px; border-radius: 50%; background: #1d9e75; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 16px; font-weight: 500; flex-shrink: 0; letter-spacing: 0.02em; }
+.ch-main { flex: 1; min-width: 0; }
+.ch-name { font-size: 19px; font-weight: 500; color: #0f2744; }
+.ch-meta-row { display: flex; align-items: center; gap: 12px; margin-top: 5px; flex-wrap: wrap; }
+.ch-meta { font-size: 11px; color: #888; }
+.ch-meta strong { color: #555; font-weight: 500; }
+.ch-tag { font-size: 10px; padding: 2px 7px; border-radius: 5px; font-weight: 500; }
+.tag-kyc-ok { background: #e1f5ee; color: #085041; }
+.tag-kyc-warn { background: #fdf3e1; color: #92571b; }
+.tag-eis { background: #e1f5ee; color: #085041; }
+.tag-lead { background: #eef2f7; color: #4a6fa5; }
+.ch-actions { display: flex; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+.btn { font-size: 12px; padding: 6px 12px; border-radius: 6px; border: 0.5px solid #d8d7d0; background: #fff; color: #444; cursor: pointer; font-family: inherit; white-space: nowrap; }
+.btn:hover { background: #f0f0ec; }
+.btn-primary { background: #0f2744; color: #fff; border-color: #0f2744; font-weight: 500; }
+.btn-primary:hover { background: #183553; }
+.btn-icon { padding: 6px 8px; }
+
+/* Status strip — small, scannable health indicators */
+.status-strip { display: flex; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 0.5px solid #f0f0ec; flex-wrap: wrap; }
+.status-pill { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px; font-size: 11px; border: 0.5px solid; }
+.sp-ok { background: #f3faf7; border-color: #c8e8db; color: #085041; }
+.sp-warn { background: #fef7eb; border-color: #f1d9a8; color: #92571b; }
+.sp-info { background: #f0f5fb; border-color: #c8d8eb; color: #185fa5; }
+.sp-neutral { background: #fafaf8; border-color: #e8e7e0; color: #888; }
+.sp-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.dot-ok { background: #1d9e75; }
+.dot-warn { background: #ba7517; }
+.dot-info { background: #185fa5; }
+.dot-neutral { background: #aaa; }
+
+/* ── Headline stats ── */
+.headline-row { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-bottom: 16px; }
+.headline-card { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; padding: 13px 16px; }
+.hl-label { font-size: 11px; color: #999; margin-bottom: 5px; }
+.hl-value { font-size: 20px; font-weight: 500; color: #0f2744; }
+.hl-sub { font-size: 11px; margin-top: 3px; color: #aaa; }
+.hl-up { color: #0f6e56; }
+.hl-down { color: #a32d2d; }
+
+/* ── Entity filter bar ── */
+.entity-bar { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.eb-label { font-size: 11px; color: #999; font-weight: 500; }
+.eb-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.eb-chip { font-size: 11px; padding: 4px 10px; border-radius: 14px; border: 0.5px solid #d8d7d0; background: #fff; color: #555; cursor: pointer; font-family: inherit; display: flex; align-items: center; gap: 5px; }
+.eb-chip:hover { background: #fafaf8; }
+.eb-chip.active { background: #0f2744; color: #fff; border-color: #0f2744; }
+.eb-chip .eb-count { font-size: 10px; color: #aaa; }
+.eb-chip.active .eb-count { color: rgba(255,255,255,0.6); }
+.eb-chip-icon { font-size: 10px; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 0; border-bottom: 0.5px solid #e8e7e0; margin-bottom: 16px; }
+.tab { padding: 10px 18px; font-size: 12px; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -0.5px; font-family: inherit; background: none; border-left: none; border-right: none; border-top: none; }
+.tab:hover { color: #0f2744; }
+.tab.active { color: #0f2744; border-bottom-color: #0f2744; font-weight: 500; }
+.tab-count { font-size: 10px; color: #bbb; margin-left: 5px; }
+.tab.active .tab-count { color: #888; }
+
+/* ── Tab content ── */
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Two column layout for Overview */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.panel { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; padding: 16px 18px; }
+.panel-title { font-size: 11px; font-weight: 500; color: #0f2744; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; justify-content: space-between; }
+.panel-title-link { font-size: 11px; color: #185fa5; cursor: pointer; text-transform: none; letter-spacing: 0; font-weight: normal; }
+.panel-title-link:hover { text-decoration: underline; }
+
+/* Contact details grid */
+.detail-grid { display: grid; grid-template-columns: 110px 1fr; row-gap: 9px; column-gap: 14px; }
+.dg-label { font-size: 11px; color: #999; }
+.dg-value { font-size: 12px; color: #333; }
+.dg-value a { color: #185fa5; text-decoration: none; }
+.dg-value a:hover { text-decoration: underline; }
+
+/* Linked entities — table style */
+.entity-table { width: 100%; border-collapse: collapse; }
+.entity-table th { font-size: 10px; color: #aaa; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 6px 8px; text-align: left; border-bottom: 0.5px solid #e8e7e0; }
+.entity-table th.r { text-align: right; }
+.entity-table td { padding: 10px 8px; font-size: 12px; border-bottom: 0.5px solid #f2f2ef; vertical-align: middle; }
+.entity-table tr:last-child td { border-bottom: none; }
+.entity-table .r { text-align: right; }
+.entity-table tr.total-row td { background: #fafaf8; font-weight: 500; color: #0f2744; }
+.entity-table tr.total-row td:first-child { color: #0f2744; }
+.entity-table tr.entity-row { cursor: pointer; }
+.entity-table tr.entity-row:hover { background: #fafaf8; }
+.entity-name { font-size: 12px; color: #0f2744; }
+.entity-tag { font-size: 9px; padding: 1px 5px; border-radius: 5px; background: #f0f0ec; color: #888; margin-left: 6px; }
+.tag-own { background: #eef2f7; color: #4a6fa5; }
+.tag-family { background: #f3eef7; color: #6b4a8a; }
+.tag-corp { background: #faf3e8; color: #8a6b2a; }
+.holding-tag { font-size: 9px; padding: 1px 5px; border-radius: 5px; background: #f0f0ec; color: #888; }
+.tag-direct { background: #f0f0ec; color: #666; }
+.tag-nominee { background: #eeedfe; color: #3c3489; }
+
+/* Membership docs list */
+.doc-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; background: #fafaf8; border-radius: 6px; }
+.doc-info { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.doc-name { font-size: 12px; color: #333; }
+.doc-meta { font-size: 11px; color: #aaa; }
+.doc-tag { font-size: 9px; padding: 2px 6px; border-radius: 5px; background: #eef2f7; color: #4a6fa5; flex-shrink: 0; }
+.doc-link { font-size: 11px; color: #185fa5; cursor: pointer; }
+.doc-link:hover { text-decoration: underline; }
+
+/* Reporting defaults */
+.reporting-row { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-bottom: 0.5px solid #f2f2ef; font-size: 12px; }
+.reporting-row:last-child { border-bottom: none; }
+.checkbox { width: 14px; height: 14px; border-radius: 3px; border: 1px solid #c8c7c0; background: #fff; display: inline-flex; align-items: center; justify-content: center; margin-right: 8px; flex-shrink: 0; vertical-align: middle; }
+.checkbox.checked { background: #0f2744; border-color: #0f2744; color: #fff; font-size: 9px; }
+.checkbox-label { display: flex; align-items: center; cursor: pointer; }
+
+/* ── Investments tab ── */
+.inv-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.filter-group { display: flex; align-items: center; gap: 6px; }
+.filter-label { font-size: 11px; color: #999; }
+.filter-select { font-size: 11px; padding: 5px 8px; border-radius: 6px; border: 0.5px solid #d8d7d0; background: #fff; color: #444; font-family: inherit; cursor: pointer; }
+
+.inv-table { width: 100%; border-collapse: collapse; background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; overflow: hidden; }
+.inv-table thead tr { background: #f7f7f5; border-bottom: 0.5px solid #e8e7e0; }
+.inv-table th { font-size: 10px; color: #aaa; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 9px 14px; text-align: left; }
+.inv-table th.r { text-align: right; }
+.inv-table tbody tr { border-bottom: 0.5px solid #f2f2ef; }
+.inv-table tbody tr:last-child { border-bottom: none; }
+.inv-table td { padding: 11px 14px; font-size: 12px; vertical-align: middle; }
+.inv-table .r { text-align: right; }
+.inv-table .company-row { cursor: pointer; }
+.inv-table .company-row:hover { background: #fafaf8; }
+.inv-table .company-row.expanded { background: #fafaf8; }
+.expand-arrow { display: inline-block; width: 14px; color: #aaa; font-size: 10px; transition: transform 0.15s; }
+.expand-arrow.open { transform: rotate(90deg); }
+.co-cell-inv { display: flex; align-items: center; gap: 10px; }
+.co-logo-sm { width: 26px; height: 26px; border-radius: 6px; background: #eef2f7; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 500; color: #4a6fa5; flex-shrink: 0; border: 0.5px solid #dde3ec; }
+
+/* Transaction sub-rows */
+.tx-row { background: #fdfdfb; }
+.tx-row td { padding: 8px 14px 8px 14px; font-size: 11px; color: #555; border-bottom: 0.5px solid #f5f5f0; }
+.tx-row td:first-child { padding-left: 56px; }
+.tx-row.last-tx td { border-bottom: 0.5px solid #f2f2ef; }
+.tx-cell { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tx-date { color: #888; }
+.tx-share-class { font-size: 10px; color: #666; }
+.tx-tag { font-size: 9px; padding: 1px 5px; border-radius: 4px; }
+.tx-tag-eis { background: #e1f5ee; color: #085041; }
+.tx-tag-non-eis { background: #f0f0ec; color: #666; }
+.tx-tag-nominee { background: #eeedfe; color: #3c3489; }
+.tx-held { font-size: 10px; color: #888; }
+
+.up { color: #0f6e56; }
+.down { color: #a32d2d; }
+.neutral { color: #aaa; }
+
+/* ─── REBUILT Investments tab ─── */
+.view-toggle { display: inline-flex; border: 0.5px solid #d8d7d0; border-radius: 6px; overflow: hidden; background: #fff; margin-left: auto; }
+.vt-btn { font-size: 11px; padding: 5px 10px; border: none; background: #fff; color: #555; cursor: pointer; font-family: inherit; border-right: 0.5px solid #d8d7d0; display: flex; align-items: center; gap: 5px; }
+.vt-btn:last-child { border-right: none; }
+.vt-btn:hover { background: #fafaf8; }
+.vt-btn.active { background: #0f2744; color: #fff; }
+.vt-icon { font-size: 11px; opacity: 0.6; }
+.vt-btn.active .vt-icon { opacity: 1; }
+
+.inv-table-v2 { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; overflow: hidden; }
+.inv-table-v2 thead tr { background: #f7f7f5; }
+.inv-table-v2 thead th { font-size: 10px; color: #888; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 9px 12px; text-align: left; border-bottom: 0.5px solid #e8e7e0; white-space: nowrap; }
+.inv-table-v2 thead th.r { text-align: right; }
+.inv-table-v2 thead th.sortable { cursor: pointer; user-select: none; }
+.inv-table-v2 thead th.sortable:hover { color: #0f2744; }
+.sort-arrow { font-size: 9px; color: #c0c0b8; margin-left: 3px; }
+.inv-table-v2 thead th.sortable .sort-arrow { color: #c0c0b8; }
+.inv-table-v2 tbody td { padding: 11px 12px; font-size: 12px; border-bottom: 0.5px solid #f2f2ef; vertical-align: middle; }
+.inv-table-v2 tbody td.r { text-align: right; }
+.inv-table-v2 tbody tr:last-child td { border-bottom: none; }
+
+.mono { font-variant-numeric: tabular-nums; }
+
+/* Company row */
+.co-row { cursor: pointer; }
+.co-row:hover td { background: #fafaf8; }
+.co-cell { display: flex; align-items: center; gap: 10px; }
+.co-logo { width: 28px; height: 28px; border-radius: 6px; background: #eef2f7; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 500; color: #4a6fa5; flex-shrink: 0; border: 0.5px solid #dde3ec; }
+.co-name { font-weight: 500; color: #0f2744; font-size: 12px; }
+.co-sub { font-size: 11px; color: #aaa; margin-top: 1px; }
+.exp-arrow { display: inline-block; width: 12px; color: #aaa; font-size: 11px; transition: transform 0.15s; flex-shrink: 0; }
+.exp-arrow.open { transform: rotate(90deg); }
+.exp-arrow.indent { margin-left: 8px; }
+
+.sc-tag { font-size: 9px; padding: 2px 5px; border-radius: 4px; background: #eef2f7; color: #4a6fa5; margin-right: 3px; font-weight: 500; }
+.tx-pill { font-size: 9px; padding: 2px 6px; border-radius: 8px; background: #f0f0ec; color: #888; font-weight: 500; }
+.pct { display: block; font-size: 10px; opacity: 0.75; margin-top: 1px; font-weight: normal; }
+
+/* Sub-table inside expanded company row */
+.tx-block-cell { padding: 0 !important; background: #fafaf8; }
+.tx-table { width: 100%; border-collapse: collapse; background: transparent; border: none; border-radius: 0; }
+.tx-table thead tr { background: transparent; }
+.tx-table thead th { font-size: 9px; color: #999; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 12px 6px; text-align: left; border-bottom: 0.5px dashed #d8d7d0; white-space: nowrap; }
+.tx-table thead th.r { text-align: right; }
+.tx-table tbody td { padding: 9px 12px; font-size: 11px; color: #444; border-bottom: 0.5px solid #f0f0ec; background: #fafaf8 !important; }
+.tx-table tbody td.r { text-align: right; }
+.tx-table tbody tr:last-child td { border-bottom: 0.5px solid #f0f0ec; }
+.tx-table tbody tr:hover td { background: #f5f5f0 !important; }
+
+.tx-block-meta { padding: 10px 14px; font-size: 11px; color: #888; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; background: #fafaf8 !important; border-top: 0.5px dashed #d8d7d0; }
+.tx-block-meta strong { color: #555; font-weight: 500; }
+.warn-text { color: #92571b; }
+
+/* EIS pills */
+.eis-pill { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 500; }
+.eis-yes { background: #e1f5ee; color: #085041; }
+.eis-no { background: #f0f0ec; color: #777; }
+
+/* Held-by + location */
+.held-by { font-size: 11px; color: #555; }
+.loc-tag { font-size: 9px; padding: 1px 5px; border-radius: 4px; background: #f0f0ec; color: #888; margin-left: 4px; font-weight: 500; }
+.loc-nom { background: #eeedfe; color: #3c3489; }
+
+/* Total row */
+.total-row-v2 td { background: #f7f7f5; font-weight: 500; color: #0f2744; border-top: 0.5px solid #d8d7d0; }
+.total-row-v2 td .pct { font-weight: normal; }
+
+/* Share-class view */
+.sc-co-row td { padding: 12px 12px 6px !important; background: #f7f7f5 !important; border-bottom: 0.5px solid #e8e7e0 !important; }
+.sc-co-row .co-cell { padding: 0; }
+.sc-row { cursor: pointer; }
+.sc-row:hover td { background: #fafaf8; }
+.sc-row td:first-child { padding-left: 28px !important; }
+.sc-name { font-size: 12px; color: #333; margin-right: 6px; }
+.sc-subtotal td { background: #fdfdfb !important; font-size: 11px; color: #555; font-style: italic; padding: 8px 12px !important; border-bottom: 0.5px solid #e8e7e0 !important; }
+.sc-subtotal td:first-child { padding-left: 28px !important; }
+
+/* Flat view */
+.flat-table thead th { font-size: 9px; padding: 8px 9px; }
+.flat-table tbody td { padding: 8px 9px; font-size: 11px; }
+
+.up { color: #0f6e56; }
+.down { color: #a32d2d; }
+.neutral { color: #888; }
+
+/* ── Investment docs tab ── */
+.docs-tree { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; overflow: hidden; }
+.docs-co-row { display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; border-bottom: 0.5px solid #f2f2ef; background: #fafaf8; }
+.docs-co-row:hover { background: #f5f5f0; }
+.docs-co-row.expanded { background: #f5f5f0; }
+.docs-co-name { font-size: 12px; font-weight: 500; color: #0f2744; flex: 1; }
+.docs-co-count { font-size: 11px; color: #888; }
+.docs-year-row { padding: 8px 16px 8px 38px; background: #fff; border-bottom: 0.5px solid #f5f5f0; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 11px; color: #666; }
+.docs-year-row:hover { background: #fafaf8; }
+.docs-doc-row { padding: 9px 16px 9px 60px; background: #fff; border-bottom: 0.5px solid #f8f8f3; display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.docs-doc-row:hover { background: #fafaf8; }
+.docs-doc-row:last-child { border-bottom: none; }
+.docs-doc-name { color: #333; flex: 1; }
+.docs-doc-date { color: #aaa; font-size: 10px; }
+
+/* ── Updates sent tab ── */
+.updates-list { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; }
+.update-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 0.5px solid #f2f2ef; cursor: pointer; }
+.update-row:hover { background: #fafaf8; }
+.update-row:last-child { border-bottom: none; }
+.update-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-portfolio { background: #1d9e75; }
+.dot-update { background: #ba7517; }
+.dot-letter { background: #185fa5; }
+.update-info { flex: 1; min-width: 0; }
+.update-title { font-size: 12px; color: #0f2744; }
+.update-meta { font-size: 11px; color: #aaa; margin-top: 2px; }
+.update-tag { font-size: 9px; padding: 2px 6px; border-radius: 5px; background: #eef2f7; color: #4a6fa5; flex-shrink: 0; }
+
+/* ── Notes tab ── */
+.notes-add { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+.notes-add textarea { width: 100%; border: 0.5px solid #d8d7d0; border-radius: 6px; padding: 8px 10px; font-family: inherit; font-size: 12px; resize: vertical; min-height: 60px; color: #333; }
+.notes-add textarea:focus { outline: none; border-color: #0f2744; }
+.notes-add-actions { display: flex; justify-content: flex-end; margin-top: 8px; gap: 6px; }
+
+.notes-list { background: #fff; border: 0.5px solid #e8e7e0; border-radius: 8px; }
+.note-row { padding: 14px 16px; border-bottom: 0.5px solid #f2f2ef; }
+.note-row:last-child { border-bottom: none; }
+.note-header { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.note-dot { width: 8px; height: 8px; border-radius: 50%; background: #534ab7; }
+.note-author { font-size: 11px; color: #666; font-weight: 500; }
+.note-date { font-size: 11px; color: #aaa; margin-left: auto; }
+.note-text { font-size: 12px; color: #333; line-height: 1.6; padding-left: 16px; }
+
+/* Dropdown */
+.dropdown-wrap { position: relative; display: inline-block; }
+.dropdown-menu { display: none; position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 0.5px solid #e8e7e0; border-radius: 6px; min-width: 240px; z-index: 100; box-shadow: 0 4px 12px rgba(15,39,68,0.08); padding: 6px 0; }
+.dropdown-menu.open { display: block; }
+.dropdown-section { padding: 4px 0; border-bottom: 0.5px solid #f2f2ef; }
+.dropdown-section:last-child { border-bottom: none; }
+.dropdown-section-title { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 0.04em; padding: 4px 14px; font-weight: 500; }
+.dropdown-item { padding: 6px 14px; font-size: 12px; color: #333; cursor: pointer; }
+.dropdown-item:hover { background: #fafaf8; }
+</style>
+</head><body>
+
+<div class="topbar">
+  <div class="topbar-logo"><div class="topbar-badge">JC</div>Juno Capital Partners</div>
+  <div class="topbar-nav">
+    <span>Dashboard</span><span class="active">Clients</span><span>Portfolio</span>
+    <span>Deals</span><span>Documents</span><span>Reports</span><span>Settings</span>
+  </div>
+  <div class="topbar-user">JC</div>
+</div>
+
+<div class="main">
+  <div class="breadcrumb"><a>Clients</a> › Barry O'Brien</div>
+
+  <!-- ─── Client Header ─── -->
+  <div class="client-header">
+    <div class="ch-top">
+      <div class="ch-avatar">BO</div>
+      <div class="ch-main">
+        <div class="ch-name">Barry O'Brien</div>
+        <div class="ch-meta-row">
+          <span class="ch-meta"><strong>Ref</strong> BO'BrienN51UP</span>
+          <span class="ch-meta"><strong>Joined</strong> 18 Jan 2013</span>
+          <span class="ch-tag tag-lead">Lead · 3 entities</span>
+          <span class="ch-tag tag-eis">EIS qualifying</span>
+          <span class="ch-tag tag-kyc-ok">KYC verified</span>
+        </div>
+      </div>
+      <div class="ch-actions">
+        <button class="btn btn-primary">Generate report</button>
+        <button class="btn">+ Add investment</button>
+        <div class="dropdown-wrap">
+          <button class="btn btn-icon" onclick="toggleDropdown(event)">⋯</button>
+          <div class="dropdown-menu" id="actionsMenu">
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Reporting</div>
+              <div class="dropdown-item">Generate portfolio statement</div>
+              <div class="dropdown-item">Generate investor update letter</div>
+              <div class="dropdown-item">Generate EIS confirmation</div>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Documents &amp; signatures</div>
+              <div class="dropdown-item">Send document for signature</div>
+              <div class="dropdown-item">Upload document</div>
+            </div>
+            <div class="dropdown-section">
+              <div class="dropdown-section-title">Client</div>
+              <div class="dropdown-item">Add note</div>
+              <div class="dropdown-item">Edit client details</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status strip — at-a-glance health check -->
+    <div class="status-strip">
+      <div class="status-pill sp-ok"><span class="sp-dot dot-ok"></span>KYC verified · expires Mar 2027</div>
+      <div class="status-pill sp-warn"><span class="sp-dot dot-warn"></span>2 signatures pending</div>
+      <div class="status-pill sp-ok"><span class="sp-dot dot-ok"></span>All investment docs filed</div>
+      <div class="status-pill sp-info"><span class="sp-dot dot-info"></span>1 note flagged for follow-up</div>
+      <div class="status-pill sp-ok"><span class="sp-dot dot-ok"></span>POA on file</div>
+    </div>
+  </div>
+
+  <!-- ─── Headline stats ─── -->
+  <div class="headline-row">
+    <div class="headline-card">
+      <div class="hl-label">Total invested</div>
+      <div class="hl-value">£910,643</div>
+      <div class="hl-sub">across 3 entities</div>
+    </div>
+    <div class="headline-card">
+      <div class="hl-label">Current valuation</div>
+      <div class="hl-value">£1,166,520</div>
+      <div class="hl-sub hl-up">+£255,877 (+28.1%)</div>
+    </div>
+    <div class="headline-card">
+      <div class="hl-label">Companies invested</div>
+      <div class="hl-value">11</div>
+      <div class="hl-sub">17 holdings total</div>
+    </div>
+    <div class="headline-card">
+      <div class="hl-label">Pending actions</div>
+      <div class="hl-value">3</div>
+      <div class="hl-sub">2 signatures · 1 note</div>
+    </div>
+  </div>
+
+  <!-- ─── Entity filter ─── -->
+  <div class="entity-bar">
+    <span class="eb-label">Showing</span>
+    <div class="eb-chips">
+      <button class="eb-chip active" onclick="filterEntity(this, 'all')">
+        All entities <span class="eb-count">17</span>
+      </button>
+      <button class="eb-chip" onclick="filterEntity(this, 'own')">
+        Barry O'Brien (own name) <span class="eb-count">9</span>
+      </button>
+      <button class="eb-chip" onclick="filterEntity(this, 'sipp')">
+        BO'B SIPP <span class="eb-count">5</span>
+      </button>
+      <button class="eb-chip" onclick="filterEntity(this, 'corp')">
+        O'Brien Holdings Ltd <span class="eb-count">3</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ─── Tabs ─── -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab(event, 'overview')">Overview</button>
+    <button class="tab" onclick="showTab(event, 'investments')">Investments <span class="tab-count">17</span></button>
+    <button class="tab" onclick="showTab(event, 'docs')">Investment docs <span class="tab-count">42</span></button>
+    <button class="tab" onclick="showTab(event, 'updates')">Updates sent <span class="tab-count">28</span></button>
+    <button class="tab" onclick="showTab(event, 'notes')">Notes <span class="tab-count">6</span></button>
+  </div>
+
+  <!-- ─── Overview tab ─── -->
+  <div class="tab-content active" id="tab-overview">
+    <div class="two-col">
+      <!-- Left column -->
+      <div>
+        <div class="panel" style="margin-bottom: 14px;">
+          <div class="panel-title">Contact details <span class="panel-title-link">Edit</span></div>
+          <div class="detail-grid">
+            <div class="dg-label">Email</div>
+            <div class="dg-value"><a>barry.obrien@example.com</a></div>
+            <div class="dg-label">Phone</div>
+            <div class="dg-value">+44 7700 900123</div>
+            <div class="dg-label">Address</div>
+            <div class="dg-value">14 Kensington Court Mews<br>London W8 5DX</div>
+            <div class="dg-label">Date joined</div>
+            <div class="dg-value">18 January 2013</div>
+            <div class="dg-label">Tax status</div>
+            <div class="dg-value">EIS qualifying</div>
+            <div class="dg-label">Investor reference</div>
+            <div class="dg-value">BO'BrienN51UP</div>
+            <div class="dg-label">Default fee rate</div>
+            <div class="dg-value">5%</div>
+            <div class="dg-label">Report email</div>
+            <div class="dg-value"><a>barry.obrien@example.com</a></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Membership documents <span class="panel-title-link">+ Upload</span></div>
+          <div class="doc-list">
+            <div class="doc-row">
+              <div class="doc-info">
+                <span class="doc-tag">KYC</span>
+                <span class="doc-name">Passport &amp; proof of address</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="doc-meta">Mar 2025</span>
+                <span class="doc-link">View</span>
+              </div>
+            </div>
+            <div class="doc-row">
+              <div class="doc-info">
+                <span class="doc-tag">POA</span>
+                <span class="doc-name">Power of attorney</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="doc-meta">Jan 2013</span>
+                <span class="doc-link">View</span>
+              </div>
+            </div>
+            <div class="doc-row">
+              <div class="doc-info">
+                <span class="doc-tag">Membership</span>
+                <span class="doc-name">Syndicate agreement</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="doc-meta">Jan 2013</span>
+                <span class="doc-link">View</span>
+              </div>
+            </div>
+            <div class="doc-row">
+              <div class="doc-info">
+                <span class="doc-tag">Suitability</span>
+                <span class="doc-name">Suitability assessment</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="doc-meta">Mar 2025</span>
+                <span class="doc-link">View</span>
+              </div>
+            </div>
+            <div class="doc-row">
+              <div class="doc-info">
+                <span class="doc-tag">Source of funds</span>
+                <span class="doc-name">Source of funds declaration</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="doc-meta">Mar 2025</span>
+                <span class="doc-link">View</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column -->
+      <div>
+        <div class="panel" style="margin-bottom: 14px;">
+          <div class="panel-title">Linked entities <span class="panel-title-link">+ Add entity</span></div>
+          <table class="entity-table">
+            <thead>
+              <tr>
+                <th>Entity</th>
+                <th class="r">Invested</th>
+                <th class="r">Current value</th>
+                <th class="r">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="entity-row">
+                <td>
+                  <span class="entity-name">Barry O'Brien</span>
+                  <span class="entity-tag tag-own">Own name</span>
+                </td>
+                <td class="r">£612,420</td>
+                <td class="r">£782,344</td>
+                <td class="r up">+£169,924</td>
+              </tr>
+              <tr class="entity-row">
+                <td>
+                  <span class="entity-name">BO'B SIPP</span>
+                  <span class="entity-tag tag-family">Pension</span>
+                  <span class="holding-tag tag-nominee" style="margin-left: 4px;">Nominee</span>
+                </td>
+                <td class="r">£198,223</td>
+                <td class="r">£254,176</td>
+                <td class="r up">+£55,953</td>
+              </tr>
+              <tr class="entity-row">
+                <td>
+                  <span class="entity-name">O'Brien Holdings Ltd</span>
+                  <span class="entity-tag tag-corp">Corporate</span>
+                </td>
+                <td class="r">£100,000</td>
+                <td class="r">£130,000</td>
+                <td class="r up">+£30,000</td>
+              </tr>
+              <tr class="total-row">
+                <td>Total</td>
+                <td class="r">£910,643</td>
+                <td class="r">£1,166,520</td>
+                <td class="r up">+£255,877</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Reporting defaults <span class="panel-title-link">Edit</span></div>
+          <div style="font-size: 11px; color: #999; margin-bottom: 10px;">Entities included in routine portfolio statements:</div>
+          <div class="reporting-row">
+            <label class="checkbox-label"><span class="checkbox checked">✓</span>Barry O'Brien (own name)</label>
+            <span style="font-size: 11px; color: #aaa;">Direct</span>
+          </div>
+          <div class="reporting-row">
+            <label class="checkbox-label"><span class="checkbox checked">✓</span>BO'B SIPP</label>
+            <span style="font-size: 11px; color: #aaa;">Nominee</span>
+          </div>
+          <div class="reporting-row">
+            <label class="checkbox-label"><span class="checkbox">&nbsp;</span>O'Brien Holdings Ltd</label>
+            <span style="font-size: 11px; color: #aaa;">Direct</span>
+          </div>
+          <div style="margin-top: 14px; padding-top: 12px; border-top: 0.5px solid #f0f0ec; display: grid; grid-template-columns: 110px 1fr; gap: 10px; font-size: 12px;">
+            <div style="color: #999; font-size: 11px;">Delivery</div>
+            <div>Email PDF to <a style="color: #185fa5;">barry.obrien@example.com</a></div>
+            <div style="color: #999; font-size: 11px;">Frequency</div>
+            <div>Quarterly</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance placeholder -->
+    <div class="panel" style="margin-top: 14px; background: #fafaf8; border-style: dashed;">
+      <div class="panel-title" style="color: #999;">Performance metrics</div>
+      <div style="font-size: 12px; color: #aaa; line-height: 1.7;">
+        Realised P&amp;L, unrealised P&amp;L, MOIC and IRR will appear here once the performance reporting feature is built.
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Investments tab ─── -->
+  <!-- ─── Investments tab (rebuilt) ─── -->
+  <div class="tab-content" id="tab-investments">
+
+    <!-- Top filter/view toolbar -->
+    <div class="inv-toolbar">
+      <div class="filter-group">
+        <span class="filter-label">Held by</span>
+        <select class="filter-select">
+          <option>All entities</option>
+          <option>Barry O'Brien (own name)</option>
+          <option>BO'B SIPP</option>
+          <option>O'Brien Holdings Ltd</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Location</span>
+        <select class="filter-select">
+          <option>Direct + nominee</option>
+          <option>Direct only</option>
+          <option>Nominee only</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">EIS</span>
+        <select class="filter-select">
+          <option>All</option>
+          <option>EIS only</option>
+          <option>Non-EIS only</option>
+        </select>
+      </div>
+
+      <!-- View mode toggle -->
+      <div class="view-toggle">
+        <button class="vt-btn active" onclick="setView(event, 'grouped')" title="Grouped by company, click company to expand">
+          <span class="vt-icon">☰</span>By company
+        </button>
+        <button class="vt-btn" onclick="setView(event, 'shareclass')" title="Grouped by share class within each company">
+          <span class="vt-icon">⊟</span>By share class
+        </button>
+        <button class="vt-btn" onclick="setView(event, 'flat')" title="Flat list of all transactions, sortable">
+          <span class="vt-icon">≡</span>Flat list
+        </button>
+      </div>
+
+      <div style="font-size: 11px; color: #888;">
+        17 holdings · 11 companies
+      </div>
+    </div>
+
+    <!-- ═══ View 1: Grouped by company (default) ═══ -->
+    <div class="inv-view" id="view-grouped">
+
+      <table class="inv-table-v2">
+        <thead>
+          <tr>
+            <th class="col-co">Company</th>
+            <th class="col-classes">Share classes</th>
+            <th class="col-num r">Shares</th>
+            <th class="col-num r">Avg cost</th>
+            <th class="col-num r">Invested</th>
+            <th class="col-num r">Current value</th>
+            <th class="col-num r">Change</th>
+            <th class="col-arrow"></th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- Cyclr (4 transactions across 3 share classes) -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">CY</div>
+                <div>
+                  <div class="co-name">Cyclr</div>
+                  <div class="co-sub">SaaS · 4 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span> <span class="sc-tag">A Ord</span> <span class="sc-tag">C Ord</span></td>
+            <td class="r mono">29,955</td>
+            <td class="r mono">£2.17</td>
+            <td class="r mono">£64,983</td>
+            <td class="r mono">£89,548</td>
+            <td class="r mono up">+£24,565<span class="pct">+37.8%</span></td>
+            <td class="r"><span class="tx-pill">4 tx</span></td>
+          </tr>
+          <!-- Cyclr expanded -->
+          <tr class="tx-block" style="display: none;">
+            <td colspan="8" class="tx-block-cell">
+              <table class="tx-table">
+                <thead>
+                  <tr>
+                    <th class="r" style="width: 90px;">Date</th>
+                    <th style="width: 100px;">Share class</th>
+                    <th style="width: 60px;">EIS</th>
+                    <th class="r" style="width: 80px;">Orig price</th>
+                    <th class="r" style="width: 80px;">Shares</th>
+                    <th class="r" style="width: 90px;">Invested</th>
+                    <th class="r" style="width: 90px;">Curr price</th>
+                    <th class="r" style="width: 95px;">Curr value</th>
+                    <th class="r" style="width: 105px;">Change</th>
+                    <th style="width: 180px;">Held by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="r mono">10 Oct 2019</td>
+                    <td>Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£1.36</td>
+                    <td class="r mono">7,352</td>
+                    <td class="r mono">£9,999</td>
+                    <td class="r mono">£2.99</td>
+                    <td class="r mono">£21,982</td>
+                    <td class="r mono up">+£11,983</td>
+                    <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+                  </tr>
+                  <tr>
+                    <td class="r mono">1 Sep 2020</td>
+                    <td>A Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£2.21</td>
+                    <td class="r mono">11,322</td>
+                    <td class="r mono">£24,999</td>
+                    <td class="r mono">£2.99</td>
+                    <td class="r mono">£33,853</td>
+                    <td class="r mono up">+£8,854</td>
+                    <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+                  </tr>
+                  <tr>
+                    <td class="r mono">29 Mar 2021</td>
+                    <td>A Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£2.76</td>
+                    <td class="r mono">9,058</td>
+                    <td class="r mono">£25,000</td>
+                    <td class="r mono">£2.99</td>
+                    <td class="r mono">£27,083</td>
+                    <td class="r mono up">+£2,083</td>
+                    <td><span class="held-by">BO'B SIPP</span> <span class="loc-tag loc-nom">Nominee</span></td>
+                  </tr>
+                  <tr>
+                    <td class="r mono">14 Feb 2025</td>
+                    <td>C Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£2.69</td>
+                    <td class="r mono">2,223</td>
+                    <td class="r mono">£5,984</td>
+                    <td class="r mono">£2.99</td>
+                    <td class="r mono">£6,647</td>
+                    <td class="r mono up">+£663</td>
+                    <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tx-block-meta">
+                <span>Cumulative dividend paid: <strong>£0.00</strong></span>
+                <span>·</span>
+                <span>First investment: 10 Oct 2019</span>
+                <span>·</span>
+                <span>Most recent: 14 Feb 2025</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Sky Medical Technology -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">SM</div>
+                <div>
+                  <div class="co-name">Sky Medical Technology</div>
+                  <div class="co-sub">Medical devices · 2 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">A Ord</span></td>
+            <td class="r mono">694,843</td>
+            <td class="r mono">£0.85</td>
+            <td class="r mono">£249,760</td>
+            <td class="r mono">£372,302</td>
+            <td class="r mono up">+£122,542<span class="pct">+49.1%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+          <tr class="tx-block" style="display: none;">
+            <td colspan="8" class="tx-block-cell">
+              <table class="tx-table">
+                <thead>
+                  <tr>
+                    <th class="r" style="width: 90px;">Date</th>
+                    <th style="width: 100px;">Share class</th>
+                    <th style="width: 60px;">EIS</th>
+                    <th class="r" style="width: 80px;">Orig price</th>
+                    <th class="r" style="width: 80px;">Shares</th>
+                    <th class="r" style="width: 90px;">Invested</th>
+                    <th class="r" style="width: 90px;">Curr price</th>
+                    <th class="r" style="width: 95px;">Curr value</th>
+                    <th class="r" style="width: 105px;">Change</th>
+                    <th style="width: 180px;">Held by</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="r mono">18 Jan 2013</td>
+                    <td>A Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£0.80</td>
+                    <td class="r mono">62,500</td>
+                    <td class="r mono">£50,000</td>
+                    <td class="r mono">£0.50</td>
+                    <td class="r mono">£31,250</td>
+                    <td class="r mono down">−£18,750</td>
+                    <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+                  </tr>
+                  <tr>
+                    <td class="r mono">5 Mar 2014</td>
+                    <td>A Ordinary</td>
+                    <td><span class="eis-pill eis-yes">EIS</span></td>
+                    <td class="r mono">£0.90</td>
+                    <td class="r mono">55,555</td>
+                    <td class="r mono">£49,999</td>
+                    <td class="r mono">£0.50</td>
+                    <td class="r mono">£27,778</td>
+                    <td class="r mono down">−£22,222</td>
+                    <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="tx-block-meta">
+                <span>Cumulative dividend paid: <strong>£0.00</strong></span>
+                <span>·</span>
+                <span class="warn-text">Note: Current price below original on both lots</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- So Purple Group -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">SP</div>
+                <div>
+                  <div class="co-name">So Purple Group</div>
+                  <div class="co-sub">Consumer · 2 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span> <span class="sc-tag">B Ord</span></td>
+            <td class="r mono">8,521</td>
+            <td class="r mono">£17.36</td>
+            <td class="r mono">£147,963</td>
+            <td class="r mono">£276,506</td>
+            <td class="r mono up">+£128,543<span class="pct">+86.9%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+
+          <!-- Mishipay -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">MI</div>
+                <div>
+                  <div class="co-name">Mishipay</div>
+                  <div class="co-sub">Retail tech · 1 transaction</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">209</td>
+            <td class="r mono">£57.33</td>
+            <td class="r mono">£11,982</td>
+            <td class="r mono">£17,041</td>
+            <td class="r mono up">+£5,059<span class="pct">+42.2%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+
+          <!-- Edozo -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">ED</div>
+                <div>
+                  <div class="co-name">Edozo</div>
+                  <div class="co-sub">PropTech · 2 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span> <span class="sc-tag">A Ord</span></td>
+            <td class="r mono">30,826</td>
+            <td class="r mono">£1.13</td>
+            <td class="r mono">£34,968</td>
+            <td class="r mono">£43,462</td>
+            <td class="r mono up">+£8,494<span class="pct">+24.3%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+
+          <!-- Synchtank (loss) -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">SY</div>
+                <div>
+                  <div class="co-name">Synchtank</div>
+                  <div class="co-sub">Music tech · 1 transaction</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">8,326</td>
+            <td class="r mono">£12.00</td>
+            <td class="r mono">£99,917</td>
+            <td class="r mono">£54,228</td>
+            <td class="r mono down">−£45,689<span class="pct">−45.7%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+
+          <!-- Buyapowa -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">BU</div>
+                <div>
+                  <div class="co-name">Buyapowa</div>
+                  <div class="co-sub">Marketing tech · 2 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">28,634</td>
+            <td class="r mono">£1.21</td>
+            <td class="r mono">£34,521</td>
+            <td class="r mono">£33,788</td>
+            <td class="r mono down">−£733<span class="pct">−2.1%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+
+          <!-- Obrizum -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">OB</div>
+                <div>
+                  <div class="co-name">Obrizum</div>
+                  <div class="co-sub">EdTech · 4 transactions</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">8,719</td>
+            <td class="r mono">£7.52</td>
+            <td class="r mono">£65,528</td>
+            <td class="r mono">£77,948</td>
+            <td class="r mono up">+£12,420<span class="pct">+19.0%</span></td>
+            <td class="r"><span class="tx-pill">4 tx</span></td>
+          </tr>
+
+          <!-- Domainex -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">DO</div>
+                <div>
+                  <div class="co-name">Domainex</div>
+                  <div class="co-sub">Pharma · 1 transaction</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">B Ord</span></td>
+            <td class="r mono">2,000</td>
+            <td class="r mono">£25.00</td>
+            <td class="r mono">£50,000</td>
+            <td class="r mono">£66,000</td>
+            <td class="r mono up">+£16,000<span class="pct">+32.0%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+
+          <!-- AI Forge Ltd -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">AI</div>
+                <div>
+                  <div class="co-name">AI Forge Ltd</div>
+                  <div class="co-sub">AI · 1 transaction</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">50,000</td>
+            <td class="r mono">£1.00</td>
+            <td class="r mono">£50,000</td>
+            <td class="r mono">£50,000</td>
+            <td class="r mono neutral">£0<span class="pct">0.0%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+
+          <!-- Upp -->
+          <tr class="co-row" onclick="toggleCo(this)">
+            <td>
+              <div class="co-cell">
+                <span class="exp-arrow">›</span>
+                <div class="co-logo">UP</div>
+                <div>
+                  <div class="co-name">Upp Technologies</div>
+                  <div class="co-sub">Telecoms · 1 transaction · formerly Volo</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="sc-tag">Ord</span></td>
+            <td class="r mono">2,072</td>
+            <td class="r mono">£9.65</td>
+            <td class="r mono">£19,995</td>
+            <td class="r mono">£539</td>
+            <td class="r mono down">−£19,456<span class="pct">−97.3%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+
+          <!-- Total row -->
+          <tr class="total-row-v2">
+            <td><strong>Total</strong> · 11 companies · 17 transactions</td>
+            <td></td>
+            <td class="r mono">863,381</td>
+            <td class="r mono"></td>
+            <td class="r mono"><strong>£910,643</strong></td>
+            <td class="r mono"><strong>£1,166,520</strong></td>
+            <td class="r mono up"><strong>+£255,877</strong><span class="pct">+28.1%</span></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ═══ View 2: Grouped by share class ═══ -->
+    <div class="inv-view" id="view-shareclass" style="display: none;">
+      <table class="inv-table-v2">
+        <thead>
+          <tr>
+            <th class="col-co">Company / Share class</th>
+            <th class="col-num r">Shares</th>
+            <th class="col-num r">Avg cost</th>
+            <th class="col-num r">Invested</th>
+            <th class="col-num r">Current value</th>
+            <th class="col-num r">Change</th>
+            <th class="col-arrow"></th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <!-- Cyclr -->
+          <tr class="sc-co-row">
+            <td colspan="7">
+              <div class="co-cell">
+                <div class="co-logo">CY</div>
+                <div class="co-name">Cyclr</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">Ordinary</span> <span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">7,352</td>
+            <td class="r mono">£1.36</td>
+            <td class="r mono">£9,999</td>
+            <td class="r mono">£21,982</td>
+            <td class="r mono up">+£11,983<span class="pct">+119.8%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">A Ordinary</span> <span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">20,380</td>
+            <td class="r mono">£2.45</td>
+            <td class="r mono">£49,999</td>
+            <td class="r mono">£60,936</td>
+            <td class="r mono up">+£10,937<span class="pct">+21.9%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">C Ordinary</span> <span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">2,223</td>
+            <td class="r mono">£2.69</td>
+            <td class="r mono">£5,984</td>
+            <td class="r mono">£6,647</td>
+            <td class="r mono up">+£663<span class="pct">+11.1%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+          <tr class="sc-subtotal">
+            <td>Cyclr subtotal</td>
+            <td class="r mono">29,955</td>
+            <td class="r mono">£2.17</td>
+            <td class="r mono">£64,983</td>
+            <td class="r mono">£89,548</td>
+            <td class="r mono up">+£24,565<span class="pct">+37.8%</span></td>
+            <td></td>
+          </tr>
+
+          <!-- So Purple Group -->
+          <tr class="sc-co-row">
+            <td colspan="7">
+              <div class="co-cell">
+                <div class="co-logo">SP</div>
+                <div class="co-name">So Purple Group</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">Ordinary</span> <span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">5,000</td>
+            <td class="r mono">£15.00</td>
+            <td class="r mono">£75,000</td>
+            <td class="r mono">£162,000</td>
+            <td class="r mono up">+£87,000<span class="pct">+116.0%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">B Ordinary</span> <span class="eis-pill eis-no">Non-EIS</span></td>
+            <td class="r mono">3,521</td>
+            <td class="r mono">£20.72</td>
+            <td class="r mono">£72,963</td>
+            <td class="r mono">£114,506</td>
+            <td class="r mono up">+£41,543<span class="pct">+56.9%</span></td>
+            <td class="r"><span class="tx-pill">1 tx</span></td>
+          </tr>
+          <tr class="sc-subtotal">
+            <td>So Purple Group subtotal</td>
+            <td class="r mono">8,521</td>
+            <td class="r mono">£17.36</td>
+            <td class="r mono">£147,963</td>
+            <td class="r mono">£276,506</td>
+            <td class="r mono up">+£128,543<span class="pct">+86.9%</span></td>
+            <td></td>
+          </tr>
+
+          <!-- Sky Medical Technology -->
+          <tr class="sc-co-row">
+            <td colspan="7">
+              <div class="co-cell">
+                <div class="co-logo">SM</div>
+                <div class="co-name">Sky Medical Technology</div>
+              </div>
+            </td>
+          </tr>
+          <tr class="sc-row" onclick="toggleSc(this)">
+            <td><span class="exp-arrow indent">›</span><span class="sc-name">A Ordinary</span> <span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">118,055</td>
+            <td class="r mono">£0.85</td>
+            <td class="r mono">£99,999</td>
+            <td class="r mono">£59,028</td>
+            <td class="r mono down">−£40,972<span class="pct">−41.0%</span></td>
+            <td class="r"><span class="tx-pill">2 tx</span></td>
+          </tr>
+          <tr class="sc-subtotal">
+            <td>Sky Medical Technology subtotal</td>
+            <td class="r mono">118,055</td>
+            <td class="r mono">£0.85</td>
+            <td class="r mono">£99,999</td>
+            <td class="r mono">£59,028</td>
+            <td class="r mono down">−£40,972<span class="pct">−41.0%</span></td>
+            <td></td>
+          </tr>
+
+          <!-- A note explaining truncation in the prototype -->
+          <tr><td colspan="7" style="padding: 14px 16px; text-align: center; color: #aaa; font-size: 11px; font-style: italic; background: #fafaf8;">
+            8 more companies — same pattern (company → share class subgroup → company subtotal)
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ═══ View 3: Flat list ═══ -->
+    <div class="inv-view" id="view-flat" style="display: none;">
+      <table class="inv-table-v2 flat-table">
+        <thead>
+          <tr>
+            <th class="r sortable" style="width: 80px;">Date <span class="sort-arrow">↓</span></th>
+            <th class="sortable" style="width: 130px;">Company <span class="sort-arrow"></span></th>
+            <th class="sortable" style="width: 90px;">Share class <span class="sort-arrow"></span></th>
+            <th style="width: 50px;">EIS</th>
+            <th class="r sortable" style="width: 70px;">Orig price <span class="sort-arrow"></span></th>
+            <th class="r sortable" style="width: 80px;">Shares <span class="sort-arrow"></span></th>
+            <th class="r sortable" style="width: 85px;">Invested <span class="sort-arrow"></span></th>
+            <th class="r sortable" style="width: 75px;">Curr price <span class="sort-arrow"></span></th>
+            <th class="r sortable" style="width: 85px;">Curr value <span class="sort-arrow"></span></th>
+            <th class="r sortable" style="width: 90px;">Change <span class="sort-arrow"></span></th>
+            <th class="sortable" style="width: 160px;">Held by <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="r mono">14 Feb 2025</td>
+            <td>Cyclr</td>
+            <td>C Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£2.69</td>
+            <td class="r mono">2,223</td>
+            <td class="r mono">£5,984</td>
+            <td class="r mono">£2.99</td>
+            <td class="r mono">£6,647</td>
+            <td class="r mono up">+£663</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">28 Feb 2025</td>
+            <td>Obrizum</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">1,161</td>
+            <td class="r mono">£10,379</td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">£10,379</td>
+            <td class="r mono neutral">£0</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">4 Apr 2024</td>
+            <td>Obrizum</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">1,161</td>
+            <td class="r mono">£10,379</td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">£10,379</td>
+            <td class="r mono neutral">£0</td>
+            <td><span class="held-by">BO'B SIPP</span> <span class="loc-tag loc-nom">Nominee</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">6 Dec 2022</td>
+            <td>Edozo</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£1.16</td>
+            <td class="r mono">12,903</td>
+            <td class="r mono">£14,967</td>
+            <td class="r mono">£1.41</td>
+            <td class="r mono">£18,192</td>
+            <td class="r mono up">+£3,224</td>
+            <td><span class="held-by">BO'B SIPP</span> <span class="loc-tag loc-nom">Nominee</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">16 Aug 2022</td>
+            <td>Obrizum</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">2,797</td>
+            <td class="r mono">£25,005</td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">£25,005</td>
+            <td class="r mono neutral">£0</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">1 Apr 2022</td>
+            <td>Cyclr</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£4.85</td>
+            <td class="r mono">5,160</td>
+            <td class="r mono">£25,035</td>
+            <td class="r mono">£2.99</td>
+            <td class="r mono">£15,428</td>
+            <td class="r mono down">−£9,606</td>
+            <td><span class="held-by">O'Brien Holdings Ltd</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">3 Nov 2021</td>
+            <td>So Purple Group</td>
+            <td>B Ordinary</td>
+            <td><span class="eis-pill eis-no">Non-EIS</span></td>
+            <td class="r mono">£20.72</td>
+            <td class="r mono">3,521</td>
+            <td class="r mono">£72,963</td>
+            <td class="r mono">£32.52</td>
+            <td class="r mono">£114,506</td>
+            <td class="r mono up">+£41,543</td>
+            <td><span class="held-by">BO'B SIPP</span> <span class="loc-tag loc-nom">Nominee</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">29 Mar 2021</td>
+            <td>Cyclr</td>
+            <td>A Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£2.76</td>
+            <td class="r mono">9,058</td>
+            <td class="r mono">£25,000</td>
+            <td class="r mono">£2.99</td>
+            <td class="r mono">£27,083</td>
+            <td class="r mono up">+£2,083</td>
+            <td><span class="held-by">BO'B SIPP</span> <span class="loc-tag loc-nom">Nominee</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">30 Mar 2021</td>
+            <td>Edozo</td>
+            <td>A Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£1.12</td>
+            <td class="r mono">17,923</td>
+            <td class="r mono">£20,000</td>
+            <td class="r mono">£1.41</td>
+            <td class="r mono">£25,270</td>
+            <td class="r mono up">+£5,269</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">1 Sep 2020</td>
+            <td>Cyclr</td>
+            <td>A Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£2.21</td>
+            <td class="r mono">11,322</td>
+            <td class="r mono">£24,999</td>
+            <td class="r mono">£2.99</td>
+            <td class="r mono">£33,853</td>
+            <td class="r mono up">+£8,854</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">9 Dec 2020</td>
+            <td>Obrizum</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£5.49</td>
+            <td class="r mono">3,600</td>
+            <td class="r mono">£19,764</td>
+            <td class="r mono">£8.94</td>
+            <td class="r mono">£32,184</td>
+            <td class="r mono up">+£12,420</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">10 Oct 2019</td>
+            <td>Cyclr</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£1.36</td>
+            <td class="r mono">7,352</td>
+            <td class="r mono">£9,999</td>
+            <td class="r mono">£2.99</td>
+            <td class="r mono">£21,982</td>
+            <td class="r mono up">+£11,983</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">27 Apr 2018</td>
+            <td>Buyapowa</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£0.43</td>
+            <td class="r mono">22,231</td>
+            <td class="r mono">£9,524</td>
+            <td class="r mono">£1.18</td>
+            <td class="r mono">£26,233</td>
+            <td class="r mono up">+£16,709</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">5 Apr 2018</td>
+            <td>Mishipay</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£57.33</td>
+            <td class="r mono">209</td>
+            <td class="r mono">£11,982</td>
+            <td class="r mono">£81.54</td>
+            <td class="r mono">£17,041</td>
+            <td class="r mono up">+£5,059</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">12 Jun 2018</td>
+            <td>So Purple Group</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£15.00</td>
+            <td class="r mono">5,000</td>
+            <td class="r mono">£75,000</td>
+            <td class="r mono">£32.40</td>
+            <td class="r mono">£162,000</td>
+            <td class="r mono up">+£87,000</td>
+            <td><span class="held-by">O'Brien Holdings Ltd</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">14 Sep 2017</td>
+            <td>Synchtank</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£12.00</td>
+            <td class="r mono">8,326</td>
+            <td class="r mono">£99,917</td>
+            <td class="r mono">£6.51</td>
+            <td class="r mono">£54,228</td>
+            <td class="r mono down">−£45,689</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+          <tr>
+            <td class="r mono">27 Feb 2015</td>
+            <td>Buyapowa</td>
+            <td>Ordinary</td>
+            <td><span class="eis-pill eis-yes">EIS</span></td>
+            <td class="r mono">£3.90</td>
+            <td class="r mono">6,403</td>
+            <td class="r mono">£24,997</td>
+            <td class="r mono">£1.18</td>
+            <td class="r mono">£7,556</td>
+            <td class="r mono down">−£17,441</td>
+            <td><span class="held-by">Barry O'Brien</span> <span class="loc-tag">Direct</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <div class="tab-content" id="tab-docs">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;">
+      <div class="filter-group">
+        <span class="filter-label">Company</span>
+        <select class="filter-select">
+          <option>All companies</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Type</span>
+        <select class="filter-select">
+          <option>All types</option>
+          <option>Application form</option>
+          <option>EIS certificate</option>
+          <option>Transaction statement</option>
+          <option>Side letter</option>
+          <option>Invoice</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Year</span>
+        <select class="filter-select">
+          <option>All years</option>
+        </select>
+      </div>
+      <div style="margin-left: auto; font-size: 11px; color: #888;">42 documents</div>
+    </div>
+
+    <div class="docs-tree">
+      <!-- Cyclr -->
+      <div class="docs-co-row expanded" onclick="toggleDocsCo(this)">
+        <span class="expand-arrow open">›</span>
+        <div class="co-logo-sm">CY</div>
+        <div class="docs-co-name">Cyclr</div>
+        <div class="docs-co-count">11 documents · 4 years</div>
+      </div>
+      <div class="docs-year-row" onclick="toggleDocsYear(this)">
+        <span class="expand-arrow open">›</span>2025 <span style="color: #aaa;">· 3 documents</span>
+      </div>
+      <div class="docs-doc-row">
+        <span class="doc-tag">Application</span>
+        <span class="docs-doc-name">2025-02-14 — Cyclr — Application form.pdf</span>
+        <span class="docs-doc-date">14 Feb 2025</span>
+        <span class="doc-link">View</span>
+      </div>
+      <div class="docs-doc-row">
+        <span class="doc-tag">Transaction</span>
+        <span class="docs-doc-name">2025-02-14 — Cyclr — Transaction statement.pdf</span>
+        <span class="docs-doc-date">14 Feb 2025</span>
+        <span class="doc-link">View</span>
+      </div>
+      <div class="docs-doc-row">
+        <span class="doc-tag">Invoice</span>
+        <span class="docs-doc-name">2025-02-15 — Cyclr — Invoice.pdf</span>
+        <span class="docs-doc-date">15 Feb 2025</span>
+        <span class="doc-link">View</span>
+      </div>
+      <div class="docs-year-row" onclick="toggleDocsYear(this)">
+        <span class="expand-arrow">›</span>2021 <span style="color: #aaa;">· 4 documents</span>
+      </div>
+      <div class="docs-year-row" onclick="toggleDocsYear(this)">
+        <span class="expand-arrow">›</span>2020 <span style="color: #aaa;">· 2 documents</span>
+      </div>
+      <div class="docs-year-row" onclick="toggleDocsYear(this)">
+        <span class="expand-arrow">›</span>2019 <span style="color: #aaa;">· 2 documents</span>
+      </div>
+
+      <!-- Sky Medical (collapsed) -->
+      <div class="docs-co-row" onclick="toggleDocsCo(this)">
+        <span class="expand-arrow">›</span>
+        <div class="co-logo-sm">SM</div>
+        <div class="docs-co-name">Sky Medical Technology</div>
+        <div class="docs-co-count">7 documents · 2 years</div>
+      </div>
+
+      <div class="docs-co-row" onclick="toggleDocsCo(this)">
+        <span class="expand-arrow">›</span>
+        <div class="co-logo-sm">SP</div>
+        <div class="docs-co-name">So Purple Group</div>
+        <div class="docs-co-count">6 documents · 2 years</div>
+      </div>
+
+      <div class="docs-co-row" onclick="toggleDocsCo(this)">
+        <span class="expand-arrow">›</span>
+        <div class="co-logo-sm">ED</div>
+        <div class="docs-co-name">Edozo</div>
+        <div class="docs-co-count">5 documents · 2 years</div>
+      </div>
+
+      <div class="docs-co-row" onclick="toggleDocsCo(this)">
+        <span class="expand-arrow">›</span>
+        <div class="co-logo-sm">MI</div>
+        <div class="docs-co-name">Mishipay</div>
+        <div class="docs-co-count">3 documents · 1 year</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Updates sent tab ─── -->
+  <div class="tab-content" id="tab-updates">
+    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+      <div class="filter-group">
+        <span class="filter-label">Type</span>
+        <select class="filter-select">
+          <option>All types</option>
+          <option>Portfolio statements</option>
+          <option>Investor update letters</option>
+          <option>EIS confirmations</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <span class="filter-label">Year</span>
+        <select class="filter-select">
+          <option>All years</option>
+        </select>
+      </div>
+      <div style="margin-left: auto; font-size: 11px; color: #888;">28 updates sent</div>
+    </div>
+    <div class="updates-list">
+      <div class="update-row">
+        <span class="update-dot dot-portfolio"></span>
+        <div class="update-info">
+          <div class="update-title">Q1 2026 Portfolio Statement</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 31 Mar 2026 · sent by JC</div>
+        </div>
+        <span class="update-tag">Portfolio</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-update"></span>
+        <div class="update-info">
+          <div class="update-title">Cyclr — Q1 2026 Investor Update</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 18 Mar 2026 · sent by JC</div>
+        </div>
+        <span class="update-tag">Update</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-letter"></span>
+        <div class="update-info">
+          <div class="update-title">2024-25 EIS Confirmation Letter</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 12 Mar 2026 · sent by ER</div>
+        </div>
+        <span class="update-tag">EIS</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-portfolio"></span>
+        <div class="update-info">
+          <div class="update-title">Q4 2025 Portfolio Statement</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 31 Dec 2025 · sent by JC</div>
+        </div>
+        <span class="update-tag">Portfolio</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-update"></span>
+        <div class="update-info">
+          <div class="update-title">Sky Medical Technology — Q4 2025 Update</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 18 Dec 2025 · sent by JC</div>
+        </div>
+        <span class="update-tag">Update</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-update"></span>
+        <div class="update-info">
+          <div class="update-title">So Purple Group — Q4 2025 Update</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 15 Dec 2025 · sent by JC</div>
+        </div>
+        <span class="update-tag">Update</span>
+      </div>
+      <div class="update-row">
+        <span class="update-dot dot-portfolio"></span>
+        <div class="update-info">
+          <div class="update-title">Q3 2025 Portfolio Statement</div>
+          <div class="update-meta">Emailed to barry.obrien@example.com · 30 Sep 2025 · sent by JC</div>
+        </div>
+        <span class="update-tag">Portfolio</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── Notes tab ─── -->
+  <div class="tab-content" id="tab-notes">
+    <div class="notes-add">
+      <textarea placeholder="Add a note about Barry... (call notes, email summary, follow-up items, etc.)"></textarea>
+      <div class="notes-add-actions">
+        <label style="font-size: 11px; color: #888; display: flex; align-items: center; gap: 5px; margin-right: auto;">
+          <input type="checkbox" style="margin: 0;"> Flag for follow-up
+        </label>
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Add note</button>
+      </div>
+    </div>
+
+    <div class="notes-list">
+      <div class="note-row" style="background: #fef7eb; border-left: 3px solid #ba7517;">
+        <div class="note-header">
+          <span class="note-dot" style="background: #ba7517;"></span>
+          <span class="note-author">Erudd</span>
+          <span class="ch-tag tag-kyc-warn" style="margin-left: 6px;">Flagged</span>
+          <span class="note-date">2 Apr 2026</span>
+        </div>
+        <div class="note-text">Barry mentioned wanting to discuss top-up into Cyclr at next call. He's keen on the C Ordinary round but wants to understand dilution implications first. Action: prepare cap table summary before next call (booked for 12 Apr).</div>
+      </div>
+      <div class="note-row">
+        <div class="note-header">
+          <span class="note-dot"></span>
+          <span class="note-author">Jhickman</span>
+          <span class="note-date">28 Mar 2026</span>
+        </div>
+        <div class="note-text">Quarterly call with Barry. Discussed portfolio performance — pleased with Sky Medical and So Purple, asked questions about Synchtank position. Confirmed quarterly statement frequency works for him.</div>
+      </div>
+      <div class="note-row">
+        <div class="note-header">
+          <span class="note-dot"></span>
+          <span class="note-author">Erudd</span>
+          <span class="note-date">14 Feb 2026</span>
+        </div>
+        <div class="note-text">Confirmed Cyclr C Ordinary round subscription. £5,984 — same allocation as agreed in Jan call. Application form sent for signature.</div>
+      </div>
+      <div class="note-row">
+        <div class="note-header">
+          <span class="note-dot"></span>
+          <span class="note-author">Erudd</span>
+          <span class="note-date">7 Mar 2025</span>
+        </div>
+        <div class="note-text">KYC renewal completed. Updated passport copy received and filed. Source of funds declaration refreshed. Next renewal due Mar 2027.</div>
+      </div>
+      <div class="note-row">
+        <div class="note-header">
+          <span class="note-dot"></span>
+          <span class="note-author">Jhickman</span>
+          <span class="note-date">15 Jan 2024</span>
+        </div>
+        <div class="note-text">Set up O'Brien Holdings Ltd as a new corporate vehicle for future investments. Companies House registration confirmed. Linked to Barry's lead record.</div>
+      </div>
+      <div class="note-row">
+        <div class="note-header">
+          <span class="note-dot"></span>
+          <span class="note-author">Erudd</span>
+          <span class="note-date">22 Aug 2023</span>
+        </div>
+        <div class="note-text">Discussed exit options for Mishipay holding given strong recent performance. Barry happy to hold for now. Will revisit if any liquidity event materialises.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function toggleDropdown(e) {
+    e.stopPropagation();
+    document.getElementById('actionsMenu').classList.toggle('open');
+  }
+  document.addEventListener('click', () => {
+    document.getElementById('actionsMenu').classList.remove('open');
+  });
+
+  function showTab(e, name) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  function filterEntity(btn, key) {
+    document.querySelectorAll('.eb-chip').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  function toggleTx(row) {
+    const arrow = row.querySelector('.expand-arrow');
+    const isOpen = arrow.classList.contains('open');
+    arrow.classList.toggle('open');
+    row.classList.toggle('expanded');
+
+    let next = row.nextElementSibling;
+    while (next && next.classList.contains('tx-row')) {
+      next.style.display = isOpen ? 'none' : 'table-row';
+      next = next.nextElementSibling;
+    }
+  }
+
+  /* ── new investments tab handlers ── */
+  function setView(e, name) {
+    document.querySelectorAll('.vt-btn').forEach(b => b.classList.remove('active'));
+    e.currentTarget.classList.add('active');
+    document.querySelectorAll('.inv-view').forEach(v => v.style.display = 'none');
+    document.getElementById('view-' + name).style.display = 'block';
+  }
+
+  function toggleCo(row) {
+    const arrow = row.querySelector('.exp-arrow');
+    arrow.classList.toggle('open');
+    const next = row.nextElementSibling;
+    if (next && next.classList.contains('tx-block')) {
+      next.style.display = next.style.display === 'none' || !next.style.display ? 'table-row' : 'none';
+    }
+  }
+
+  function toggleSc(row) {
+    /* placeholder for share-class drilldown */
+    const arrow = row.querySelector('.exp-arrow');
+    arrow.classList.toggle('open');
+  }
+
+  function toggleDocsCo(row) {
+    const arrow = row.querySelector('.expand-arrow');
+    arrow.classList.toggle('open');
+    row.classList.toggle('expanded');
+  }
+
+  function toggleDocsYear(row) {
+    const arrow = row.querySelector('.expand-arrow');
+    arrow.classList.toggle('open');
+  }
+</script>
+</body></html>
