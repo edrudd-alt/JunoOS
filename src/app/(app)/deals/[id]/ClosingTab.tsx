@@ -53,10 +53,11 @@ function fmtWhole(n: number | null | undefined): string {
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
 interface DealRow {
-  id:            string
-  status:        string
+  id:             string
+  status:         string
   eis_qualifying: string | null
-  company_id:    string | null
+  company_id:     string | null
+  share_price:    number | null
 }
 
 interface Props {
@@ -608,6 +609,7 @@ export default function ClosingTab({
           allClients={allClients}
           nominees={nominees}
           existingInvestorIds={existingInvestorIds}
+          sharePrice={deal.share_price}
           onClose={() => setAddModalOpen(false)}
           onSaved={handleLateAdditionSaved}
         />

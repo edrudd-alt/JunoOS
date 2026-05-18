@@ -80,7 +80,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, compan
     if (!rawAmount || !hasSharePrice) return { amount: rawAmount, shares: '' }
     const num = parseFloat(rawAmount.replace(/,/g, ''))
     if (isNaN(num)) return { amount: rawAmount, shares: '' }
-    const wholeShares   = Math.round(num / sharePrice)
+    const wholeShares   = Math.floor(num / sharePrice)
     const canonicalAmt  = wholeShares * sharePrice
     return {
       amount: canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -93,7 +93,7 @@ export function AddBookbuildEntryModal({ bookbuildId, companyId, clients, compan
     setIndicativeAmount(val)
     if (hasSharePrice && val) {
       const num    = parseFloat(val.replace(/,/g, ''))
-      const shares = Math.round(num / sharePrice)
+      const shares = Math.floor(num / sharePrice)
       setIndicativeShares(isNaN(shares) ? '' : String(shares))
       if (maxShares !== null && !isNaN(shares) && shares > maxShares) {
         setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)

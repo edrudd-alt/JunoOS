@@ -873,6 +873,7 @@ export default function BookbuildTab({
           allClients={allClients}
           nominees={nominees}
           existingInvestorIds={existingInvestorIds}
+          sharePrice={deal.share_price}
           onClose={() => setAddModalOpen(false)}
           onSaved={() => { setAddModalOpen(false); onDataRefresh() }}
         />

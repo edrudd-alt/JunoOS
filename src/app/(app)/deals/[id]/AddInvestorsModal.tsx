@@ -11,6 +11,7 @@ interface Props {
   allClients:          ClientFull[]
   nominees:            NomineeRow[]
   existingInvestorIds: Set<string>
+  sharePrice?:         number | null
   onClose:             () => void
   onSaved:             () => void
 }
@@ -34,9 +35,21 @@ const KYC_DOT_COLOR: Record<string, string> = {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AddInvestorsModal({
-  dealId, allClients, nominees, existingInvestorIds, onClose, onSaved,
+  dealId, allClients, nominees, existingInvestorIds, sharePrice, onClose, onSaved,
 }: Props) {
   const supabase = createClient()
+
+  const effectiveSharePrice = sharePrice ?? 0
+  const hasSharePrice = effectiveSharePrice > 0
+
+  function snapAmountToWhole(raw: string): string {
+    if (!raw || !hasSharePrice) return raw
+    const num = parseFloat(raw.replace(/,/g, ''))
+    if (isNaN(num)) return raw
+    const wholeShares = Math.floor(num / effectiveSharePrice)
+    const canonical   = wholeShares * effectiveSharePrice
+    return canonical.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
 
   const [screen,      setScreen]      = useState<Screen>('picker')
   const [pickerTab,   setPickerTab]   = useState<PickerTab>('active')
@@ -45,9 +58,10 @@ export default function AddInvestorsModal({
   const [favourites,  setFavourites]  = useState<Set<string>>(
     new Set(allClients.filter(c => c.is_favourite).map(c => c.id)),
   )
-  const [entryRows,   setEntryRows]   = useState<EntryRow[]>([])
-  const [saving,      setSaving]      = useState(false)
-  const [error,       setError]       = useState<string | null>(null)
+  const [entryRows,    setEntryRows]    = useState<EntryRow[]>([])
+  const [bulkAmount,   setBulkAmount]   = useState('')
+  const [saving,       setSaving]       = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
 
   // Primary clients only (not vehicles)
   const primaryClients = useMemo(
@@ -127,7 +141,7 @@ export default function AddInvestorsModal({
         client_id:            r.client.id,
         investing_vehicle_id: r.vehicleId ?? null,
         nominee_id:           r.nomineeId ?? null,
-        soft_circle_amount:   r.softCircleAmount ? Number(r.softCircleAmount) : null,
+        soft_circle_amount:   r.softCircleAmount ? Number(r.softCircleAmount.replace(/,/g, '')) : null,
         lifecycle_status:     'soft_circled',
         fee_overridden:       false,
         poa_held:             false,
@@ -324,6 +338,50 @@ export default function AddInvestorsModal({
                 </div>
               )}
 
+              {/* Set all amounts helper */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                marginBottom: 12, padding: '8px 12px',
+                background: '#f9f9f7', borderRadius: 6,
+                border: '0.5px solid var(--card-border)',
+              }}>
+                <span style={{ fontSize: 12, color: '#555', whiteSpace: 'nowrap' }}>Set all amounts to</span>
+                <div style={{ position: 'relative', flex: '0 0 140px' }}>
+                  <span style={{
+                    position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)',
+                    fontSize: 12, color: '#888', pointerEvents: 'none',
+                  }}>£</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={bulkAmount}
+                    onChange={e => setBulkAmount(e.target.value.replace(/,/g, ''))}
+                    onFocus={e => setBulkAmount(e.target.value.replace(/,/g, ''))}
+                    onBlur={e => setBulkAmount(snapAmountToWhole(e.target.value))}
+                    style={{
+                      width: '100%', padding: '5px 8px 5px 20px',
+                      border: '0.5px solid var(--card-border)',
+                      borderRadius: 5, fontSize: 12, outline: 'none',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const snapped = snapAmountToWhole(bulkAmount)
+                    setEntryRows(prev => prev.map(r => ({ ...r, softCircleAmount: snapped })))
+                    setBulkAmount(snapped)
+                  }}
+                  disabled={!bulkAmount}
+                  className="btn btn-secondary"
+                  style={{ fontSize: 12, padding: '4px 12px', opacity: bulkAmount ? 1 : 0.5 }}
+                >
+                  Apply to all
+                </button>
+              </div>
+
               {/* Column labels */}
               <div style={{
                 display: 'grid',
@@ -411,16 +469,21 @@ export default function AddInvestorsModal({
                     </div>
 
                     {/* Soft-circle amount */}
-                    <div style={{ padding: '0 8px' }}>
+                    <div style={{ padding: '0 8px', position: 'relative' }}>
+                      <span style={{
+                        position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)',
+                        fontSize: 12, color: '#888', pointerEvents: 'none',
+                      }}>£</span>
                       <input
-                        type="number"
-                        min={0}
-                        step={1000}
-                        placeholder="0"
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0.00"
                         value={row.softCircleAmount}
-                        onChange={e => updateRow(idx, { softCircleAmount: e.target.value })}
+                        onChange={e => updateRow(idx, { softCircleAmount: e.target.value.replace(/,/g, '') })}
+                        onFocus={e => updateRow(idx, { softCircleAmount: e.target.value.replace(/,/g, '') })}
+                        onBlur={e => updateRow(idx, { softCircleAmount: snapAmountToWhole(e.target.value) })}
                         style={{
-                          width: '100%', padding: '6px 8px',
+                          width: '100%', padding: '6px 8px 6px 20px',
                           border: '0.5px solid var(--card-border)',
                           borderRadius: 6, fontSize: 12,
                           outline: 'none', boxSizing: 'border-box',

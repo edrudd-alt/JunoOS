@@ -99,7 +99,7 @@ export function BookbuildEntryPopover({
     if (!raw || !hasSharePrice) return { amount: raw, shares: '' }
     const num = parseFloat(raw.replace(/,/g, ''))
     if (isNaN(num)) return { amount: raw, shares: '' }
-    const wholeShares  = Math.round(num / sharePrice)
+    const wholeShares  = Math.floor(num / sharePrice)
     const canonicalAmt = wholeShares * sharePrice
     return {
       amount: canonicalAmt.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
@@ -111,7 +111,7 @@ export function BookbuildEntryPopover({
     setLocalAmount(val)
     if (hasSharePrice && val) {
       const num    = parseFloat(val.replace(/,/g, ''))
-      const shares = Math.round(num / sharePrice)
+      const shares = Math.floor(num / sharePrice)
       setLocalShares(isNaN(shares) ? '' : String(shares))
       if (maxShares !== null && !isNaN(shares) && shares > maxShares) {
         setSharesError(`This investor holds ${maxShares.toLocaleString()} shares. Cannot sell more than ${maxShares.toLocaleString()} shares.`)
