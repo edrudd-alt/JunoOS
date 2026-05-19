@@ -13,8 +13,9 @@ interface Company {
 }
 
 interface ShareClassOption {
-  id:   string
-  name: string
+  id:             string
+  name:           string
+  instrument_type: string
 }
 
 interface Props {
@@ -86,7 +87,7 @@ export function SetupStep({ dealType, companies, initialData, onBack }: Props) {
     setLoadingClasses(true)
     supabase
       .from('company_share_classes')
-      .select('id, name')
+      .select('id, name, instrument_type')
       .eq('company_id', companyId)
       .order('name')
       .then(({ data }) => {
@@ -274,7 +275,9 @@ export function SetupStep({ dealType, companies, initialData, onBack }: Props) {
               >
                 <option value="">— Select —</option>
                 {shareClassOptions.map(sc => (
-                  <option key={sc.id} value={sc.id}>{sc.name}</option>
+                  <option key={sc.id} value={sc.id}>
+                    {sc.name}{sc.instrument_type === 'cln' || sc.instrument_type === 'loan_note' ? ' (CLN)' : ''}
+                  </option>
                 ))}
               </select>
             )}
