@@ -26,14 +26,13 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 interface ShareClass {
   name: string
-  type: string
 }
 
 export default function NewCompanyPage() {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [shareClasses, setShareClasses] = useState<ShareClass[]>([{ name: 'Ordinary', type: 'ordinary' }])
+  const [shareClasses, setShareClasses] = useState<ShareClass[]>([{ name: 'Ordinary' }])
 
   const [form, setForm] = useState({
     name: '',
@@ -52,8 +51,8 @@ export default function NewCompanyPage() {
     setShareClasses(sc => [...sc, { name: '', type: 'ordinary' }])
   }
 
-  function updateShareClass(i: number, key: keyof ShareClass, value: string) {
-    setShareClasses(sc => sc.map((c, idx) => idx === i ? { ...c, [key]: value } : c))
+  function updateShareClass(i: number, value: string) {
+    setShareClasses(sc => sc.map((c, idx) => idx === i ? { name: value } : c))
   }
 
   function removeShareClass(i: number) {
@@ -76,7 +75,6 @@ export default function NewCompanyPage() {
         eis_eligible: form.eis_eligible,
         website: form.website.trim() || null,
         description: form.description.trim() || null,
-        share_classes: shareClasses.filter(sc => sc.name.trim()),
       })
       .select('id')
       .single()
@@ -85,6 +83,20 @@ export default function NewCompanyPage() {
       setError(dbError.message)
       setSaving(false)
       return
+    }
+
+    const scRows = shareClasses
+      .filter(sc => sc.name.trim())
+      .map(sc => ({ company_id: data.id, name: sc.name.trim(), instrument_type: 'equity' as const }))
+
+    if (scRows.length > 0) {
+      const { error: scError } = await supabase.from('company_share_classes').insert(scRows)
+      if (scError) {
+        await supabase.from('companies').delete().eq('id', data.id)
+        setError('Failed to save share classes: ' + scError.message)
+        setSaving(false)
+        return
+      }
     }
 
     await supabase.from('internal_updates').insert({
@@ -188,24 +200,15 @@ export default function NewCompanyPage() {
           </div>
 
           {shareClasses.map((sc, i) => (
-            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, marginBottom: 10, alignItems: 'end' }}>
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginBottom: 10, alignItems: 'end' }}>
               <Field label={i === 0 ? 'Name' : ''}>
                 <input
                   type="text"
                   value={sc.name}
-                  onChange={e => updateShareClass(i, 'name', e.target.value)}
+                  onChange={e => updateShareClass(i, e.target.value)}
                   placeholder="e.g. Ordinary, Series A Preferred"
                   style={inputStyle}
                 />
-              </Field>
-              <Field label={i === 0 ? 'Type' : ''}>
-                <select value={sc.type} onChange={e => updateShareClass(i, 'type', e.target.value)} style={inputStyle}>
-                  <option value="ordinary">Ordinary</option>
-                  <option value="preferred">Preferred</option>
-                  <option value="convertible">Convertible note</option>
-                  <option value="a_ordinary">A Ordinary</option>
-                  <option value="other">Other</option>
-                </select>
               </Field>
               {shareClasses.length > 1 && (
                 <button
