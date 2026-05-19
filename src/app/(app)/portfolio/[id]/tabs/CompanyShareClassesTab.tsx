@@ -11,6 +11,7 @@ export interface ShareClass {
   company_id: string
   name: string
   type: 'ordinary' | 'preference'
+  instrument_type: 'equity' | 'cln' | 'loan_note'
   dividend_rate: number | null
   dividend_cumulative: boolean | null
   dividend_payment: 'paid' | 'rolled_up' | null
