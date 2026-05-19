@@ -7,7 +7,6 @@ import { getInitials } from '@/lib/utils'
 import UpdateValuationModal from './UpdateValuationModal'
 import CompanyOverviewTab     from './tabs/CompanyOverviewTab'
 import CompanyInvestorsTab    from './tabs/CompanyInvestorsTab'
-import CompanyValuationsTab   from './tabs/CompanyValuationsTab'
 import CompanyShareClassesTab from './tabs/CompanyShareClassesTab'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -21,7 +20,7 @@ interface Company {
   logo_url: string | null
   website: string | null
   description: string | null
-  share_classes: unknown
+
 }
 
 interface Investment {
@@ -31,7 +30,7 @@ interface Investment {
   clients: { id: string; full_name: string; lead_investor_id: string | null } | null
 }
 
-type Tab = 'overview' | 'investors' | 'valuations' | 'share_classes' | 'performance' | 'documents' | 'updates' | 'legal'
+type Tab = 'overview' | 'investors' | 'share_classes' | 'performance' | 'documents' | 'updates' | 'legal'
 
 interface Props {
   company: Company
@@ -80,7 +79,6 @@ function StagePill({ stage }: { stage: string | null }) {
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview',       label: 'Overview'       },
   { key: 'investors',      label: 'Investors'      },
-  { key: 'valuations',     label: 'Valuations'     },
   { key: 'share_classes',  label: 'Share classes'  },
   { key: 'performance',    label: 'Performance'    },
   { key: 'documents',      label: 'Documents'      },
@@ -206,14 +204,6 @@ export default function CompanyPage({
         <CompanyInvestorsTab
           investments={investments}
           currentValuation={currentValuation}
-        />
-      )}
-
-      {activeTab === 'valuations' && (
-        <CompanyValuationsTab
-          valuations={valuations}
-          investments={investments}
-          onOpenModal={() => setShowValuationModal(true)}
         />
       )}
 

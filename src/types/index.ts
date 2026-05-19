@@ -60,7 +60,6 @@ export interface Company {
   logo_url: string | null
   website: string | null
   description: string | null
-  share_classes: { name: string; type?: string }[] | null
 }
 
 // ─── Investment ───────────────────────────────────────────────────────────────
@@ -101,9 +100,13 @@ export interface Investment {
 export interface Valuation {
   id: string
   company_id: string
+  share_class_id: string | null
   share_price: number
   valuation_date: string
+  methodology: string | null
+  source: string | null
   notes: string | null
+  updated_at: string | null
 }
 
 // ─── Deal ─────────────────────────────────────────────────────────────────────
@@ -205,9 +208,12 @@ export interface CompanyNews {
 export interface PortfolioRow {
   client_id: string
   company_id: string
+  share_class_id: string | null
   company_name: string
+  sector: string | null
   total_shares: number
   total_invested: number
+  transaction_count: number
   current_value: number
   gain_loss: number
 }

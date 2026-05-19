@@ -78,9 +78,18 @@ export function RecordTransactionModal({
   const [err,        setErr]        = useState('')
 
   const selectedCompany = companies.find(c => c.id === companyId)
-  const shareClasses = Array.isArray(selectedCompany?.share_classes)
-    ? selectedCompany!.share_classes as { name: string }[]
-    : []
+
+  const [shareClasses, setShareClasses] = useState<{ name: string }[]>([])
+  useEffect(() => {
+    setShareClasses([])
+    if (!companyId) return
+    createClient()
+      .from('company_share_classes')
+      .select('name')
+      .eq('company_id', companyId)
+      .order('name')
+      .then(({ data }) => setShareClasses(data ?? []))
+  }, [companyId])
 
   const holdingsMap = useMemo(() => {
     const map: Record<string, Record<string, number>> = {}

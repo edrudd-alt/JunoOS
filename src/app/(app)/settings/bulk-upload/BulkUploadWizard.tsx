@@ -80,7 +80,7 @@ const FIELD_DEFS: Record<DataType, FieldDef[]> = {
     { key: 'company_name',    label: 'Company name',   required: true, hint: 'Must match existing company' },
     { key: 'share_price',     label: 'Share price',    required: true, transform: 'Strip £ and commas' },
     { key: 'valuation_date',  label: 'Valuation date', required: true, transform: 'Normalise date format' },
-    { key: 'valuation_type',  label: 'Valuation type', required: false, hint: 'e.g. 409A, Board approved' },
+    { key: 'methodology',     label: 'Methodology',    required: false, hint: 'e.g. 409A, Board approved' },
     { key: 'notes',           label: 'Notes',          required: false },
   ],
   kpis: [
@@ -921,7 +921,8 @@ export default function BulkUploadWizard() {
                 company_id: company.id,
                 share_price: Number(row.share_price),
                 valuation_date: row.valuation_date,
-                valuation_type: row.valuation_type || null,
+                methodology: row.methodology || null,
+                source: 'bulk_upload',
                 notes: row.notes || null,
               })
             } else {
