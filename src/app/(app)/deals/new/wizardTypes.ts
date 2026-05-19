@@ -3,7 +3,6 @@
 export interface Company {
   id: string
   name: string
-  share_classes: { name: string; type: string }[] | null
 }
 
 export interface Client {

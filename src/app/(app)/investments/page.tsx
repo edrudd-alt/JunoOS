@@ -22,7 +22,7 @@ export default async function InvestmentsPage() {
       .order('investment_date', { ascending: false }),
     supabase
       .from('companies')
-      .select('id, name, share_classes')
+      .select('id, name')
       .order('name'),
     supabase
       .from('clients')

@@ -1,6 +1,8 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
 import type { Company, Client, DealInvestor } from './wizardTypes'
 import { DEAL_TYPES, inputStyle } from './wizardTypes'
 import { Field } from './wizardHelpers'
@@ -46,10 +48,19 @@ export function DealSetupStep({
   checklist, setChecklist, companies, clients, error, saving, onNext,
 }: Props) {
   const isInvestmentDeal = dealType === 'new_investment' || dealType === 'follow_on'
-  const selectedCompany  = companies.find(c => c.id === companyId)
-  const shareClasses: { name: string }[] = Array.isArray(selectedCompany?.share_classes)
-    ? selectedCompany!.share_classes as { name: string }[]
-    : []
+
+  const [shareClassOptions, setShareClassOptions] = useState<{ name: string }[]>([])
+  useEffect(() => {
+    setShareClassOptions([])
+    if (!companyId) return
+    createClient()
+      .from('company_share_classes')
+      .select('name')
+      .eq('company_id', companyId)
+      .order('name')
+      .then(({ data }) => setShareClassOptions(data ?? []))
+  }, [companyId])
+
   const sharesCalc = amount && sharePrice
     ? (parseFloat(amount) / parseFloat(sharePrice)).toFixed(0)
     : null
@@ -98,8 +109,7 @@ export function DealSetupStep({
               <Field label="Share class">
                 <select value={shareClass} onChange={e => setShareClass(e.target.value)} style={inputStyle} disabled={!companyId}>
                   <option value="">Select…</option>
-                  {shareClasses.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
-                  <option value="Ordinary">Ordinary</option>
+                  {shareClassOptions.map(sc => <option key={sc.name} value={sc.name}>{sc.name}</option>)}
                 </select>
               </Field>
             </div>
