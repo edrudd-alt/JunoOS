@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { redirect, notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
-import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord, NomineeRecord, CompanyRecord } from './ClientRecord'
+import type { InvestmentRecord, NoteRecord, DocumentRecord, ValuationRecord, FeeScheduleRecord, FeeScheduleItemRecord, NomineeRecord, CompanyRecord, InvestmentDocRecord, InvestorUpdateRecord, TeamMemberRecord } from './ClientRecord'
 import type { Client } from '@/types'
 
 interface Props {
@@ -50,6 +50,8 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: notesData },
     { data: documentsData },
     { data: feeSchedulesData },
+    { data: investmentDocsData },
+    { data: updateRecipientsData },
   ] = await Promise.all([
     supabase
       .from('investments')
@@ -79,12 +81,39 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('id, name')
       .eq('active', true)
       .order('name'),
+
+    // Investment documents (application forms, EIS certs, tx statements, etc.)
+    supabase
+      .from('documents')
+      .select('id, client_id, company_id, type, filename, storage_url, document_date, version')
+      .in('client_id', allGroupIds)
+      .in('type', ['application_form', 'eis_certificate', 'transaction_statement', 'exit_statement', 'side_letter', 'invoice'])
+      .eq('superseded', false)
+      .order('document_date', { ascending: false }),
+
+    // Recipient records: used to identify which investor_updates to fetch
+    supabase
+      .from('investor_update_recipients')
+      .select('investor_update_id, client_id')
+      .in('client_id', allGroupIds)
+      .eq('included', true),
   ])
 
-  // 5. Fetch current valuations, fee items, nominees, and companies in parallel
-  const typedInvestments = (investmentsData ?? []) as unknown as InvestmentRecord[]
+  // 5. Fetch current valuations, fee items, nominees, companies, team members, and investor updates
+  const typedInvestments  = (investmentsData ?? [])     as unknown as InvestmentRecord[]
+  const typedInvestmentDocs = (investmentDocsData ?? []) as unknown as InvestmentDocRecord[]
+
+  // Company IDs from investments + investment documents
   const companyIds = [
-    ...new Set(typedInvestments.map(i => i.company_id).filter(Boolean)),
+    ...new Set([
+      ...typedInvestments.map(i => i.company_id).filter(Boolean),
+      ...typedInvestmentDocs.map(d => d.company_id).filter((id): id is string => id != null),
+    ]),
+  ]
+
+  // Investor update IDs from recipient records
+  const updateIds = [
+    ...new Set((updateRecipientsData ?? []).map(r => r.investor_update_id)),
   ]
 
   // Distinct non-null nominee IDs: entity defaults + investment-level overrides
@@ -104,6 +133,8 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: feeItemsData },
     { data: nomineesData },
     { data: companiesData },
+    { data: teamMembersData },
+    { data: investorUpdatesData },
   ] = await Promise.all([
     companyIds.length > 0
       ? supabase
@@ -134,7 +165,32 @@ export default async function ClientRecordPage({ params }: Props) {
           .select('id, name, logo_url, sector')
           .in('id', companyIds)
       : Promise.resolve({ data: [] as CompanyRecord[] }),
+
+    supabase.from('team_members').select('id, full_name, initials'),
+
+    updateIds.length > 0
+      ? supabase
+          .from('investor_updates')
+          .select('id, company_id, update_type, title, sent_at, created_by')
+          .in('id', updateIds)
+          .order('sent_at', { ascending: false })
+      : Promise.resolve({ data: [] as { id: string; company_id: string; update_type: string; title: string | null; sent_at: string | null; created_by: string | null }[] }),
   ])
+
+  // Merge recipients into investor updates
+  const recipientsByUpdateId = new Map<string, string[]>()
+  ;(updateRecipientsData ?? []).forEach(r => {
+    if (!recipientsByUpdateId.has(r.investor_update_id)) {
+      recipientsByUpdateId.set(r.investor_update_id, [])
+    }
+    recipientsByUpdateId.get(r.investor_update_id)!.push(r.client_id)
+  })
+  const typedInvestorUpdates: InvestorUpdateRecord[] = (investorUpdatesData ?? []).map(
+    (u: { id: string; company_id: string; update_type: string; title: string | null; sent_at: string | null; created_by: string | null }) => ({
+      ...u,
+      recipient_client_ids: recipientsByUpdateId.get(u.id) ?? [],
+    }),
+  )
 
   return (
     <Suspense>
@@ -149,6 +205,9 @@ export default async function ClientRecordPage({ params }: Props) {
         feeScheduleItems={(feeItemsData ?? []) as unknown as FeeScheduleItemRecord[]}
         nominees={(nomineesData ?? []) as unknown as NomineeRecord[]}
         companies={(companiesData ?? []) as unknown as CompanyRecord[]}
+        investmentDocs={typedInvestmentDocs}
+        investorUpdates={typedInvestorUpdates}
+        teamMembers={(teamMembersData ?? []) as unknown as TeamMemberRecord[]}
       />
     </Suspense>
   )

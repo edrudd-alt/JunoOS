@@ -80,6 +80,33 @@ export interface NomineeRecord {
   name: string
 }
 
+export interface InvestmentDocRecord {
+  id: string
+  client_id: string
+  company_id: string | null
+  type: string
+  filename: string
+  storage_url: string | null
+  document_date: string | null
+  version: number
+}
+
+export interface InvestorUpdateRecord {
+  id: string
+  company_id: string
+  update_type: string
+  title: string | null
+  sent_at: string | null
+  created_by: string | null
+  recipient_client_ids: string[]
+}
+
+export interface TeamMemberRecord {
+  id: string
+  full_name: string | null
+  initials: string | null
+}
+
 interface Props {
   lead: Client
   linkedEntities: Client[]
@@ -91,6 +118,9 @@ interface Props {
   feeScheduleItems: FeeScheduleItemRecord[]
   nominees: NomineeRecord[]
   companies: CompanyRecord[]
+  investmentDocs: InvestmentDocRecord[]
+  investorUpdates: InvestorUpdateRecord[]
+  teamMembers: TeamMemberRecord[]
 }
 
 const VALID_TABS: TabKey[] = ['overview', 'investments', 'investment_docs', 'updates_sent', 'notes']
@@ -103,6 +133,7 @@ const ENTITY_TYPE_ORDER: Record<string, number> = {
 export default function ClientRecord({
   lead, linkedEntities, investments, notes, documents, valuations,
   feeSchedules, feeScheduleItems, nominees, companies,
+  investmentDocs, investorUpdates, teamMembers,
 }: Props) {
   const searchParams = useSearchParams()
   const router       = useRouter()
@@ -194,7 +225,7 @@ export default function ClientRecord({
         onTabChange={tab => navigate(tab, selectedEntity)}
         investmentCount={filteredInvestments.length}
         investmentDocsCount={0}
-        updatesSentCount={0}
+        updatesSentCount={investorUpdates.length}
         notesCount={notes.length}
       />
 
@@ -223,9 +254,28 @@ export default function ClientRecord({
             onEntityChange={entity => navigate(activeTab, entity)}
           />
         )}
-        {activeTab === 'investment_docs' && <InvestmentDocsTab />}
-        {activeTab === 'updates_sent'    && <UpdatesSentTab />}
-        {activeTab === 'notes'           && <NotesTab />}
+        {activeTab === 'investment_docs' && (
+          <InvestmentDocsTab
+            documents={investmentDocs}
+            companies={companies}
+          />
+        )}
+        {activeTab === 'updates_sent' && (
+          <UpdatesSentTab
+            updates={investorUpdates}
+            companies={companies}
+            teamMembers={teamMembers}
+            entities={allEntities.map(e => ({ id: e.id, full_name: e.full_name }))}
+          />
+        )}
+        {activeTab === 'notes' && (
+          <NotesTab
+            notes={notes}
+            clientId={lead.id}
+            teamMembers={teamMembers}
+            onSaved={() => router.refresh()}
+          />
+        )}
       </div>
     </div>
   )
