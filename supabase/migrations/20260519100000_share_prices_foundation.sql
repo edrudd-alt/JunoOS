@@ -94,13 +94,28 @@ truncate table valuations;
 -- ─── Block 6: Wipe company_share_classes (CASCADE) ───────────────────────────
 --
 -- All rows in company_share_classes are test data (confirmed Ed, 19 May 2026).
--- CASCADE propagates the wipe to any FK columns that reference this table:
---   investments.share_class_id        → set to NULL
---   deals.share_class_id              → set to NULL
---   dividends.share_class_id          → set to NULL (table empty)
---   share_class_ranking_history.*     → set to NULL (one test row)
---   cln_positions.share_class_id      → set to NULL (table empty)
--- CASCADE does NOT delete rows in those tables — it only nulls the FK column.
+--
+-- !! TRUNCATE CASCADE is NOT the same as DELETE CASCADE !!
+-- TRUNCATE CASCADE propagates the truncation to ALL tables that have a FK
+-- pointing into company_share_classes, REGARDLESS of the ON DELETE action
+-- defined on the FK. It does not set FK columns to NULL — it wipes the
+-- dependent tables entirely.
+--
+-- Actual cascade when applied to the live database (19 May 2026):
+--   company_share_classes (wiped)
+--   → investments          (wiped — had FK share_class_id; also had FK to deals)
+--   → deals                (wiped — reached via investments FK chain)
+--   → deal_investors       (wiped — ON DELETE CASCADE from deals)
+--   → bookbuild_entries    (wiped — ON DELETE CASCADE from deals)
+--   → deal_action_logs     (wiped — ON DELETE CASCADE from deals)
+--   → documents            (wiped — ON DELETE SET NULL from deals, but TRUNCATE ignores this)
+--   → dividends            (wiped — was empty; has FK share_class_id)
+--   → share_class_ranking_history (wiped — was empty; has FK into share_classes)
+--   → cln_positions        (wiped — was empty; has FK into share_classes)
+--
+-- All affected tables contained test data only. Clients (20 rows) and
+-- companies (11 rows) were unaffected — no FK chain from company_share_classes
+-- reaches those tables.
 -- ─────────────────────────────────────────────────────────────────────────────
 truncate table company_share_classes cascade;
 
@@ -117,20 +132,32 @@ alter table companies
   drop column if exists share_classes;
 
 
--- ─── Block 8: Replace company_current_valuations view ────────────────────────
+-- ─── Blocks 8 & 9: Replace views ─────────────────────────────────────────────
 --
--- The old view was keyed on company_id only — it returned one row per company,
--- the most recent valuation regardless of share class. This works for single-
--- class companies but loses precision for multi-class companies.
+-- Three views reference company_current_valuations:
+--   client_portfolio_summary — the per-client portfolio summary
+--   holdings                 — a diagnostic view that also joins on company_id
 --
--- The new view is keyed on (company_id, share_class_id). DISTINCT ON picks
--- the first row in the sort order for each unique pair, which — with the
--- ORDER BY valuation_date DESC — is always the most recent valuation.
+-- Cannot use CREATE OR REPLACE VIEW because the column list of
+-- company_current_valuations changes (share_class_id is inserted before
+-- share_price, and methodology / source are added). PostgreSQL only allows
+-- CREATE OR REPLACE to append columns at the end.
 --
--- Rows where share_class_id IS NULL represent a "company-wide" price; the
--- view handles these correctly (NULL and NULL form a match in DISTINCT ON).
+-- Strategy: DROP company_current_valuations CASCADE (which automatically drops
+-- the two dependent views), then recreate all three.
 -- ─────────────────────────────────────────────────────────────────────────────
-create or replace view company_current_valuations as
+
+drop view if exists company_current_valuations cascade;
+
+
+-- Block 8: Recreate company_current_valuations (new per-share-class version)
+--
+-- The old view was keyed on company_id only — one row per company, most recent
+-- valuation regardless of share class. The new view keys on (company_id,
+-- share_class_id) so multi-class companies get separate prices per class.
+-- DISTINCT ON picks the first row in the sort order for each unique pair,
+-- which — ordered by valuation_date DESC — is always the most recent valuation.
+create view company_current_valuations as
 select distinct on (company_id, share_class_id)
   company_id,
   share_class_id,
@@ -142,25 +169,18 @@ from valuations
 order by company_id, share_class_id, valuation_date desc;
 
 
--- ─── Block 9: Replace client_portfolio_summary view ──────────────────────────
+-- Block 9: Recreate client_portfolio_summary (new spec version)
 --
--- The old view joined investments to valuations on company_id only, which
--- meant all share classes for a company got the same single company-level price.
--- For multi-class companies (e.g. Ball Co Ordinary vs B Preference) this gave
--- wrong portfolio values.
+-- The old view joined investments to valuations on company_id only, giving
+-- all share classes the same company-level price. The new version joins on
+-- (company_id, share_class_id) so each holding gets the price for its class.
 --
--- The new view joins on both company_id AND share_class_id, so each holding
--- gets the price for its specific class.
+-- IS NOT DISTINCT FROM handles NULL share_class_id correctly: both sides NULL
+-- matches (the CLN pseudo-class pattern); plain "=" would not.
 --
--- "IS NOT DISTINCT FROM" instead of "=" handles NULL share_class_id correctly:
--- if both the investment and the valuation have a NULL share_class_id (the CLN
--- pseudo-class pattern), they match. A plain "=" would not match NULL = NULL.
---
--- COALESCE fallback: if no valuation exists for a (company, class) pair, use
--- the investment's original share price. This means portfolio totals never go
--- to zero just because a price hasn't been set yet — a zero would be misleading.
--- ─────────────────────────────────────────────────────────────────────────────
-create or replace view client_portfolio_summary as
+-- COALESCE fallback: if no valuation exists, use original_share_price so totals
+-- never go to zero just because a class hasn't been priced yet.
+create view client_portfolio_summary as
 select
   i.client_id,
   i.company_id,
@@ -180,3 +200,35 @@ left join company_current_valuations v
   and v.share_class_id is not distinct from i.share_class_id
 where i.status = 'active'
 group by i.client_id, i.company_id, i.share_class_id, c.name, c.sector;
+
+
+-- Recreate holdings (same definition as before; sub-stage 2B.2 will update it
+-- to join on share_class_id — see note in PR. Until then this view will
+-- produce duplicate rows for multi-class companies because company_current_valuations
+-- now returns one row per class rather than one row per company.)
+create view holdings as
+select
+  i.client_id,
+  cl.full_name                                                   as client_name,
+  i.company_id,
+  co.name                                                        as company_name,
+  i.share_class,
+  i.holding_location,
+  i.holding_entity,
+  sum(case when i.transaction_type = any(array['buy','transfer_in'])   then i.shares_purchased else 0 end) as shares_in,
+  sum(case when i.transaction_type = any(array['sell','transfer_out'])  then i.shares_purchased else 0 end) as shares_out,
+  (sum(case when i.transaction_type = any(array['buy','transfer_in'])  then i.shares_purchased else 0 end)
+   - sum(case when i.transaction_type = any(array['sell','transfer_out']) then i.shares_purchased else 0 end)) as remaining_shares,
+  sum(case when i.transaction_type = any(array['buy','transfer_in'])   then i.sum_subscribed   else 0 end) as total_cost,
+  sum(case when i.transaction_type = any(array['sell','transfer_out'])  then i.sum_subscribed   else 0 end) as total_proceeds,
+  min(i.investment_date)                                         as first_investment_date,
+  coalesce(v.share_price, 0)                                    as current_share_price,
+  ((sum(case when i.transaction_type = any(array['buy','transfer_in'])  then i.shares_purchased else 0 end)
+    - sum(case when i.transaction_type = any(array['sell','transfer_out']) then i.shares_purchased else 0 end))
+   * coalesce(v.share_price, 0))                                as current_value
+from investments i
+join clients  cl  on cl.id  = i.client_id
+join companies co on co.id  = i.company_id
+left join company_current_valuations v on v.company_id = i.company_id
+group by i.client_id, cl.full_name, i.company_id, co.name,
+         i.share_class, i.holding_location, i.holding_entity, v.share_price;
