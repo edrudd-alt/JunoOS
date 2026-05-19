@@ -59,7 +59,6 @@ export interface Database {
           logo_url: string | null
           website: string | null
           description: string | null
-          share_classes: unknown
           kpi_config: unknown
           update_template: unknown
           created_at: string
@@ -100,11 +99,15 @@ export interface Database {
         Row: {
           id: string
           company_id: string
+          share_class_id: string | null
           share_price: number
           valuation_date: string
+          methodology: string | null
+          source: string | null
           updated_by: string | null
           notes: string | null
           created_at: string
+          updated_at: string | null
         }
         Insert: Omit<Database['public']['Tables']['valuations']['Row'], 'id' | 'created_at'> & {
           id?: string
@@ -164,14 +167,18 @@ export interface Database {
       company_current_valuations: {
         Row: {
           company_id: string
+          share_class_id: string | null
           share_price: number
           valuation_date: string
+          methodology: string | null
+          source: string | null
         }
       }
       client_portfolio_summary: {
         Row: {
           client_id: string
           company_id: string
+          share_class_id: string | null
           company_name: string
           sector: string | null
           total_invested: number
