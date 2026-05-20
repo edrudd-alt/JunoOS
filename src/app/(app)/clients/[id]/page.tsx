@@ -46,6 +46,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: relationshipRows },
     { data: feeSchedulesData },
     { data: nomineesData },
+    { data: portfolioStatements },
   ] = await Promise.all([
     // Portfolio data per entity
     supabase
@@ -144,6 +145,15 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('id, name')
       .eq('active', true)
       .order('name'),
+
+    // Non-superseded portfolio statements for this client
+    supabase
+      .from('documents')
+      .select('id, filename, storage_url, period, document_date, version')
+      .eq('client_id', id)
+      .eq('type', 'portfolio_statement')
+      .eq('superseded', false)
+      .order('document_date', { ascending: false }),
   ])
 
   // Resolve names for related clients
@@ -274,6 +284,7 @@ export default async function ClientRecordPage({ params }: Props) {
       relationships={relationships as Record<string, unknown>[]}
       feeSchedules={(feeSchedulesData ?? []) as { id: string; name: string }[]}
       nominees={(nomineesData ?? []) as { id: string; name: string }[]}
+      portfolioStatements={(portfolioStatements ?? []) as import('./_components/GenerateStatementSection').StatementDoc[]}
     />
   )
 }

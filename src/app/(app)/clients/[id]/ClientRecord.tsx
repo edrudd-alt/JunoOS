@@ -14,6 +14,7 @@ import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
 import NotesTab from './tabs/NotesTab'
 import PendingActionsTab from './tabs/PendingActionsTab'
+import type { StatementDoc } from './_components/GenerateStatementSection'
 
 // Re-export as ClientRow so existing imports from this file keep working.
 export type { ClientRow } from '@/types'
@@ -66,12 +67,14 @@ interface Props {
   relationships: Record<string, unknown>[]
   feeSchedules: { id: string; name: string }[]
   nominees: { id: string; name: string }[]
+  portfolioStatements: StatementDoc[]
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
-  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules, nominees,
+  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships,
+  feeSchedules, nominees, portfolioStatements,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -225,6 +228,7 @@ export default function ClientRecord({
             pendingDeals={activeDeals}
             membershipDocs={membershipDocs as unknown as { id: string; type: string; company_id: string | null }[]}
             onSwitchToInvestments={() => switchTab('investments')}
+            portfolioStatements={portfolioStatements}
           />
         )}
         {tab === 'investments' && (

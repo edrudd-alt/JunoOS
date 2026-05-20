@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
 import type { ClientRow } from '../ClientRecord'
+import GenerateStatementSection from '../_components/GenerateStatementSection'
+import type { StatementDoc } from '../_components/GenerateStatementSection'
 
 interface Investment {
   id: string
@@ -58,6 +60,7 @@ interface Props {
   pendingDeals: Record<string, unknown>[]
   membershipDocs: MembershipDoc[]
   onSwitchToInvestments: () => void
+  portfolioStatements: StatementDoc[]
 }
 
 function isBuyTx(tx: Investment) {
@@ -98,7 +101,7 @@ function DealStatusPill({ status }: { status: string }) {
 
 export default function OverviewTab({
   client, investments: invRaw, valuations: valsRaw,
-  pendingDeals: dealsRaw, membershipDocs, onSwitchToInvestments,
+  pendingDeals: dealsRaw, membershipDocs, onSwitchToInvestments, portfolioStatements,
 }: Props) {
   const [accountFilter, setAccountFilter] = useState('all')
   const [uploadToast, setUploadToast] = useState(false)
@@ -397,6 +400,14 @@ export default function OverviewTab({
             )}
           </div>
         </div>
+      </div>
+
+      {/* Portfolio statement generator */}
+      <div style={{ marginTop: 20 }}>
+        <GenerateStatementSection
+          clientId={client.id}
+          statements={portfolioStatements}
+        />
       </div>
 
       {uploadToast && (
