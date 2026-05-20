@@ -4,12 +4,10 @@ import CompanyPage from './CompanyPage'
 
 interface Props {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ action?: string }>
 }
 
-export default async function PortfolioCompanyPage({ params, searchParams }: Props) {
+export default async function PortfolioCompanyPage({ params }: Props) {
   const { id } = await params
-  const { action } = await searchParams
   const supabase = await createClient()
 
   const { data: company } = await supabase
@@ -169,7 +167,6 @@ export default async function PortfolioCompanyPage({ params, searchParams }: Pro
       companyDocs={(companyDocs ?? []) as Record<string, unknown>[]}
       shareClasses={shareClasses}
       rankingHistory={(rankingHistory ?? []) as Record<string, unknown>[]}
-      initialAction={action ?? null}
     />
   )
 }
