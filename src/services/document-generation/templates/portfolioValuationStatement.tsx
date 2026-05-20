@@ -6,11 +6,9 @@ export const portfolioValuationStatementVersion = '1.0.0'
 
 const LOGO_SRC  = path.join(process.cwd(), 'public', 'juno-logo.png')
 const JUNO_NAME = 'Juno Capital Partners LLP'
-const JUNO_ADDR = '91 Wimpole Street, London, W1G 0EF'
 
 const JUNO_DARK  = '#1A1A2E'
 const JUNO_NAVY  = '#1B3272'
-const JUNO_GOLD  = '#B8962E'
 const LIGHT_GREY = '#F5F5F5'
 const MID_GREY   = '#CCCCCC'
 
@@ -34,10 +32,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
     marginBottom: 4,
   },
-  headerTitle:  { fontSize: 14, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
+  headerTitle:  { fontSize: 18, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
   headerPeriod: { fontSize: 10, color: '#888', marginTop: 3 },
-  headerLogo:   { height: 36, objectFit: 'contain' },
-  goldLine:     { height: 2, backgroundColor: JUNO_GOLD, marginBottom: 8 },
+  headerLogo:   { height: 45, objectFit: 'contain' },
+  goldLine:     { height: 2, backgroundColor: MID_GREY, marginBottom: 8 },
   // ── Client sub-header ────────────────────────────────────────────────────────
   subHeader: {
     flexDirection: 'row', gap: 24, marginBottom: 12,
@@ -63,33 +61,50 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.25, borderBottomColor: MID_GREY,
   },
   tableTotalRow: {
-    flexDirection: 'row', backgroundColor: JUNO_NAVY,
+    flexDirection: 'row', backgroundColor: LIGHT_GREY,
     paddingVertical: 5, paddingHorizontal: 3,
+    borderTopWidth: 1.5, borderTopColor: JUNO_DARK,
   },
-  thCell:      { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#fff' },
-  tdCell:      { fontSize: 8, color: JUNO_DARK },
-  tdBold:      { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
-  tdTotalBold: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#fff' },
+  thCell:       { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#fff' },
+  tdCell:       { fontSize: 8, color: JUNO_DARK },
+  tdBold:       { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
+  tdTotalBold:  { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
+  tdTotalLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK, textAlign: 'right' },
   // ── Detail table columns (Page 1) ─────────────────────────────────────────
-  dColCompany:   { flex: 2.2 },
-  dColClass:     { flex: 1.8 },
-  dColEis:       { flex: 0.6 },
-  dColDate:      { flex: 0.9 },
-  dColOrigPrice: { flex: 0.9 },
-  dColShares:    { flex: 1.0, textAlign: 'right' },
-  dColSub:       { flex: 1.1, textAlign: 'right' },
-  dColCurrPrice: { flex: 0.9 },
-  dColCurrVal:   { flex: 1.1, textAlign: 'right' },
-  dColChange:    { flex: 1.1, textAlign: 'right' },
-  dColDiv:       { flex: 1.1, textAlign: 'right' },
+  //
+  // Column auto-sizing measures the max content width per column (header
+  // label + every data cell, formatted) plus a fixed cell padding and a
+  // small buffer, then scales all columns proportionally to fill the page.
+  // Ported from juno-investor-reports/report_generator.py _auto_col_widths.
+  // Critical: measure against the SAME font and font size used to render
+  // the cells. Mismatched measurement is the typical cause of crushed or
+  // over-spaced columns.
+  //
+  // A4 landscape usable width ≈ 751pt (841.89 − 2×42.5 − 6pt row padding).
+  // Natural widths below estimated at Helvetica 8pt (avg digit ≈ 4.45pt,
+  // avg alpha ≈ 4pt) + CELL_PAD=8 + BUFFER=6 = 14pt extra per column,
+  // then scaled to 751pt. Header label is included in the max().
+  dColCompany:   { flex: 1.1 },                          // "Sky Medical"  ~45pt → 59pt nat → 85pt final
+  dColClass:     { flex: 1.3 },                          // "B Preference" ~53pt → 67pt nat → 97pt final
+  dColEis:       { flex: 0.5 },                          // "EIS"          ~13pt → 27pt nat → 37pt final
+  dColDate:      { flex: 0.9 },                          // "DD/MM/YY"     ~33pt → 47pt nat → 68pt final
+  dColOrigPrice: { flex: 1.0 },                          // hdr "Orig. Price" ~39pt → 53pt nat → 77pt final
+  dColShares:    { flex: 0.8,  textAlign: 'right' },     // "10,000"       ~26pt → 40pt nat → 58pt final
+  dColSub:       { flex: 1.1,  textAlign: 'right' },     // "£25,000.00"   ~41pt → 55pt nat → 80pt final
+  dColCurrPrice: { flex: 1.0 },                          // hdr "Curr. Price" ~40pt → 54pt nat → 78pt final
+  dColCurrVal:   { flex: 1.2,  textAlign: 'right' },     // hdr "Curr. Value" ~47pt → 61pt nat → 88pt final
+  dColChange:    { flex: 1.1,  textAlign: 'right' },     // "£25,000.00"   ~41pt → 55pt nat → 80pt final
+  dColDiv:       { flex: 1.1,  textAlign: 'right' },     // same as Change
   // ── Summary table columns (Page 2) ────────────────────────────────────────
-  sColCompany: { flex: 2.0 },
-  sColClass:   { flex: 1.8 },
-  sColShares:  { flex: 1.2, textAlign: 'right' },
-  sColSub:     { flex: 1.2, textAlign: 'right' },
-  sColCurrVal: { flex: 1.2, textAlign: 'right' },
-  sColChange:  { flex: 1.2, textAlign: 'right' },
-  sColDiv:     { flex: 1.2, textAlign: 'right' },
+  // Same approach: fewer columns → each gets more space. Header labels
+  // ("Shares Purchased", "Current Valuation") drive the wider columns.
+  sColCompany: { flex: 1.3 },                            // "Sky Medical"  ~59pt nat → 98pt final
+  sColClass:   { flex: 1.5 },                            // "B Preference" ~67pt nat → 112pt final
+  sColShares:  { flex: 1.8,  textAlign: 'right' },       // hdr 16 chars   ~82pt nat → 137pt final
+  sColSub:     { flex: 1.6,  textAlign: 'right' },       // hdr "Sum Subscribed" → 123pt final
+  sColCurrVal: { flex: 1.9,  textAlign: 'right' },       // hdr "Current Valuation" → 145pt final
+  sColChange:  { flex: 1.8,  textAlign: 'right' },       // hdr "Valuation Change" → 137pt final
+  sColDiv:     { flex: 1.8,  textAlign: 'right' },       // hdr "Cumulative Dividend" → same
   // ── Footer (absolute, repeated on every page via fixed prop) ──────────────
   footer: {
     position: 'absolute',
@@ -158,7 +173,6 @@ function PageFooter({ generatedOn }: { generatedOn: string }) {
       <Text style={styles.footerLeft}>{`Generated on ${fmtLongDate(generatedOn)}`}</Text>
       <View style={styles.footerCenter}>
         <Text style={{ fontSize: 7, color: '#888', textAlign: 'center' }}>{JUNO_NAME}</Text>
-        <Text style={{ fontSize: 7, color: '#888', textAlign: 'center' }}>{JUNO_ADDR}</Text>
       </View>
       <Text
         style={styles.footerRight}
@@ -234,16 +248,16 @@ export function PortfolioValuationStatementTemplate({
 
         {/* Totals row */}
         <View style={styles.tableTotalRow} wrap={false}>
-          <Text style={[styles.tdTotalBold, styles.dColCompany]}>Total</Text>
-          <Text style={[styles.tdCell,      styles.dColClass]}>{''}</Text>
-          <Text style={[styles.tdCell,      styles.dColEis]}>{''}</Text>
-          <Text style={[styles.tdCell,      styles.dColDate]}>{''}</Text>
-          <Text style={[styles.tdCell,      styles.dColOrigPrice]}>{''}</Text>
-          <Text style={[styles.tdCell,      styles.dColShares]}>{''}</Text>
-          <Text style={[styles.tdTotalBold, styles.dColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
-          <Text style={[styles.tdCell,      styles.dColCurrPrice]}>{''}</Text>
-          <Text style={[styles.tdTotalBold, styles.dColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
-          <Text style={[styles.tdTotalBold, styles.dColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
+          <Text style={[styles.tdTotalLabel, styles.dColCompany]}>Total</Text>
+          <Text style={[styles.tdCell,       styles.dColClass]}>{''}</Text>
+          <Text style={[styles.tdCell,       styles.dColEis]}>{''}</Text>
+          <Text style={[styles.tdCell,       styles.dColDate]}>{''}</Text>
+          <Text style={[styles.tdCell,       styles.dColOrigPrice]}>{''}</Text>
+          <Text style={[styles.tdCell,       styles.dColShares]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  styles.dColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
+          <Text style={[styles.tdCell,       styles.dColCurrPrice]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  styles.dColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
+          <Text style={[styles.tdTotalBold,  styles.dColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
           {showDividendColumn && (
             <Text style={[styles.tdTotalBold, styles.dColDiv]}>{fmtCurrency(grandTotals.dividends)}</Text>
           )}
@@ -292,12 +306,12 @@ export function PortfolioValuationStatementTemplate({
 
         {/* Summary totals row */}
         <View style={styles.tableTotalRow} wrap={false}>
-          <Text style={[styles.tdTotalBold, styles.sColCompany]}>Total</Text>
-          <Text style={[styles.tdCell,      styles.sColClass]}>{''}</Text>
-          <Text style={[styles.tdCell,      styles.sColShares]}>{''}</Text>
-          <Text style={[styles.tdTotalBold, styles.sColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
-          <Text style={[styles.tdTotalBold, styles.sColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
-          <Text style={[styles.tdTotalBold, styles.sColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
+          <Text style={[styles.tdTotalLabel, styles.sColCompany]}>Total</Text>
+          <Text style={[styles.tdCell,       styles.sColClass]}>{''}</Text>
+          <Text style={[styles.tdCell,       styles.sColShares]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  styles.sColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
+          <Text style={[styles.tdTotalBold,  styles.sColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
+          <Text style={[styles.tdTotalBold,  styles.sColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
           {showDividendColumn && (
             <Text style={[styles.tdTotalBold, styles.sColDiv]}>{fmtCurrency(grandTotals.dividends)}</Text>
           )}
