@@ -18,6 +18,13 @@ const PAD_H = 42.5
 const PAD_T = 99
 const PAD_B = 64  // slightly larger than 62 to leave room for fixed footer
 
+// Column auto-sizing (mirrors juno-investor-reports/report_generator.py _auto_col_widths):
+// natural width = max(headerWidth, maxDataWidth) + CELL_PAD + BUFFER, then scaled to page.
+// A4 landscape usable width ≈ 751pt (841.89 − 2×42.5 − 6pt row padding).
+const CELL_PAD = 8
+const BUFFER   = 6
+const USABLE_W = 841.89 - PAD_H * 2 - 6
+
 const styles = StyleSheet.create({
   page: {
     paddingHorizontal: PAD_H,
@@ -70,41 +77,6 @@ const styles = StyleSheet.create({
   tdBold:       { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
   tdTotalBold:  { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK },
   tdTotalLabel: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: JUNO_DARK, textAlign: 'right' },
-  // ── Detail table columns (Page 1) ─────────────────────────────────────────
-  //
-  // Column auto-sizing measures the max content width per column (header
-  // label + every data cell, formatted) plus a fixed cell padding and a
-  // small buffer, then scales all columns proportionally to fill the page.
-  // Ported from juno-investor-reports/report_generator.py _auto_col_widths.
-  // Critical: measure against the SAME font and font size used to render
-  // the cells. Mismatched measurement is the typical cause of crushed or
-  // over-spaced columns.
-  //
-  // A4 landscape usable width ≈ 751pt (841.89 − 2×42.5 − 6pt row padding).
-  // Natural widths below estimated at Helvetica 8pt (avg digit ≈ 4.45pt,
-  // avg alpha ≈ 4pt) + CELL_PAD=8 + BUFFER=6 = 14pt extra per column,
-  // then scaled to 751pt. Header label is included in the max().
-  dColCompany:   { flex: 1.1 },                          // "Sky Medical"  ~45pt → 59pt nat → 85pt final
-  dColClass:     { flex: 1.3 },                          // "B Preference" ~53pt → 67pt nat → 97pt final
-  dColEis:       { flex: 0.5 },                          // "EIS"          ~13pt → 27pt nat → 37pt final
-  dColDate:      { flex: 0.9 },                          // "DD/MM/YY"     ~33pt → 47pt nat → 68pt final
-  dColOrigPrice: { flex: 1.0 },                          // hdr "Orig. Price" ~39pt → 53pt nat → 77pt final
-  dColShares:    { flex: 0.8,  textAlign: 'right' },     // "10,000"       ~26pt → 40pt nat → 58pt final
-  dColSub:       { flex: 1.1,  textAlign: 'right' },     // "£25,000.00"   ~41pt → 55pt nat → 80pt final
-  dColCurrPrice: { flex: 1.0 },                          // hdr "Curr. Price" ~40pt → 54pt nat → 78pt final
-  dColCurrVal:   { flex: 1.2,  textAlign: 'right' },     // hdr "Curr. Value" ~47pt → 61pt nat → 88pt final
-  dColChange:    { flex: 1.1,  textAlign: 'right' },     // "£25,000.00"   ~41pt → 55pt nat → 80pt final
-  dColDiv:       { flex: 1.1,  textAlign: 'right' },     // same as Change
-  // ── Summary table columns (Page 2) ────────────────────────────────────────
-  // Same approach: fewer columns → each gets more space. Header labels
-  // ("Shares Purchased", "Current Valuation") drive the wider columns.
-  sColCompany: { flex: 1.3 },                            // "Sky Medical"  ~59pt nat → 98pt final
-  sColClass:   { flex: 1.5 },                            // "B Preference" ~67pt nat → 112pt final
-  sColShares:  { flex: 1.8,  textAlign: 'right' },       // hdr 16 chars   ~82pt nat → 137pt final
-  sColSub:     { flex: 1.6,  textAlign: 'right' },       // hdr "Sum Subscribed" → 123pt final
-  sColCurrVal: { flex: 1.9,  textAlign: 'right' },       // hdr "Current Valuation" → 145pt final
-  sColChange:  { flex: 1.8,  textAlign: 'right' },       // hdr "Valuation Change" → 137pt final
-  sColDiv:     { flex: 1.8,  textAlign: 'right' },       // hdr "Cumulative Dividend" → same
   // ── Footer (absolute, repeated on every page via fixed prop) ──────────────
   footer: {
     position: 'absolute',
@@ -150,6 +122,32 @@ function fmtShares(n: number): string {
   return n.toLocaleString('en-GB', { maximumFractionDigits: 0 })
 }
 
+// ── Column auto-sizing ────────────────────────────────────────────────────────
+
+interface ColSpec { header: string; values: string[] }
+
+function estimateTextWidth(text: string, fontSize: number): number {
+  return text.length * fontSize * 0.55
+}
+
+function computeColumnWidths(
+  cols: ColSpec[],
+  usableWidth: number,
+  hdrSize: number,
+  cellSize: number,
+): number[] {
+  const naturals = cols.map(col => {
+    const hw = estimateTextWidth(col.header, hdrSize)
+    const dw = col.values.length > 0
+      ? Math.max(...col.values.map(v => estimateTextWidth(v, cellSize)))
+      : 0
+    return Math.max(hw, dw) + CELL_PAD + BUFFER
+  })
+  const total = naturals.reduce((s, w) => s + w, 0)
+  const scale = usableWidth / total
+  return naturals.map(w => Math.round(w * scale * 10) / 10)
+}
+
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
 function PageHeader({ periodDate }: { periodDate: string }) {
@@ -187,6 +185,47 @@ function PageFooter({ generatedOn }: { generatedOn: string }) {
 export function PortfolioValuationStatementTemplate({
   client, period, lots, companySummary, grandTotals, showDividendColumn,
 }: PortfolioStatementContext) {
+
+  // Right-align shorthand for numeric columns
+  const RA = { textAlign: 'right' as const }
+
+  // ── Detail table column widths ─────────────────────────────────────────────
+  // Grand total formatted values are included so the totals row never clips.
+  const dColSpecs: ColSpec[] = [
+    { header: 'Company',     values: lots.map(l => l.company_name) },
+    { header: 'Share Class', values: lots.map(l => l.share_class_name) },
+    { header: 'EIS',         values: lots.map(l => l.eis_status === 'yes' ? 'EIS' : '') },
+    { header: 'Date',        values: lots.map(l => fmtDDMMYY(l.investment_date)) },
+    { header: 'Orig. Price', values: lots.map(l => fmtPrice(l.original_share_price)) },
+    { header: 'Shares',      values: lots.map(l => fmtShares(l.shares_purchased)) },
+    { header: 'Subscribed',  values: [...lots.map(l => fmtCurrency(l.sum_subscribed)),   fmtCurrency(grandTotals.subscribed)] },
+    { header: 'Curr. Price', values: lots.map(l => fmtPrice(l.current_share_price)) },
+    { header: 'Curr. Value', values: [...lots.map(l => fmtCurrency(l.current_valuation)), fmtCurrency(grandTotals.current_valuation)] },
+    { header: 'Change',      values: [...lots.map(l => fmtCurrency(l.valuation_change)),  fmtCurrency(grandTotals.valuation_change)] },
+  ]
+  if (showDividendColumn) {
+    dColSpecs.push({ header: 'Dividends', values: [...lots.map(l => fmtCurrency(l.dividend_allocation)), fmtCurrency(grandTotals.dividends)] })
+  }
+  const dW = computeColumnWidths(dColSpecs, USABLE_W, 8, 8)
+  const [dwCompany, dwClass, dwEis, dwDate, dwOrigPrice, dwShares, dwSub, dwCurrPrice, dwCurrVal, dwChange] = dW
+  const dwDiv = dW[10] ?? 0
+
+  // ── Summary table column widths ────────────────────────────────────────────
+  const sColSpecs: ColSpec[] = [
+    { header: 'Company',           values: companySummary.map(r => r.company_name) },
+    { header: 'Share Class',       values: companySummary.map(r => r.share_class_name) },
+    { header: 'Shares Purchased',  values: companySummary.map(r => fmtShares(r.total_shares)) },
+    { header: 'Sum Subscribed',    values: [...companySummary.map(r => fmtCurrency(r.total_subscribed)),       fmtCurrency(grandTotals.subscribed)] },
+    { header: 'Current Valuation', values: [...companySummary.map(r => fmtCurrency(r.total_current_valuation)), fmtCurrency(grandTotals.current_valuation)] },
+    { header: 'Valuation Change',  values: [...companySummary.map(r => fmtCurrency(r.total_valuation_change)),  fmtCurrency(grandTotals.valuation_change)] },
+  ]
+  if (showDividendColumn) {
+    sColSpecs.push({ header: 'Cumulative Dividend', values: [...companySummary.map(r => fmtCurrency(r.total_dividends)), fmtCurrency(grandTotals.dividends)] })
+  }
+  const sW = computeColumnWidths(sColSpecs, USABLE_W, 8, 8)
+  const [swCompany, swClass, swShares, swSub, swCurrVal, swChange] = sW
+  const swDiv = sW[6] ?? 0
+
   return (
     <Document>
       {/* ── Page 1: Per-lot detail table ─────────────────────────────────── */}
@@ -208,18 +247,18 @@ export function PortfolioValuationStatementTemplate({
 
         {/* Table header */}
         <View style={styles.tableHeaderRow}>
-          <Text style={[styles.thCell, styles.dColCompany]}>Company</Text>
-          <Text style={[styles.thCell, styles.dColClass]}>Share Class</Text>
-          <Text style={[styles.thCell, styles.dColEis]}>EIS</Text>
-          <Text style={[styles.thCell, styles.dColDate]}>Date</Text>
-          <Text style={[styles.thCell, styles.dColOrigPrice]}>Orig. Price</Text>
-          <Text style={[styles.thCell, styles.dColShares]}>Shares</Text>
-          <Text style={[styles.thCell, styles.dColSub]}>Subscribed</Text>
-          <Text style={[styles.thCell, styles.dColCurrPrice]}>Curr. Price</Text>
-          <Text style={[styles.thCell, styles.dColCurrVal]}>Curr. Value</Text>
-          <Text style={[styles.thCell, styles.dColChange]}>Change</Text>
+          <Text style={[styles.thCell, { width: dwCompany }]}>Company</Text>
+          <Text style={[styles.thCell, { width: dwClass }]}>Share Class</Text>
+          <Text style={[styles.thCell, { width: dwEis }]}>EIS</Text>
+          <Text style={[styles.thCell, { width: dwDate }]}>Date</Text>
+          <Text style={[styles.thCell, { width: dwOrigPrice }]}>Orig. Price</Text>
+          <Text style={[styles.thCell, { width: dwShares, ...RA }]}>Shares</Text>
+          <Text style={[styles.thCell, { width: dwSub, ...RA }]}>Subscribed</Text>
+          <Text style={[styles.thCell, { width: dwCurrPrice }]}>Curr. Price</Text>
+          <Text style={[styles.thCell, { width: dwCurrVal, ...RA }]}>Curr. Value</Text>
+          <Text style={[styles.thCell, { width: dwChange, ...RA }]}>Change</Text>
           {showDividendColumn && (
-            <Text style={[styles.thCell, styles.dColDiv]}>Dividends</Text>
+            <Text style={[styles.thCell, { width: dwDiv, ...RA }]}>Dividends</Text>
           )}
         </View>
 
@@ -230,36 +269,36 @@ export function PortfolioValuationStatementTemplate({
             style={i % 2 === 0 ? styles.tableDataRow : styles.tableDataRowAlt}
             wrap={false}
           >
-            <Text style={[styles.tdCell, styles.dColCompany]}>{lot.company_name}</Text>
-            <Text style={[styles.tdCell, styles.dColClass]}>{lot.share_class_name}</Text>
-            <Text style={[styles.tdCell, styles.dColEis]}>{lot.eis_status === 'yes' ? 'EIS' : ''}</Text>
-            <Text style={[styles.tdCell, styles.dColDate]}>{fmtDDMMYY(lot.investment_date)}</Text>
-            <Text style={[styles.tdCell, styles.dColOrigPrice]}>{fmtPrice(lot.original_share_price)}</Text>
-            <Text style={[styles.tdCell, styles.dColShares]}>{fmtShares(lot.shares_purchased)}</Text>
-            <Text style={[styles.tdCell, styles.dColSub]}>{fmtCurrency(lot.sum_subscribed)}</Text>
-            <Text style={[styles.tdCell, styles.dColCurrPrice]}>{fmtPrice(lot.current_share_price)}</Text>
-            <Text style={[styles.tdCell, styles.dColCurrVal]}>{fmtCurrency(lot.current_valuation)}</Text>
-            <Text style={[styles.tdCell, styles.dColChange]}>{fmtCurrency(lot.valuation_change)}</Text>
+            <Text style={[styles.tdCell, { width: dwCompany }]}>{lot.company_name}</Text>
+            <Text style={[styles.tdCell, { width: dwClass }]}>{lot.share_class_name}</Text>
+            <Text style={[styles.tdCell, { width: dwEis }]}>{lot.eis_status === 'yes' ? 'EIS' : ''}</Text>
+            <Text style={[styles.tdCell, { width: dwDate }]}>{fmtDDMMYY(lot.investment_date)}</Text>
+            <Text style={[styles.tdCell, { width: dwOrigPrice }]}>{fmtPrice(lot.original_share_price)}</Text>
+            <Text style={[styles.tdCell, { width: dwShares, ...RA }]}>{fmtShares(lot.shares_purchased)}</Text>
+            <Text style={[styles.tdCell, { width: dwSub, ...RA }]}>{fmtCurrency(lot.sum_subscribed)}</Text>
+            <Text style={[styles.tdCell, { width: dwCurrPrice }]}>{fmtPrice(lot.current_share_price)}</Text>
+            <Text style={[styles.tdCell, { width: dwCurrVal, ...RA }]}>{fmtCurrency(lot.current_valuation)}</Text>
+            <Text style={[styles.tdCell, { width: dwChange, ...RA }]}>{fmtCurrency(lot.valuation_change)}</Text>
             {showDividendColumn && (
-              <Text style={[styles.tdCell, styles.dColDiv]}>{fmtCurrency(lot.dividend_allocation)}</Text>
+              <Text style={[styles.tdCell, { width: dwDiv, ...RA }]}>{fmtCurrency(lot.dividend_allocation)}</Text>
             )}
           </View>
         ))}
 
         {/* Totals row */}
         <View style={styles.tableTotalRow} wrap={false}>
-          <Text style={[styles.tdTotalLabel, styles.dColCompany]}>Total</Text>
-          <Text style={[styles.tdCell,       styles.dColClass]}>{''}</Text>
-          <Text style={[styles.tdCell,       styles.dColEis]}>{''}</Text>
-          <Text style={[styles.tdCell,       styles.dColDate]}>{''}</Text>
-          <Text style={[styles.tdCell,       styles.dColOrigPrice]}>{''}</Text>
-          <Text style={[styles.tdCell,       styles.dColShares]}>{''}</Text>
-          <Text style={[styles.tdTotalBold,  styles.dColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
-          <Text style={[styles.tdCell,       styles.dColCurrPrice]}>{''}</Text>
-          <Text style={[styles.tdTotalBold,  styles.dColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
-          <Text style={[styles.tdTotalBold,  styles.dColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
+          <Text style={[styles.tdTotalLabel, { width: dwCompany }]}>Total</Text>
+          <Text style={[styles.tdCell,       { width: dwClass }]}>{''}</Text>
+          <Text style={[styles.tdCell,       { width: dwEis }]}>{''}</Text>
+          <Text style={[styles.tdCell,       { width: dwDate }]}>{''}</Text>
+          <Text style={[styles.tdCell,       { width: dwOrigPrice }]}>{''}</Text>
+          <Text style={[styles.tdCell,       { width: dwShares }]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  { width: dwSub, ...RA }]}>{fmtCurrency(grandTotals.subscribed)}</Text>
+          <Text style={[styles.tdCell,       { width: dwCurrPrice }]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  { width: dwCurrVal, ...RA }]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
+          <Text style={[styles.tdTotalBold,  { width: dwChange, ...RA }]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
           {showDividendColumn && (
-            <Text style={[styles.tdTotalBold, styles.dColDiv]}>{fmtCurrency(grandTotals.dividends)}</Text>
+            <Text style={[styles.tdTotalBold, { width: dwDiv, ...RA }]}>{fmtCurrency(grandTotals.dividends)}</Text>
           )}
         </View>
 
@@ -274,14 +313,14 @@ export function PortfolioValuationStatementTemplate({
 
         {/* Table header */}
         <View style={styles.tableHeaderRow}>
-          <Text style={[styles.thCell, styles.sColCompany]}>Company</Text>
-          <Text style={[styles.thCell, styles.sColClass]}>Share Class</Text>
-          <Text style={[styles.thCell, styles.sColShares]}>Shares Purchased</Text>
-          <Text style={[styles.thCell, styles.sColSub]}>Sum Subscribed</Text>
-          <Text style={[styles.thCell, styles.sColCurrVal]}>Current Valuation</Text>
-          <Text style={[styles.thCell, styles.sColChange]}>Valuation Change</Text>
+          <Text style={[styles.thCell, { width: swCompany }]}>Company</Text>
+          <Text style={[styles.thCell, { width: swClass }]}>Share Class</Text>
+          <Text style={[styles.thCell, { width: swShares, ...RA }]}>Shares Purchased</Text>
+          <Text style={[styles.thCell, { width: swSub, ...RA }]}>Sum Subscribed</Text>
+          <Text style={[styles.thCell, { width: swCurrVal, ...RA }]}>Current Valuation</Text>
+          <Text style={[styles.thCell, { width: swChange, ...RA }]}>Valuation Change</Text>
           {showDividendColumn && (
-            <Text style={[styles.thCell, styles.sColDiv]}>Cumulative Dividend</Text>
+            <Text style={[styles.thCell, { width: swDiv, ...RA }]}>Cumulative Dividend</Text>
           )}
         </View>
 
@@ -292,28 +331,28 @@ export function PortfolioValuationStatementTemplate({
             style={i % 2 === 0 ? styles.tableDataRow : styles.tableDataRowAlt}
             wrap={false}
           >
-            <Text style={[styles.tdCell, styles.sColCompany]}>{row.company_name}</Text>
-            <Text style={[styles.tdCell, styles.sColClass]}>{row.share_class_name}</Text>
-            <Text style={[styles.tdCell, styles.sColShares]}>{fmtShares(row.total_shares)}</Text>
-            <Text style={[styles.tdCell, styles.sColSub]}>{fmtCurrency(row.total_subscribed)}</Text>
-            <Text style={[styles.tdCell, styles.sColCurrVal]}>{fmtCurrency(row.total_current_valuation)}</Text>
-            <Text style={[styles.tdCell, styles.sColChange]}>{fmtCurrency(row.total_valuation_change)}</Text>
+            <Text style={[styles.tdCell, { width: swCompany }]}>{row.company_name}</Text>
+            <Text style={[styles.tdCell, { width: swClass }]}>{row.share_class_name}</Text>
+            <Text style={[styles.tdCell, { width: swShares, ...RA }]}>{fmtShares(row.total_shares)}</Text>
+            <Text style={[styles.tdCell, { width: swSub, ...RA }]}>{fmtCurrency(row.total_subscribed)}</Text>
+            <Text style={[styles.tdCell, { width: swCurrVal, ...RA }]}>{fmtCurrency(row.total_current_valuation)}</Text>
+            <Text style={[styles.tdCell, { width: swChange, ...RA }]}>{fmtCurrency(row.total_valuation_change)}</Text>
             {showDividendColumn && (
-              <Text style={[styles.tdCell, styles.sColDiv]}>{fmtCurrency(row.total_dividends)}</Text>
+              <Text style={[styles.tdCell, { width: swDiv, ...RA }]}>{fmtCurrency(row.total_dividends)}</Text>
             )}
           </View>
         ))}
 
         {/* Summary totals row */}
         <View style={styles.tableTotalRow} wrap={false}>
-          <Text style={[styles.tdTotalLabel, styles.sColCompany]}>Total</Text>
-          <Text style={[styles.tdCell,       styles.sColClass]}>{''}</Text>
-          <Text style={[styles.tdCell,       styles.sColShares]}>{''}</Text>
-          <Text style={[styles.tdTotalBold,  styles.sColSub]}>{fmtCurrency(grandTotals.subscribed)}</Text>
-          <Text style={[styles.tdTotalBold,  styles.sColCurrVal]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
-          <Text style={[styles.tdTotalBold,  styles.sColChange]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
+          <Text style={[styles.tdTotalLabel, { width: swCompany }]}>Total</Text>
+          <Text style={[styles.tdCell,       { width: swClass }]}>{''}</Text>
+          <Text style={[styles.tdCell,       { width: swShares }]}>{''}</Text>
+          <Text style={[styles.tdTotalBold,  { width: swSub, ...RA }]}>{fmtCurrency(grandTotals.subscribed)}</Text>
+          <Text style={[styles.tdTotalBold,  { width: swCurrVal, ...RA }]}>{fmtCurrency(grandTotals.current_valuation)}</Text>
+          <Text style={[styles.tdTotalBold,  { width: swChange, ...RA }]}>{fmtCurrency(grandTotals.valuation_change)}</Text>
           {showDividendColumn && (
-            <Text style={[styles.tdTotalBold, styles.sColDiv]}>{fmtCurrency(grandTotals.dividends)}</Text>
+            <Text style={[styles.tdTotalBold, { width: swDiv, ...RA }]}>{fmtCurrency(grandTotals.dividends)}</Text>
           )}
         </View>
 
