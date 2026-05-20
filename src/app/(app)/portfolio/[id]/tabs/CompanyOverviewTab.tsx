@@ -69,7 +69,6 @@ interface Props {
   internalUpdates: Record<string, unknown>[]
   openDeals: Record<string, unknown>[]
   companyDocs: Record<string, unknown>[]
-  onOpenValuationModal: () => void
   onSwitchTab: (tab: string) => void
 }
 
@@ -115,7 +114,7 @@ function activityDotColor(type: string) {
 export default function CompanyOverviewTab({
   companyId, investments: invRaw, currentValuation: cvRaw,
   kpiData, internalUpdates: updatesRaw, openDeals: dealsRaw,
-  companyDocs: docsRaw, onOpenValuationModal, onSwitchTab,
+  companyDocs: docsRaw, onSwitchTab,
 }: Props) {
   const inv     = invRaw    as unknown as Investment[]
   const cv      = cvRaw     as unknown as Valuation | null
@@ -204,12 +203,12 @@ export default function CompanyOverviewTab({
           <span style={{ fontSize: 11, color: '#78500a' }}>
             Valuation last updated {cv ? formatDate(cv.valuation_date) : 'never'} — consider updating.
           </span>
-          <button
-            onClick={onOpenValuationModal}
-            style={{ fontSize: 10, color: '#185fa5', background: 'none', border: 'none', cursor: 'pointer', padding: 0, whiteSpace: 'nowrap' }}
+          <Link
+            href={`/settings/share-prices?company=${companyId}`}
+            style={{ fontSize: 10, color: '#185fa5', textDecoration: 'none', whiteSpace: 'nowrap' }}
           >
             Update now →
-          </button>
+          </Link>
         </div>
       )}
 

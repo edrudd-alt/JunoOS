@@ -15,6 +15,7 @@ export default function ShareClassModal({ companyId, shareClass, onClose }: Prop
   const isEdit = !!shareClass
 
   const [name,              setName]              = useState(shareClass?.name ?? '')
+  const [instrumentType,    setInstrumentType]    = useState<'equity' | 'cln' | 'loan_note'>(shareClass?.instrument_type ?? 'equity')
   const [type,              setType]              = useState<'ordinary' | 'preference'>(shareClass?.type ?? 'ordinary')
   const [prefMultiple,      setPrefMultiple]      = useState(shareClass?.preference_multiple?.toString() ?? '')
   const [participating,     setParticipating]     = useState<boolean>(shareClass?.participating ?? false)
@@ -35,9 +36,11 @@ export default function ShareClassModal({ companyId, shareClass, onClose }: Prop
     if (!trimmedName) { setError('Name is required'); return }
 
     const payload: Record<string, unknown> = {
-      company_id: companyId,
-      name: trimmedName,
-      type,
+      company_id:      companyId,
+      name:            trimmedName,
+      instrument_type: instrumentType,
+      // CLN and loan note classes are always ordinary — preference fields don't apply
+      type: instrumentType === 'equity' ? type : 'ordinary',
       // Clear preference fields if type switched to ordinary
       dividend_rate:       type === 'preference' && dividendRate      ? parseFloat(dividendRate) / 100 : null,
       dividend_cumulative: type === 'preference' && dividendRate      ? dividendCumul : null,
@@ -81,7 +84,22 @@ export default function ShareClassModal({ companyId, shareClass, onClose }: Prop
             />
           </div>
 
-          {/* Type */}
+          {/* Instrument type */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={labelSt}>Instrument type</label>
+            <select
+              value={instrumentType}
+              onChange={e => setInstrumentType(e.target.value as 'equity' | 'cln' | 'loan_note')}
+              style={inputSt}
+            >
+              <option value="equity">Equity</option>
+              <option value="cln">CLN — Convertible loan note</option>
+              <option value="loan_note">Loan note</option>
+            </select>
+          </div>
+
+          {/* Type — only shown for equity; CLN/loan note are always ordinary */}
+          {instrumentType === 'equity' && (
           <div style={{ marginBottom: 14 }}>
             <label style={labelSt}>Type</label>
             <select
@@ -93,9 +111,10 @@ export default function ShareClassModal({ companyId, shareClass, onClose }: Prop
               <option value="preference">Preference</option>
             </select>
           </div>
+          )}
 
           {/* Preference-only fields */}
-          {type === 'preference' && (
+          {instrumentType === 'equity' && type === 'preference' && (
             <>
               <div style={{ marginBottom: 14 }}>
                 <label style={labelSt}>Preference multiple</label>

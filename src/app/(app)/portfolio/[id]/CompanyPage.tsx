@@ -4,7 +4,6 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Breadcrumb } from '@/components/Breadcrumb'
 import { getInitials } from '@/lib/utils'
-import UpdateValuationModal from './UpdateValuationModal'
 import CompanyOverviewTab     from './tabs/CompanyOverviewTab'
 import CompanyInvestorsTab    from './tabs/CompanyInvestorsTab'
 import CompanyShareClassesTab from './tabs/CompanyShareClassesTab'
@@ -44,7 +43,6 @@ interface Props {
   companyDocs: Record<string, unknown>[]
   shareClasses: Record<string, unknown>[]
   rankingHistory: Record<string, unknown>[]
-  initialAction: string | null
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -89,10 +87,9 @@ const TABS: { key: Tab; label: string }[] = [
 export default function CompanyPage({
   company, valuations, currentValuation, investments,
   kpiData, internalUpdates, news, openDeals, companyDocs,
-  shareClasses, rankingHistory, initialAction,
+  shareClasses, rankingHistory,
 }: Props) {
-  const [activeTab,          setActiveTab]          = useState<Tab>('overview')
-  const [showValuationModal, setShowValuationModal] = useState(initialAction === 'update_valuation')
+  const [activeTab, setActiveTab] = useState<Tab>('overview')
 
   const inv = investments as unknown as Investment[]
 
@@ -156,9 +153,6 @@ export default function CompanyPage({
             >
               Add info
             </button>
-            <button className="btn btn-secondary" onClick={() => setShowValuationModal(true)}>
-              Update valuation
-            </button>
             <Link href="/reports/investor-update" className="btn btn-secondary">Investor update</Link>
             <Link href={`/portfolio/${company.id}/settings`} className="btn btn-secondary">Settings</Link>
           </div>
@@ -195,7 +189,6 @@ export default function CompanyPage({
           internalUpdates={internalUpdates}
           openDeals={openDeals}
           companyDocs={companyDocs}
-          onOpenValuationModal={() => setShowValuationModal(true)}
           onSwitchTab={tab => setActiveTab(tab as Tab)}
         />
       )}
@@ -225,14 +218,6 @@ export default function CompanyPage({
         </div>
       )}
 
-      {showValuationModal && (
-        <UpdateValuationModal
-          companyId={company.id}
-          companyName={company.name}
-          currentPrice={(currentValuation as { share_price?: number } | null)?.share_price ?? null}
-          onClose={() => setShowValuationModal(false)}
-        />
-      )}
     </div>
   )
 }

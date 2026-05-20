@@ -48,6 +48,24 @@ export default function SettingsPage() {
           </div>
         </Link>
 
+        {/* Share prices — active */}
+        <Link href="/settings/share-prices" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)')}
+            onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e8f5f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>£</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744' }}>Share prices</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+                  Update valuations for all portfolio companies and share classes
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: '#185fa5', fontWeight: 500 }}>Open →</div>
+            </div>
+          </div>
+        </Link>
+
         {/* Bulk Upload — active */}
         <Link href="/settings/bulk-upload" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ cursor: 'pointer', transition: 'box-shadow 0.15s' }}
