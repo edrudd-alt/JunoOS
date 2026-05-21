@@ -245,7 +245,48 @@ export async function generatePortfolioValuationStatement(
     .eq('period', params.periodDate)
     .eq('superseded', false)
 
-  // 5. Upload new PDF
+  // 5. Supersede old documents FIRST: rename storage objects to free the deterministic path.
+  //    Portfolio statement filenames are deterministic for (client, period), so the upload at
+  //    step 6 always collides if the old file still occupies the path. Fail fast on rename error
+  //    (Option A): if move fails the upload would collide anyway, and a clear error is better
+  //    than a misleading "already exists" message.
+  const now = new Date()
+  const pad2 = (n: number) => String(n).padStart(2, '0')
+  const suffix = `_superseded_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`
+
+  type SupersedeEntry = { id: string; newStoragePath: string; newFilename: string | null }
+  const superseded: SupersedeEntry[] = []
+
+  if (existing && existing.length > 0) {
+    for (const old of existing) {
+      const insertSuffix = (s: string) =>
+        s.endsWith('.pdf') ? s.slice(0, -4) + suffix + '.pdf' : s + suffix
+
+      const newStoragePath = insertSuffix(old.storage_url)
+      const newFilename    = old.filename ? insertSuffix(old.filename) : null
+
+      const { error: moveError } = await supabase.storage
+        .from('documents')
+        .move(old.storage_url, newStoragePath)
+
+      if (moveError) {
+        console.error(JSON.stringify({
+          event: 'portfolio_statement_supersedure_move_failed',
+          documentId: old.id,
+          sourcePath: old.storage_url,
+          targetPath: newStoragePath,
+          moveErrorMessage: moveError.message,
+          moveErrorName: moveError.name,
+          moveErrorFull: JSON.stringify(moveError),
+        }))
+        throw new Error(`Failed to supersede old statement: ${moveError.message}`)
+      }
+
+      superseded.push({ id: old.id, newStoragePath, newFilename })
+    }
+  }
+
+  // 6. Upload new PDF (path is now free)
   const { error: uploadError } = await supabase.storage
     .from('documents')
     .upload(storagePath, pdfBuffer, { contentType: 'application/pdf', upsert: false })
@@ -261,7 +302,7 @@ export async function generatePortfolioValuationStatement(
     throw new Error(`Storage upload failed: ${uploadError.message}`)
   }
 
-  // 6. Determine next version number
+  // 7. Determine next version number
   const { data: versionRows } = await supabase
     .from('documents')
     .select('version')
@@ -272,7 +313,7 @@ export async function generatePortfolioValuationStatement(
     .limit(1)
   const newVersion = ((versionRows?.[0] as { version?: number } | undefined)?.version ?? 0) + 1
 
-  // 7. Insert new document row
+  // 8. Insert new document row
   const { data: docRow, error: insertError } = await supabase
     .from('documents')
     .insert({
@@ -291,47 +332,15 @@ export async function generatePortfolioValuationStatement(
     .single()
   if (insertError) throw new Error(`Documents insert failed: ${insertError.message}`)
 
-  // 8. Supersede old documents (best-effort: storage rename + DB update)
-  if (existing && existing.length > 0) {
-    const now = new Date()
-    const pad2 = (n: number) => String(n).padStart(2, '0')
-    const suffix = `_superseded_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`
-
-    for (const old of existing) {
-      const insertSuffix = (s: string) =>
-        s.endsWith('.pdf') ? s.slice(0, -4) + suffix + '.pdf' : s + suffix
-
-      const newStoragePath = insertSuffix(old.storage_url)
-      const newFilename    = old.filename ? insertSuffix(old.filename) : null
-
-      const { error: moveError } = await supabase.storage
-        .from('documents')
-        .move(old.storage_url, newStoragePath)
-
-      if (moveError) {
-        // CRITICAL: surface the full move error to runtime logs.
-        // We need to know WHY move is silently failing because the deterministic
-        // filename convention means a failed move guarantees the next upload will
-        // collide (upsert:false). Logging structured detail makes this visible.
-        console.error(JSON.stringify({
-          event: 'portfolio_statement_supersedure_move_failed',
-          documentId: old.id,
-          sourcePath: old.storage_url,
-          targetPath: newStoragePath,
-          moveErrorMessage: moveError.message,
-          moveErrorName: moveError.name,
-          moveErrorFull: JSON.stringify(moveError),
-        }))
-      }
-
-      await supabase.from('documents').update({
-        superseded:       true,
-        superseded_at:    now.toISOString(),
-        superseded_by_id: docRow.id,
-        storage_url:      moveError ? old.storage_url : newStoragePath,
-        ...(newFilename && { filename: newFilename }),
-      }).eq('id', old.id)
-    }
+  // 9. Mark superseded rows in DB (storage rename already completed in step 5)
+  for (const entry of superseded) {
+    await supabase.from('documents').update({
+      superseded:       true,
+      superseded_at:    now.toISOString(),
+      superseded_by_id: docRow.id,
+      storage_url:      entry.newStoragePath,
+      ...(entry.newFilename && { filename: entry.newFilename }),
+    }).eq('id', entry.id)
   }
 
   return {
