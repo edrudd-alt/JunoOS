@@ -252,7 +252,11 @@ export default function ClientRecord({
           />
         )}
         {tab === 'documents' && (
-          <InvestmentDocsTab documents={documents} />
+          <InvestmentDocsTab
+            documents={documents}
+            clientFullName={client.full_name}
+            clientEmail={client.email}
+          />
         )}
         {tab === 'updates_sent' && (
           <UpdatesSentTab updateRecipients={updateRecipients} />
