@@ -2,10 +2,8 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  generatePortfolioStatementAction,
-  getStatementSignedUrlAction,
-} from '../portfolioStatementActions'
+import { generatePortfolioStatementAction } from '../portfolioStatementActions'
+import { getDownloadUrlForDocument } from '../documentActions'
 
 export interface StatementDoc {
   id:            string
@@ -54,21 +52,23 @@ export default function GenerateStatementSection({ clientId, statements }: Props
     setError(null)
     startTransition(async () => {
       try {
-        await generatePortfolioStatementAction(clientId, period)
+        const result = await generatePortfolioStatementAction(clientId, period)
         router.refresh()
+        if (result.documentId) {
+          const url = await getDownloadUrlForDocument(result.documentId)
+          if (url) window.open(url, '_blank')
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
       }
     })
   }
 
-  async function handleDownload(storagePath: string, filename: string) {
+  async function handleView(documentId: string) {
     try {
-      const url = await getStatementSignedUrlAction(storagePath)
-      const a = document.createElement('a')
-      a.href     = url
-      a.download = filename
-      a.click()
+      const url = await getDownloadUrlForDocument(documentId)
+      if (url) window.open(url, '_blank')
+      else alert('Could not generate download link. Please try again.')
     } catch {
       alert('Could not generate download link. Please try again.')
     }
@@ -128,14 +128,14 @@ export default function GenerateStatementSection({ clientId, statements }: Props
                   </span>
                 </span>
                 <button
-                  onClick={() => handleDownload(s.storage_url, s.filename)}
+                  onClick={() => handleView(s.id)}
                   style={{
                     fontSize: 11, color: '#185fa5', background: 'none',
                     border: 'none', cursor: 'pointer', padding: '2px 4px',
                     textDecoration: 'underline',
                   }}
                 >
-                  Download
+                  View
                 </button>
               </div>
             ))}
