@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { formatDate } from '@/lib/utils'
+import { formatDocumentTimestamp } from '@/lib/utils'
 import { getDownloadUrlForDocument } from '../documentActions'
 
 const DOC_LABELS: Record<string, string> = {
@@ -24,6 +24,7 @@ interface Doc {
   storage_url: string | null
   period: string | null
   document_date: string | null
+  created_at: string | null
   company_id: string | null
   companies: { name: string } | null
 }
@@ -147,7 +148,7 @@ export default function InvestmentDocsTab({ documents }: Props) {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <span style={{ fontSize: 11, color: '#888' }}>
-                            {formatDate(doc.document_date)}
+                            {formatDocumentTimestamp(doc.created_at)}
                           </span>
                           {doc.storage_url && (
                             <button

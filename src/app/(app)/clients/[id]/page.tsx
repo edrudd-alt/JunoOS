@@ -68,7 +68,7 @@ export default async function ClientRecordPage({ params }: Props) {
     // Documents — no join
     supabase
       .from('documents')
-      .select('id, type, filename, storage_url, period, document_date, company_id')
+      .select('id, type, filename, storage_url, period, document_date, company_id, created_at')
       .or(`client_id.eq.${id}${allGroupIds.length > 1 ? `,client_id.in.(${allGroupIds.join(',')})` : ''}`)
       .order('document_date', { ascending: false }),
 
@@ -149,7 +149,7 @@ export default async function ClientRecordPage({ params }: Props) {
     // Non-superseded portfolio statements for this client
     supabase
       .from('documents')
-      .select('id, filename, storage_url, period, document_date, version')
+      .select('id, filename, storage_url, period, document_date, version, created_at')
       .eq('client_id', id)
       .eq('type', 'portfolio_statement')
       .eq('superseded', false)

@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { generatePortfolioStatementAction } from '../portfolioStatementActions'
 import { getDownloadUrlForDocument } from '../documentActions'
+import { formatDocumentTimestamp } from '@/lib/utils'
 
 export interface StatementDoc {
   id:            string
@@ -11,6 +12,7 @@ export interface StatementDoc {
   storage_url:   string
   period:        string | null
   document_date: string | null
+  created_at:    string | null
   version:       number
 }
 
@@ -124,7 +126,7 @@ export default function GenerateStatementSection({ clientId, statements }: Props
                 <span style={{ color: '#0f2744' }}>
                   {s.period ? fmtDate(s.period) : s.filename}
                   <span style={{ color: '#888', marginLeft: 6 }}>
-                    (generated {fmtDate(s.document_date)})
+                    (generated {formatDocumentTimestamp(s.created_at)})
                   </span>
                 </span>
                 <button
