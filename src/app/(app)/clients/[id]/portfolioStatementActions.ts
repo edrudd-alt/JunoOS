@@ -2,22 +2,22 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generatePortfolioValuationStatement } from '@/services/document-generation/generatePortfolioValuationStatement'
-import type { PortfolioStatementResult } from '@/services/document-generation/generatePortfolioValuationStatement'
 
 export async function generatePortfolioStatementAction(
   clientId:   string,
   periodDate: string,
-): Promise<PortfolioStatementResult> {
+): Promise<{ documentId: string }> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
-  return generatePortfolioValuationStatement(supabase, {
+  const result = await generatePortfolioValuationStatement(supabase, {
     clientId,
     periodDate,
     triggeredBy: user.id,
   })
+  return { documentId: result.documentId }
 }
 
 export async function getStatementSignedUrlAction(storagePath: string): Promise<string> {
