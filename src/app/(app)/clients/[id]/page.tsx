@@ -65,11 +65,12 @@ export default async function ClientRecordPage({ params }: Props) {
       .eq('client_id', id)
       .order('investment_date', { ascending: false }),
 
-    // Documents — no join
+    // Documents — no join, hide superseded versions
     supabase
       .from('documents')
       .select('id, type, filename, storage_url, period, document_date, company_id, created_at')
       .or(`client_id.eq.${id}${allGroupIds.length > 1 ? `,client_id.in.(${allGroupIds.join(',')})` : ''}`)
+      .eq('superseded', false)
       .order('document_date', { ascending: false }),
 
     // Updates sent — no join, include FK column for manual merge
