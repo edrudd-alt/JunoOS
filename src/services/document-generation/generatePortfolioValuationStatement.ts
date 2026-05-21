@@ -249,7 +249,17 @@ export async function generatePortfolioValuationStatement(
   const { error: uploadError } = await supabase.storage
     .from('documents')
     .upload(storagePath, pdfBuffer, { contentType: 'application/pdf', upsert: false })
-  if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`)
+
+  if (uploadError) {
+    console.error(JSON.stringify({
+      event: 'portfolio_statement_upload_failed',
+      storagePath,
+      uploadErrorMessage: uploadError.message,
+      uploadErrorName: uploadError.name,
+      uploadErrorFull: JSON.stringify(uploadError),
+    }))
+    throw new Error(`Storage upload failed: ${uploadError.message}`)
+  }
 
   // 6. Determine next version number
   const { data: versionRows } = await supabase
@@ -299,7 +309,19 @@ export async function generatePortfolioValuationStatement(
         .move(old.storage_url, newStoragePath)
 
       if (moveError) {
-        console.error('[generatePortfolioValuationStatement] storage move failed for document', old.id, moveError.message)
+        // CRITICAL: surface the full move error to runtime logs.
+        // We need to know WHY move is silently failing because the deterministic
+        // filename convention means a failed move guarantees the next upload will
+        // collide (upsert:false). Logging structured detail makes this visible.
+        console.error(JSON.stringify({
+          event: 'portfolio_statement_supersedure_move_failed',
+          documentId: old.id,
+          sourcePath: old.storage_url,
+          targetPath: newStoragePath,
+          moveErrorMessage: moveError.message,
+          moveErrorName: moveError.name,
+          moveErrorFull: JSON.stringify(moveError),
+        }))
       }
 
       await supabase.from('documents').update({
