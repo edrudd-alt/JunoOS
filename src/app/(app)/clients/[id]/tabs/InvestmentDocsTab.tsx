@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { formatDate } from '@/lib/utils'
+import { getDownloadUrlForDocument } from '../documentActions'
 
 const DOC_LABELS: Record<string, string> = {
   application_form: 'Application form',
@@ -149,14 +150,23 @@ export default function InvestmentDocsTab({ documents }: Props) {
                             {formatDate(doc.document_date)}
                           </span>
                           {doc.storage_url && (
-                            <a
-                              href={doc.storage_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ fontSize: 12, color: '#185fa5', textDecoration: 'none' }}
+                            <button
+                              onClick={async () => {
+                                const url = await getDownloadUrlForDocument(doc.id)
+                                if (url) {
+                                  window.open(url, '_blank')
+                                } else {
+                                  console.error('Could not generate download URL for document', doc.id)
+                                }
+                              }}
+                              style={{
+                                fontSize: 12, color: '#185fa5', textDecoration: 'none',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0, fontFamily: 'inherit',
+                              }}
                             >
                               View
-                            </a>
+                            </button>
                           )}
                         </div>
                       </div>
