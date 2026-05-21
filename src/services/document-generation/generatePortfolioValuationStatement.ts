@@ -227,13 +227,14 @@ export async function generatePortfolioValuationStatement(
   }
 
   // 3. Build filename (human-facing) and storage path
-  // filename  — human-facing display name stored in documents.filename (em dash preserved)
-  // storageKey — sanitised base (no .pdf) used to build the storage object key
+  // filename   — human-facing display name stored in documents.filename (em dash preserved)
+  // storageKey — Supabase Storage-safe key (sanitised, no em dashes or special chars)
+  // Convention mirrors Stage 6c (generateTransactionStatement): sanitiseStorageKey(filename) as key,
+  // no trailing timestamp suffix — supersedure rename provides the version distinction.
   const safeName    = ctx.client.full_name.replace(/[\\/:*?"<>|]/g, '').trim()
-  const fileBase    = `${params.periodDate} — ${safeName} — Portfolio Valuation Statement`
-  const filename    = `${fileBase}.pdf`
-  const storageBase = sanitiseStorageKey(fileBase)
-  const storagePath = `clients/${params.clientId}/portfolio-statements/${storageBase}-${Date.now()}.pdf`
+  const filename    = `${params.periodDate} — Portfolio statement — ${safeName}.pdf`
+  const storageKey  = sanitiseStorageKey(filename)
+  const storagePath = `clients/${params.clientId}/portfolio-statements/${storageKey}`
 
   // 4. Find existing non-superseded statements for same (client, period)
   const { data: existing } = await supabase
@@ -280,15 +281,33 @@ export async function generatePortfolioValuationStatement(
     .single()
   if (insertError) throw new Error(`Documents insert failed: ${insertError.message}`)
 
-  // 8. Supersede old documents (best-effort)
+  // 8. Supersede old documents (best-effort: storage rename + DB update)
   if (existing && existing.length > 0) {
-    const now = new Date().toISOString()
+    const now = new Date()
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    const suffix = `_superseded_${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}-${pad2(now.getHours())}${pad2(now.getMinutes())}${pad2(now.getSeconds())}`
+
     for (const old of existing) {
+      const insertSuffix = (s: string) =>
+        s.endsWith('.pdf') ? s.slice(0, -4) + suffix + '.pdf' : s + suffix
+
+      const newStoragePath = insertSuffix(old.storage_url)
+      const newFilename    = old.filename ? insertSuffix(old.filename) : null
+
+      const { error: moveError } = await supabase.storage
+        .from('documents')
+        .move(old.storage_url, newStoragePath)
+
+      if (moveError) {
+        console.error('[generatePortfolioValuationStatement] storage move failed for document', old.id, moveError.message)
+      }
+
       await supabase.from('documents').update({
         superseded:       true,
-        superseded_at:    now,
-        superseded_reason: 'Regenerated',
+        superseded_at:    now.toISOString(),
         superseded_by_id: docRow.id,
+        storage_url:      moveError ? old.storage_url : newStoragePath,
+        ...(newFilename && { filename: newFilename }),
       }).eq('id', old.id)
     }
   }
