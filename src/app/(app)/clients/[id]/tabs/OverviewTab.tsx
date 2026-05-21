@@ -406,6 +406,8 @@ export default function OverviewTab({
       <div style={{ marginTop: 20 }}>
         <GenerateStatementSection
           clientId={client.id}
+          clientFullName={client.full_name}
+          clientEmail={client.email ?? null}
           statements={portfolioStatements}
         />
       </div>

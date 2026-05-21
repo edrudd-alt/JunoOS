@@ -467,6 +467,14 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.31 — Migration files for MCP-applied schema changes.** Two changes during Stage 2A were applied via MCP for speed but the corresponding migration files in the repo were created retrospectively or are missing: the test investment seed (Stage 2A.1, applied during build) and the storage UPDATE policy (this PR). Both are captured in production but the migration-file source of truth is partially drifted. Future MCP-applied changes should always be followed up with a migration file commit within the same PR.
 
+- **14.32 — Email template management.** Currently the subject and body templates for the portfolio statement email composer are hard-coded in code. When Outlook integration ships, build a Settings page where the team can edit: the default subject line per document type, the default body template per document type, and the substitution variables available in each template (e.g. {client_first_name}, {period_date_formatted}). Templates remain code-defaults if no Settings override exists. Future enhancement: per-investor or per-fund-type template overrides (deferred to 14.33 if ever needed).
+
+- **14.33 — Updates sent tab integration for portfolio statements.** Once Outlook integration ships, statements sent via the composer modal's Send button should appear on the Updates sent tab on the client record. Send action records a row in the appropriate table (internal_updates or equivalent) with the send timestamp, recipient, and a reference to the document. Display format follows the existing Updates sent tab pattern.
+
+- **14.34 — Email send wired into composer modal.** Add a Send button to the existing composer modal (don't redesign it). On click: validate To address, submit through the Outlook integration, on success close modal and surface a confirmation toast. On failure, surface the error inline.
+
+- **14.35 — Per-investor "last statement sent" timestamp.** Once Updates sent integration is real (14.33), surface a "Last statement: 21 May 2026" timestamp on each investor's row on the Holdings summary or similar. Useful for the team to see at a glance which investors are due an update.
+
 ---
 
 ## 9. Version history

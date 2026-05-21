@@ -6,7 +6,7 @@ import { generatePortfolioValuationStatement } from '@/services/document-generat
 export async function generatePortfolioStatementAction(
   clientId:   string,
   periodDate: string,
-): Promise<{ documentId: string }> {
+): Promise<{ documentId: string; filename: string; createdAt: string }> {
   const supabase = await createClient()
 
   const { data: { user } } = await supabase.auth.getUser()
@@ -17,7 +17,7 @@ export async function generatePortfolioStatementAction(
     periodDate,
     triggeredBy: user.id,
   })
-  return { documentId: result.documentId }
+  return { documentId: result.documentId, filename: result.filename, createdAt: new Date().toISOString() }
 }
 
 export async function getStatementSignedUrlAction(storagePath: string): Promise<string> {
