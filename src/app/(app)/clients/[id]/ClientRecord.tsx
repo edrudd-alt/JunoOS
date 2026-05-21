@@ -14,21 +14,22 @@ import InvestmentDocsTab from './tabs/InvestmentDocsTab'
 import UpdatesSentTab from './tabs/UpdatesSentTab'
 import NotesTab from './tabs/NotesTab'
 import PendingActionsTab from './tabs/PendingActionsTab'
+import type { StatementDoc } from './_components/GenerateStatementSection'
 
 // Re-export as ClientRow so existing imports from this file keep working.
 export type { ClientRow } from '@/types'
 // Local alias used throughout this component.
 type ClientRow = Client
 
-type Tab = 'overview' | 'investments' | 'investment_docs' | 'updates_sent' | 'notes' | 'details' | 'pending_actions'
+type Tab = 'overview' | 'investments' | 'documents' | 'updates_sent' | 'notes' | 'details' | 'pending_actions'
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview',        label: 'Overview' },
-  { key: 'investments',     label: 'Investments' },
-  { key: 'investment_docs', label: 'Investment docs' },
-  { key: 'updates_sent',    label: 'Updates sent' },
-  { key: 'notes',           label: 'Notes' },
-  { key: 'details',         label: 'Details' },
+  { key: 'overview',    label: 'Overview' },
+  { key: 'investments', label: 'Investments' },
+  { key: 'documents',   label: 'Documents' },
+  { key: 'updates_sent', label: 'Updates sent' },
+  { key: 'notes',       label: 'Notes' },
+  { key: 'details',     label: 'Details' },
 ]
 
 function KycBadge({ status }: { status: string }) {
@@ -66,12 +67,14 @@ interface Props {
   relationships: Record<string, unknown>[]
   feeSchedules: { id: string; name: string }[]
   nominees: { id: string; name: string }[]
+  portfolioStatements: StatementDoc[]
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
-  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships, feeSchedules, nominees,
+  pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships,
+  feeSchedules, nominees, portfolioStatements,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -225,6 +228,7 @@ export default function ClientRecord({
             pendingDeals={activeDeals}
             membershipDocs={membershipDocs as unknown as { id: string; type: string; company_id: string | null }[]}
             onSwitchToInvestments={() => switchTab('investments')}
+            portfolioStatements={portfolioStatements}
           />
         )}
         {tab === 'investments' && (
@@ -247,7 +251,7 @@ export default function ClientRecord({
             nominees={nominees}
           />
         )}
-        {tab === 'investment_docs' && (
+        {tab === 'documents' && (
           <InvestmentDocsTab documents={documents} />
         )}
         {tab === 'updates_sent' && (

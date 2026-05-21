@@ -46,6 +46,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: relationshipRows },
     { data: feeSchedulesData },
     { data: nomineesData },
+    { data: portfolioStatements },
   ] = await Promise.all([
     // Portfolio data per entity
     supabase
@@ -64,11 +65,12 @@ export default async function ClientRecordPage({ params }: Props) {
       .eq('client_id', id)
       .order('investment_date', { ascending: false }),
 
-    // Documents — no join
+    // Documents — no join, hide superseded versions
     supabase
       .from('documents')
-      .select('id, type, filename, storage_url, period, document_date, company_id')
+      .select('id, type, filename, storage_url, period, document_date, company_id, created_at')
       .or(`client_id.eq.${id}${allGroupIds.length > 1 ? `,client_id.in.(${allGroupIds.join(',')})` : ''}`)
+      .eq('superseded', false)
       .order('document_date', { ascending: false }),
 
     // Updates sent — no join, include FK column for manual merge
@@ -144,6 +146,15 @@ export default async function ClientRecordPage({ params }: Props) {
       .select('id, name')
       .eq('active', true)
       .order('name'),
+
+    // Non-superseded portfolio statements for this client
+    supabase
+      .from('documents')
+      .select('id, filename, storage_url, period, document_date, version, created_at')
+      .eq('client_id', id)
+      .eq('type', 'portfolio_statement')
+      .eq('superseded', false)
+      .order('document_date', { ascending: false }),
   ])
 
   // Resolve names for related clients
@@ -274,6 +285,7 @@ export default async function ClientRecordPage({ params }: Props) {
       relationships={relationships as Record<string, unknown>[]}
       feeSchedules={(feeSchedulesData ?? []) as { id: string; name: string }[]}
       nominees={(nomineesData ?? []) as { id: string; name: string }[]}
+      portfolioStatements={(portfolioStatements ?? []) as import('./_components/GenerateStatementSection').StatementDoc[]}
     />
   )
 }

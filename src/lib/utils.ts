@@ -30,6 +30,14 @@ export function formatPercent(value: number | null | undefined, decimals = 1): s
   return `${sign}${value.toFixed(decimals)}%`
 }
 
+export function formatDocumentTimestamp(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const date = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${date} ${time}`
+}
+
 export function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '—'
   return new Date(dateStr).toLocaleDateString('en-GB', {

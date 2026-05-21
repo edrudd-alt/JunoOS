@@ -461,6 +461,12 @@ No RLS in v1; standing rule from prior stages.
 - **14.27 — Portal access to statements.** Read-only access for investors to view their own statements via the (future) investor portal. RLS on `documents` rows where `type = 'portfolio_statement' AND client_id = <viewer's client>`.
 - **14.28 — Multi-portfolio support.** If clients ever hold investments across multiple Juno-managed portfolios (e.g. EIS-only sub-portfolio), the statement may need a portfolio selector or breakdown view. Currently every client has one combined portfolio.
 
+- **14.29 — Stage 6c transaction statement supersedure broken in production.** The same storage UPDATE policy gap that broke portfolio statement supersedure (fixed in PR #11) likely affects Stage 6c. Regenerating a transaction statement probably fails silently or with "Object not found" before this PR's RLS policy fix landed. The policy fix applies platform-wide so Stage 6c should now work, but it hasn't been re-tested. Action: regenerate a transaction statement in production after PR #11 merges and verify the old file gets renamed correctly.
+
+- **14.30 — Optional "show superseded" toggle on client record Documents tab.** Currently the tab hides superseded documents entirely (per Ed's preference). The deal-page Documents tab has a "Final only / All docs" toggle. If the team ever needs to inspect version history of a client-scoped document, the same toggle pattern could be added here. Low priority — version history can be retrieved by querying the database directly in the meantime.
+
+- **14.31 — Migration files for MCP-applied schema changes.** Two changes during Stage 2A were applied via MCP for speed but the corresponding migration files in the repo were created retrospectively or are missing: the test investment seed (Stage 2A.1, applied during build) and the storage UPDATE policy (this PR). Both are captured in production but the migration-file source of truth is partially drifted. Future MCP-applied changes should always be followed up with a migration file commit within the same PR.
+
 ---
 
 ## 9. Version history

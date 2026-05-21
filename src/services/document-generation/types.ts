@@ -79,6 +79,51 @@ export interface TransactionDocumentContext {
   }
 }
 
+// ── Portfolio statement context ────────────────────────────────────────────────
+// Not in the generic registry pipeline — has its own generation path
+// (multi-row, multi-company, computed totals, no deal_id).
+export interface PortfolioStatementContext {
+  client: {
+    id:                 string
+    full_name:          string
+    investor_reference: string | null
+  }
+  period: {
+    date:        string  // YYYY-MM-DD, e.g. '2026-03-31'
+    generatedOn: string  // YYYY-MM-DD
+  }
+  lots: Array<{
+    investment_id:        string
+    company_name:         string
+    share_class_name:     string
+    eis_status:           'yes' | 'no' | 'tbc' | null
+    investment_date:      string
+    original_share_price: number
+    shares_purchased:     number
+    sum_subscribed:       number
+    current_share_price:  number
+    current_valuation:    number
+    valuation_change:     number
+    dividend_allocation:  number
+  }>
+  companySummary: Array<{
+    company_name:            string
+    share_class_name:        string
+    total_shares:            number
+    total_subscribed:        number
+    total_current_valuation: number
+    total_valuation_change:  number
+    total_dividends:         number
+  }>
+  grandTotals: {
+    subscribed:        number
+    current_valuation: number
+    valuation_change:  number
+    dividends:         number
+  }
+  showDividendColumn: boolean
+}
+
 export type ContextFor<T extends TemplateId> = ContextMap[T]
 
 // ── Generation options & result ────────────────────────────────────────────────

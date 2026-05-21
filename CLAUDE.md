@@ -15,3 +15,14 @@ Latest price per (company, share class) is read from the
 `company_current_valuations` view. The `client_portfolio_summary` view
 joins on `(company_id, share_class_id IS NOT DISTINCT FROM)` so NULL
 share_class_id matches correctly.
+
+## Portfolio statement generation
+
+`portfolio_statement` is a recognised value in `documents.type` (present in the
+CHECK constraint since initial schema). Portfolio statements use the dedicated
+generation path (`generatePortfolioValuationStatement`) — not the generic
+Documenso pipeline. Storage path: `clients/{client_id}/portfolio-statements/{filename}`.
+The template version is `portfolioValuationStatement@1.0.0`.
+
+Download links must be signed URLs from the private `documents` bucket with a
+short TTL (60s). Never expose `storage_url` directly in the UI.

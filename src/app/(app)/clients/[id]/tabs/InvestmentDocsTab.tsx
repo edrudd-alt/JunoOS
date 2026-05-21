@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { formatDate } from '@/lib/utils'
+import { formatDocumentTimestamp } from '@/lib/utils'
+import { getDownloadUrlForDocument } from '../documentActions'
 
 const DOC_LABELS: Record<string, string> = {
   application_form: 'Application form',
@@ -23,6 +24,7 @@ interface Doc {
   storage_url: string | null
   period: string | null
   document_date: string | null
+  created_at: string | null
   company_id: string | null
   companies: { name: string } | null
 }
@@ -31,20 +33,36 @@ interface Props {
   documents: Record<string, unknown>[]
 }
 
+// Group label for documents with no company_id, keyed by documents.type.
+// New non-company document types should get a row here; unknown types fall back to 'General'.
+const NON_COMPANY_GROUP_BY_TYPE: Record<string, string> = {
+  portfolio_statement: 'Valuations',
+}
+
 export default function InvestmentDocsTab({ documents }: Props) {
   const docs = documents as unknown as Doc[]
 
-  // Group by company, then by year
+  // Group by company (for company-linked docs) or named group (for client-level docs), then by year.
+  // Company-linked docs use company_id as the group key; non-company docs use the group label as key.
   const byCompany: Record<string, { name: string; byYear: Record<string, Doc[]> }> = {}
 
   for (const doc of docs) {
-    const companyId = doc.company_id ?? '__general'
-    const companyName = doc.companies?.name ?? 'General'
+    let groupKey:  string
+    let groupName: string
+
+    if (doc.company_id) {
+      groupKey  = doc.company_id
+      groupName = doc.companies?.name ?? 'Unknown company'
+    } else {
+      groupName = NON_COMPANY_GROUP_BY_TYPE[doc.type] ?? 'General'
+      groupKey  = groupName
+    }
+
     const year = doc.document_date ? new Date(doc.document_date).getFullYear().toString() : 'Unknown'
 
-    if (!byCompany[companyId]) byCompany[companyId] = { name: companyName, byYear: {} }
-    if (!byCompany[companyId].byYear[year]) byCompany[companyId].byYear[year] = []
-    byCompany[companyId].byYear[year].push(doc)
+    if (!byCompany[groupKey]) byCompany[groupKey] = { name: groupName, byYear: {} }
+    if (!byCompany[groupKey].byYear[year]) byCompany[groupKey].byYear[year] = []
+    byCompany[groupKey].byYear[year].push(doc)
   }
 
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(
@@ -146,17 +164,26 @@ export default function InvestmentDocsTab({ documents }: Props) {
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <span style={{ fontSize: 11, color: '#888' }}>
-                            {formatDate(doc.document_date)}
+                            {formatDocumentTimestamp(doc.created_at)}
                           </span>
                           {doc.storage_url && (
-                            <a
-                              href={doc.storage_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              style={{ fontSize: 12, color: '#185fa5', textDecoration: 'none' }}
+                            <button
+                              onClick={async () => {
+                                const url = await getDownloadUrlForDocument(doc.id)
+                                if (url) {
+                                  window.open(url, '_blank')
+                                } else {
+                                  console.error('Could not generate download URL for document', doc.id)
+                                }
+                              }}
+                              style={{
+                                fontSize: 12, color: '#185fa5', textDecoration: 'none',
+                                background: 'none', border: 'none', cursor: 'pointer',
+                                padding: 0, fontFamily: 'inherit',
+                              }}
                             >
                               View
-                            </a>
+                            </button>
                           )}
                         </div>
                       </div>
