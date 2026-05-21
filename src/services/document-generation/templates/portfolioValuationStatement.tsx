@@ -251,10 +251,10 @@ export function PortfolioValuationStatementTemplate({
           <Text style={[styles.thCell, { width: dwClass }]}>Share Class</Text>
           <Text style={[styles.thCell, { width: dwEis }]}>EIS</Text>
           <Text style={[styles.thCell, { width: dwDate }]}>Date</Text>
-          <Text style={[styles.thCell, { width: dwOrigPrice }]}>Orig. Price</Text>
+          <Text style={[styles.thCell, { width: dwOrigPrice, ...RA }]}>Orig. Price</Text>
           <Text style={[styles.thCell, { width: dwShares, ...RA }]}>Shares</Text>
           <Text style={[styles.thCell, { width: dwSub, ...RA }]}>Subscribed</Text>
-          <Text style={[styles.thCell, { width: dwCurrPrice }]}>Curr. Price</Text>
+          <Text style={[styles.thCell, { width: dwCurrPrice, ...RA }]}>Curr. Price</Text>
           <Text style={[styles.thCell, { width: dwCurrVal, ...RA }]}>Curr. Value</Text>
           <Text style={[styles.thCell, { width: dwChange, ...RA }]}>Change</Text>
           {showDividendColumn && (
@@ -273,10 +273,10 @@ export function PortfolioValuationStatementTemplate({
             <Text style={[styles.tdCell, { width: dwClass }]}>{lot.share_class_name}</Text>
             <Text style={[styles.tdCell, { width: dwEis }]}>{lot.eis_status === 'yes' ? 'EIS' : ''}</Text>
             <Text style={[styles.tdCell, { width: dwDate }]}>{fmtDDMMYY(lot.investment_date)}</Text>
-            <Text style={[styles.tdCell, { width: dwOrigPrice }]}>{fmtPrice(lot.original_share_price)}</Text>
+            <Text style={[styles.tdCell, { width: dwOrigPrice, ...RA }]}>{fmtPrice(lot.original_share_price)}</Text>
             <Text style={[styles.tdCell, { width: dwShares, ...RA }]}>{fmtShares(lot.shares_purchased)}</Text>
             <Text style={[styles.tdCell, { width: dwSub, ...RA }]}>{fmtCurrency(lot.sum_subscribed)}</Text>
-            <Text style={[styles.tdCell, { width: dwCurrPrice }]}>{fmtPrice(lot.current_share_price)}</Text>
+            <Text style={[styles.tdCell, { width: dwCurrPrice, ...RA }]}>{fmtPrice(lot.current_share_price)}</Text>
             <Text style={[styles.tdCell, { width: dwCurrVal, ...RA }]}>{fmtCurrency(lot.current_valuation)}</Text>
             <Text style={[styles.tdCell, { width: dwChange, ...RA }]}>{fmtCurrency(lot.valuation_change)}</Text>
             {showDividendColumn && (
