@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { generatePortfolioStatementAction } from '../portfolioStatementActions'
 import { getDownloadUrlForDocument } from '../documentActions'
 import { formatDocumentTimestamp } from '@/lib/utils'
+import StatementDecisionModal, { type DecisionModalStatement } from './StatementDecisionModal'
+import EmailComposerModal, { type ComposerStatement } from './EmailComposerModal'
 
 export interface StatementDoc {
   id:            string
@@ -17,8 +19,10 @@ export interface StatementDoc {
 }
 
 interface Props {
-  clientId:   string
-  statements: StatementDoc[]
+  clientId:        string
+  clientFullName:  string
+  clientEmail:     string | null
+  statements:      StatementDoc[]
 }
 
 // Returns end-of-last-completed-quarter in YYYY-MM-DD format.
@@ -44,11 +48,14 @@ function fmtDate(iso: string | null): string {
   })
 }
 
-export default function GenerateStatementSection({ clientId, statements }: Props) {
-  const router   = useRouter()
-  const [period, setPeriod]   = useState(defaultPeriodDate)
-  const [error,  setError]    = useState<string | null>(null)
+export default function GenerateStatementSection({ clientId, clientFullName, clientEmail, statements }: Props) {
+  const router = useRouter()
+  const [period, setPeriod] = useState(defaultPeriodDate)
+  const [error,  setError]  = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
+
+  const [decisionStatement, setDecisionStatement] = useState<DecisionModalStatement | null>(null)
+  const [composerStatement, setComposerStatement] = useState<ComposerStatement | null>(null)
 
   function handleGenerate() {
     setError(null)
@@ -56,10 +63,12 @@ export default function GenerateStatementSection({ clientId, statements }: Props
       try {
         const result = await generatePortfolioStatementAction(clientId, period)
         router.refresh()
-        if (result.documentId) {
-          const url = await getDownloadUrlForDocument(result.documentId)
-          if (url) window.open(url, '_blank')
-        }
+        setDecisionStatement({
+          documentId:    result.documentId,
+          filename:      result.filename,
+          periodDate:    period,
+          generatedAtIso: result.createdAt,
+        })
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Generation failed. Please try again.')
       }
@@ -67,13 +76,14 @@ export default function GenerateStatementSection({ clientId, statements }: Props
   }
 
   async function handleView(documentId: string) {
-    try {
-      const url = await getDownloadUrlForDocument(documentId)
-      if (url) window.open(url, '_blank')
-      else alert('Could not generate download link. Please try again.')
-    } catch {
-      alert('Could not generate download link. Please try again.')
-    }
+    const url = await getDownloadUrlForDocument(documentId)
+    if (url) window.open(url, '_blank')
+  }
+
+  const actionBtnSt: React.CSSProperties = {
+    fontSize: 11, color: '#185fa5', background: 'none',
+    border: 'none', cursor: 'pointer', padding: '2px 4px',
+    fontFamily: 'inherit',
   }
 
   return (
@@ -129,22 +139,57 @@ export default function GenerateStatementSection({ clientId, statements }: Props
                     (generated {formatDocumentTimestamp(s.created_at)})
                   </span>
                 </span>
-                <button
-                  onClick={() => handleView(s.id)}
-                  style={{
-                    fontSize: 11, color: '#185fa5', background: 'none',
-                    border: 'none', cursor: 'pointer', padding: '2px 4px',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  View
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => setComposerStatement({
+                      documentId: s.id,
+                      filename:   s.filename,
+                      periodDate: s.period ?? s.document_date ?? '',
+                    })}
+                    style={{ ...actionBtnSt, color: '#555' }}
+                  >
+                    Email
+                  </button>
+                  <button
+                    onClick={() => handleView(s.id)}
+                    style={actionBtnSt}
+                  >
+                    View
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         </div>
       ) : (
         <p style={{ fontSize: 11, color: '#aaa', margin: 0 }}>No statements generated yet.</p>
+      )}
+
+      {/* Decision modal — opens after fresh generation */}
+      {decisionStatement && (
+        <StatementDecisionModal
+          open={true}
+          statement={decisionStatement}
+          onClose={() => setDecisionStatement(null)}
+          onEmail={() => {
+            setComposerStatement({
+              documentId: decisionStatement.documentId,
+              filename:   decisionStatement.filename,
+              periodDate: decisionStatement.periodDate,
+            })
+            setDecisionStatement(null)
+          }}
+        />
+      )}
+
+      {/* Email composer modal */}
+      {composerStatement && (
+        <EmailComposerModal
+          open={true}
+          statement={composerStatement}
+          client={{ fullName: clientFullName, email: clientEmail }}
+          onClose={() => setComposerStatement(null)}
+        />
       )}
     </div>
   )
