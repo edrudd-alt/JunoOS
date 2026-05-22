@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
-import { formatPeriodDateUK } from '@/lib/templates'
+import { formatPeriodDateUK } from '@/lib/templateUtils'
 import {
   createBulkRun,
   cancelBulkRun,

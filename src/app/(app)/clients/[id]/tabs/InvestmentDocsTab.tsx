@@ -3,25 +3,20 @@
 import { useState } from 'react'
 import { formatDocumentTimestamp } from '@/lib/utils'
 import { getDownloadUrlForDocument } from '../documentActions'
-import EmailComposerModal, { type ComposerStatement } from '../_components/EmailComposerModal'
+import { DocumentActions } from '@/components/documents/DocumentActions'
+import EmailComposerModal, { type ComposerDocument } from '../_components/EmailComposerModal'
 
 const DOC_LABELS: Record<string, string> = {
-  application_form: 'Application form',
-  eis_certificate: 'EIS certificate',
+  application_form:      'Application form',
+  eis_certificate:       'EIS certificate',
   transaction_statement: 'Transaction statement',
-  exit_statement: 'Exit statement',
-  side_letter: 'Side letter',
-  portfolio_statement: 'Portfolio statement',
-  company_update: 'Company update',
-  invoice: 'Invoice',
-  investment_agreement: 'Investment agreement',
-  other: 'Other',
-}
-
-// Document types that have an Email action in this UI.
-// Other types may have their own email workflows when added.
-const SUPPORTS_EMAIL: Record<string, boolean> = {
-  portfolio_statement: true,
+  exit_statement:        'Exit statement',
+  side_letter:           'Side letter',
+  portfolio_statement:   'Portfolio statement',
+  company_update:        'Company update',
+  invoice:               'Invoice',
+  investment_agreement:  'Investment agreement',
+  other:                 'Other',
 }
 
 interface Doc {
@@ -45,8 +40,6 @@ interface Props {
   latestSends?: Record<string, string>
 }
 
-// Group label for documents with no company_id, keyed by documents.type.
-// New non-company document types should get a row here; unknown types fall back to 'General'.
 const NON_COMPANY_GROUP_BY_TYPE: Record<string, string> = {
   portfolio_statement: 'Valuations',
 }
@@ -54,10 +47,8 @@ const NON_COMPANY_GROUP_BY_TYPE: Record<string, string> = {
 export default function InvestmentDocsTab({ documents, clientFullName = '', clientEmail = null, clientId = '', outlookConnected, latestSends }: Props) {
   const docs = documents as unknown as Doc[]
 
-  const [composerStatement, setComposerStatement] = useState<ComposerStatement | null>(null)
+  const [composerDoc, setComposerDoc] = useState<ComposerDocument | null>(null)
 
-  // Group by company (for company-linked docs) or named group (for client-level docs), then by year.
-  // Company-linked docs use company_id as the group key; non-company docs use the group label as key.
   const byCompany: Record<string, { name: string; byYear: Record<string, Doc[]> }> = {}
 
   for (const doc of docs) {
@@ -112,12 +103,6 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
     )
   }
 
-  const actionBtnSt: React.CSSProperties = {
-    fontSize: 12, background: 'none',
-    border: 'none', cursor: 'pointer',
-    padding: 0, fontFamily: 'inherit',
-  }
-
   return (
     <>
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -127,7 +112,6 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
 
           return (
             <div key={cid} style={{ borderBottom: '0.5px solid #e8e7e0' }}>
-              {/* Company header */}
               <button
                 onClick={() => toggleCompany(cid)}
                 style={{
@@ -149,7 +133,6 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                   const isYearExpanded = expandedYears.has(yearKey)
                   return (
                     <div key={yearKey}>
-                      {/* Year header */}
                       <button
                         onClick={() => toggleYear(yearKey)}
                         style={{
@@ -192,33 +175,19 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                                 Sent {formatDocumentTimestamp(latestSends[doc.id])}
                               </span>
                             )}
-                            {SUPPORTS_EMAIL[doc.type] && (
-                              <button
-                                onClick={() => setComposerStatement({
-                                  documentId: doc.id,
-                                  filename:   doc.filename,
-                                  periodDate: doc.period ?? doc.document_date ?? '',
-                                })}
-                                style={{ ...actionBtnSt, color: '#555' }}
-                              >
-                                Email
-                              </button>
-                            )}
-                            {doc.storage_url && (
-                              <button
-                                onClick={async () => {
-                                  const url = await getDownloadUrlForDocument(doc.id)
-                                  if (url) {
-                                    window.open(url, '_blank')
-                                  } else {
-                                    console.error('Could not generate download URL for document', doc.id)
-                                  }
-                                }}
-                                style={{ ...actionBtnSt, color: '#185fa5' }}
-                              >
-                                View
-                              </button>
-                            )}
+                            <DocumentActions
+                              document={doc}
+                              onEmailClick={() => setComposerDoc({
+                                documentId: doc.id,
+                                type:       doc.type,
+                                filename:   doc.filename,
+                                period:     doc.period ?? doc.document_date,
+                              })}
+                              onViewClick={async () => {
+                                const url = await getDownloadUrlForDocument(doc.id)
+                                if (url) window.open(url, '_blank')
+                              }}
+                            />
                           </div>
                         </div>
                       ))}
@@ -230,14 +199,14 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
         })}
       </div>
 
-      {composerStatement && (
+      {composerDoc && (
         <EmailComposerModal
           open={true}
-          statement={composerStatement}
+          document={composerDoc}
           client={{ fullName: clientFullName, email: clientEmail }}
           clientId={clientId}
           outlookConnected={outlookConnected}
-          onClose={() => setComposerStatement(null)}
+          onClose={() => setComposerDoc(null)}
         />
       )}
     </>

@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generatePortfolioValuationStatement } from '@/services/document-generation/generatePortfolioValuationStatement'
 import { sendDocumentEmail } from '@/lib/outlookSend'
 import { type OutlookConnection } from '@/lib/outlookTokens'
-import { deriveClientFirstName, formatPeriodDateUK, substitutePlaceholders } from '@/lib/templates'
+import { deriveClientFirstName, formatPeriodDateUK, substituteBulkTemplate } from '@/lib/templateUtils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -288,8 +288,8 @@ export async function tickBulkRun(runId: string): Promise<TickResult> {
             documentId:     sendDocId,
             clientId:       clientId!,
             recipientEmail: clientRow.email,
-            subject:        substitutePlaceholders(meta.subject_template ?? '', ctx),
-            bodyText:       substitutePlaceholders(meta.body_template ?? '', ctx),
+            subject:        substituteBulkTemplate(meta.subject_template ?? '', ctx),
+            bodyText:       substituteBulkTemplate(meta.body_template ?? '', ctx),
             attachmentName: docRow.filename,
             storageUrl:     docRow.storage_url,
             bulkRunId:      runId,

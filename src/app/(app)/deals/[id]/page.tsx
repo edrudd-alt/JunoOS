@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
+import { getOutlookConnectionStatus } from '@/app/(app)/settings/outlookActions'
 import DealDetail from './DealDetail'
 import BuyDealPage from './BuyDealPage'
 
@@ -35,8 +36,9 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
       { data: buyDocuments },
       { data: buyInvoices },
       { data: buyAllClients },
-    { data: buyNominees },
+      { data: buyNominees },
       { data: buyInvestments },
+      buyOutlookStatus,
     ] = await Promise.all([
       rawDeal.company_id
         ? supabase.from('companies').select('id, name, logo_url').eq('id', rawDeal.company_id).maybeSingle()
@@ -60,13 +62,14 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .order('created_at'),
       // All clients in one shot — covers fund-type header, bookbuild table, and Add Investors modal
       supabase.from('clients')
-        .select('id, full_name, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
+        .select('id, full_name, email, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
         .order('full_name'),
       supabase.from('nominees').select('id, name').eq('active', true).order('name'),
       supabase.from('investments')
         .select('client_id, eis_status')
         .eq('deal_id', id)
         .order('created_at', { ascending: false }),
+      getOutlookConnectionStatus(),
     ])
 
     // Build client_id → eis_status map (most-recent investment wins, matching service logic)
@@ -93,6 +96,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
           nominees={(buyNominees ?? []) as Parameters<typeof BuyDealPage>[0]['nominees']}
           fundTypes={(buyFundTypes ?? []) as Parameters<typeof BuyDealPage>[0]['fundTypes']}
           documents={(buyDocuments ?? []) as Parameters<typeof BuyDealPage>[0]['documents']}
+          outlookConnected={buyOutlookStatus.connected}
           invoices={(() => {
             const diMap = new Map((buyDealInvestors ?? []).map(di => [di.id as string, di as Record<string, unknown>]))
             const cMap  = new Map((buyAllClients  ?? []).map(c  => [c.id  as string, c  as Record<string, unknown>]))

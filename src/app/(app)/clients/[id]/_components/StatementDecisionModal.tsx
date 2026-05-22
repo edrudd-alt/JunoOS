@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { formatDocumentTimestamp } from '@/lib/utils'
-import { formatPeriodDateUK } from '@/lib/templates'
+import { formatPeriodDateUK } from '@/lib/templateUtils'
 import { getDownloadUrlForDocument } from '../documentActions'
 
 export interface DecisionModalStatement {

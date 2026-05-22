@@ -6,7 +6,7 @@ import { generatePortfolioStatementAction } from '../portfolioStatementActions'
 import { getDownloadUrlForDocument } from '../documentActions'
 import { formatDocumentTimestamp } from '@/lib/utils'
 import StatementDecisionModal, { type DecisionModalStatement } from './StatementDecisionModal'
-import EmailComposerModal, { type ComposerStatement } from './EmailComposerModal'
+import EmailComposerModal, { type ComposerDocument } from './EmailComposerModal'
 
 export interface StatementDoc {
   id:            string
@@ -55,7 +55,7 @@ export default function GenerateStatementSection({ clientId, clientFullName, cli
   const [isPending, startTransition] = useTransition()
 
   const [decisionStatement, setDecisionStatement] = useState<DecisionModalStatement | null>(null)
-  const [composerStatement, setComposerStatement] = useState<ComposerStatement | null>(null)
+  const [composerDoc, setComposerDoc] = useState<ComposerDocument | null>(null)
 
   function handleGenerate() {
     setError(null)
@@ -141,10 +141,11 @@ export default function GenerateStatementSection({ clientId, clientFullName, cli
                 </span>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <button
-                    onClick={() => setComposerStatement({
+                    onClick={() => setComposerDoc({
                       documentId: s.id,
+                      type:       'portfolio_statement',
                       filename:   s.filename,
-                      periodDate: s.period ?? s.document_date ?? '',
+                      period:     s.period ?? s.document_date,
                     })}
                     style={{ ...actionBtnSt, color: '#555' }}
                   >
@@ -172,10 +173,11 @@ export default function GenerateStatementSection({ clientId, clientFullName, cli
           statement={decisionStatement}
           onClose={() => setDecisionStatement(null)}
           onEmail={() => {
-            setComposerStatement({
+            setComposerDoc({
               documentId: decisionStatement.documentId,
+              type:       'portfolio_statement',
               filename:   decisionStatement.filename,
-              periodDate: decisionStatement.periodDate,
+              period:     decisionStatement.periodDate,
             })
             setDecisionStatement(null)
           }}
@@ -183,13 +185,13 @@ export default function GenerateStatementSection({ clientId, clientFullName, cli
       )}
 
       {/* Email composer modal */}
-      {composerStatement && (
+      {composerDoc && (
         <EmailComposerModal
           open={true}
-          statement={composerStatement}
+          document={composerDoc}
           client={{ fullName: clientFullName, email: clientEmail }}
           clientId={clientId}
-          onClose={() => setComposerStatement(null)}
+          onClose={() => setComposerDoc(null)}
         />
       )}
     </div>

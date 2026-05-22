@@ -33,6 +33,7 @@ export interface DealInvestorFull {
 export interface ClientFull {
   id: string
   full_name: string
+  email?: string | null
   kyc_status: string
   entity_type: string | null
   lead_investor_id: string | null

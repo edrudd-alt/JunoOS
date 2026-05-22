@@ -79,15 +79,16 @@ interface Props {
   allClients:    ClientFull[]
   nominees:      NomineeRow[]
   fundTypes:     FundTypeRow[]
-  documents: DocumentRow[]
-  invoices:  InvoiceRow[]
+  documents:         DocumentRow[]
+  invoices:          InvoiceRow[]
+  outlookConnected?: boolean
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function BuyDealPage({
   deal, company, bookbuild, shareClasses, dealInvestors,
-  allClients, nominees, fundTypes, documents, invoices,
+  allClients, nominees, fundTypes, documents, invoices, outlookConnected,
 }: Props) {
   // ── Modal state ───────────────────────────────────────────────────────────
   const [modalOpen, setModalOpen] = useState(false)
@@ -418,6 +419,7 @@ export default function BuyDealPage({
               documents={documents}
               dealInvestors={dealInvestors}
               clientMap={clientMap}
+              outlookConnected={outlookConnected}
               onDataRefresh={() => router.refresh()}
             />
           )}

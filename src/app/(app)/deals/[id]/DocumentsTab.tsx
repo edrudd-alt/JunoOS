@@ -5,6 +5,8 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DealInvestorFull, ClientFull } from './dealUtils'
 import { supersedeDocument, reinstateDocument, deleteDocument } from './documentActions'
+import { isSendableType } from '@/lib/documentTypes'
+import EmailComposerModal, { type ComposerDocument } from '@/app/(app)/clients/[id]/_components/EmailComposerModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,14 +27,15 @@ export interface DocumentRow {
 
 interface DealRow { id: string; status: string }
 
-interface DocMeta { clientName: string; vehicleName: string | null }
+interface DocMeta { clientName: string; clientId: string | null; clientEmail: string | null; vehicleName: string | null }
 
 interface Props {
-  deal:          DealRow
-  documents:     DocumentRow[]
-  dealInvestors: DealInvestorFull[]
-  clientMap:     Map<string, ClientFull>
-  onDataRefresh: () => void
+  deal:              DealRow
+  documents:         DocumentRow[]
+  dealInvestors:     DealInvestorFull[]
+  clientMap:         Map<string, ClientFull>
+  outlookConnected?: boolean
+  onDataRefresh:     () => void
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -71,7 +74,7 @@ function sortByDateDesc(a: DocumentRow, b: DocumentRow): number {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DocumentsTab({
-  deal, documents, dealInvestors, clientMap, onDataRefresh,
+  deal, documents, dealInvestors, clientMap, outlookConnected, onDataRefresh,
 }: Props) {
   const supabase     = createClient()
   const searchParams = useSearchParams()
@@ -110,6 +113,9 @@ export default function DocumentsTab({
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuPos,    setMenuPos]    = useState<{ x: number; y: number } | null>(null)
 
+  // ── Modal: email composer ─────────────────────────────────────────────────
+  const [composerDoc, setComposerDoc] = useState<(ComposerDocument & { clientId: string; clientEmail: string | null }) | null>(null)
+
   // ── Modal: supersede ──────────────────────────────────────────────────────
   const [supersedeTarget,  setSupersedeTarget]  = useState<DocumentRow | null>(null)
   const [supersedeReason,  setSupersedeReason]  = useState('')
@@ -129,11 +135,15 @@ export default function DocumentsTab({
   const diMap = new Map(dealInvestors.map(di => [di.id, di]))
 
   function getDocMeta(doc: DocumentRow): DocMeta {
-    const client  = doc.client_id         ? clientMap.get(doc.client_id)                            : null
-    const di      = doc.deal_investor_id  ? diMap.get(doc.deal_investor_id)                         : null
-    const vehicle = di?.investing_vehicle_id ? clientMap.get(di.investing_vehicle_id)               : null
+    const directClient = doc.client_id ? clientMap.get(doc.client_id) : null
+    const di           = doc.deal_investor_id ? diMap.get(doc.deal_investor_id) : null
+    const diClient     = di?.client_id ? clientMap.get(di.client_id) : null
+    const client       = directClient ?? diClient
+    const vehicle      = di?.investing_vehicle_id ? clientMap.get(di.investing_vehicle_id) : null
     return {
       clientName:  client?.full_name  ?? 'Unknown investor',
+      clientId:    client?.id ?? doc.client_id ?? null,
+      clientEmail: client?.email ?? null,
       vehicleName: vehicle?.full_name ?? null,
     }
   }
@@ -194,6 +204,16 @@ export default function DocumentsTab({
     onSupersede: (doc: DocumentRow) => { setSupersedeTarget(doc); setSupersedeReason(''); setSupersedeError(null) },
     onReinstate: handleReinstate,
     onDelete:    (doc: DocumentRow) => setDeleteTarget(doc),
+    onEmail: (doc: DocumentRow, clientId: string | null, clientEmail: string | null) => {
+      setComposerDoc({
+        documentId: doc.id,
+        type:       doc.type,
+        filename:   doc.filename,
+        period:     doc.document_date,
+        clientId:   clientId ?? '',
+        clientEmail,
+      })
+    },
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -410,6 +430,18 @@ export default function DocumentsTab({
           {toast}
         </div>
       )}
+
+      {/* ── Email composer ───────────────────────────────────────────────── */}
+      {composerDoc && (
+        <EmailComposerModal
+          open={true}
+          document={{ documentId: composerDoc.documentId, type: composerDoc.type, filename: composerDoc.filename, period: composerDoc.period }}
+          client={{ fullName: composerDoc.clientId ? (clientMap.get(composerDoc.clientId)?.full_name ?? '') : '', email: composerDoc.clientEmail }}
+          clientId={composerDoc.clientId}
+          outlookConnected={outlookConnected}
+          onClose={() => setComposerDoc(null)}
+        />
+      )}
     </div>
   )
 }
@@ -425,6 +457,7 @@ interface SharedRowProps {
   onSupersede:    (doc: DocumentRow) => void
   onReinstate:    (doc: DocumentRow) => Promise<void>
   onDelete:       (doc: DocumentRow) => void
+  onEmail:        (doc: DocumentRow, clientId: string | null, clientEmail: string | null) => void
 }
 
 // ── By-investor view ──────────────────────────────────────────────────────────
@@ -621,7 +654,7 @@ function SectionHeader({
 function DocRow({
   doc, showInvestor, showType, borderTop,
   getDocMeta, openMenuId, setOpenMenuId, menuPos, setMenuPos,
-  onSupersede, onReinstate, onDelete,
+  onSupersede, onReinstate, onDelete, onEmail,
 }: {
   doc: DocumentRow
   showInvestor: boolean
@@ -629,7 +662,7 @@ function DocRow({
   borderTop?: boolean
 } & SharedRowProps) {
   const isOpen = openMenuId === doc.id
-  const { clientName, vehicleName } = getDocMeta(doc)
+  const { clientName, clientId, clientEmail, vehicleName } = getDocMeta(doc)
 
   return (
     <div style={{
@@ -744,6 +777,12 @@ function DocRow({
                 }
               }}
             />
+            {isSendableType(doc.type) && (
+              <MenuItem
+                label="Email document"
+                onClick={() => { setOpenMenuId(null); onEmail(doc, clientId, clientEmail) }}
+              />
+            )}
             <div style={{ height: '0.5px', background: 'var(--card-border)', margin: '2px 0' }} />
             {!doc.superseded ? (
               <MenuItem
