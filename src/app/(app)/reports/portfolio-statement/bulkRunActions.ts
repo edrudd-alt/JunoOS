@@ -518,43 +518,55 @@ export async function loadRunItems(runId: string): Promise<BulkRunItem[]> {
 }
 
 // ── loadRunItemsWithDetails ───────────────────────────────────────────────────
-// Three queries, two-query-then-merge pattern. Enriches each item with the
-// client's display name and the document's storage_url (needed for View links).
+// Enriches each item with client name, storage_url, and (for send runs) recipient email.
 
 export interface BulkRunItemDetail extends BulkRunItem {
-  client_name: string
-  storage_url: string | null
+  client_name:     string
+  storage_url:     string | null
+  recipient_email?: string
 }
 
-export async function loadRunItemsWithDetails(runId: string): Promise<BulkRunItemDetail[]> {
+export interface RunItemsWithDetails {
+  items:   BulkRunItemDetail[]
+  runType: string
+}
+
+export async function loadRunItemsWithDetails(runId: string): Promise<RunItemsWithDetails> {
   const supabase = await createClient()
 
-  const { data: items, error } = await supabase
-    .from('bulk_run_items')
-    .select('*')
-    .eq('bulk_run_id', runId)
-    .order('id')
+  const [{ data: items, error }, { data: run }] = await Promise.all([
+    supabase.from('bulk_run_items').select('*').eq('bulk_run_id', runId).order('id'),
+    supabase.from('bulk_runs').select('type').eq('id', runId).single(),
+  ])
+
   if (error) throw new Error(error.message)
-  if (!items?.length) return []
+  const runType = run?.type ?? 'portfolio_statement'
+  if (!items?.length) return { items: [], runType }
 
   const clientIds = [...new Set(items.map(i => i.client_id as string))]
   const docIds    = items.map(i => i.document_id as string | null).filter(Boolean) as string[]
 
   const [{ data: clients }, { data: docs }] = await Promise.all([
-    supabase.from('clients').select('id, full_name').in('id', clientIds),
+    supabase.from('clients').select('id, full_name, email').in('id', clientIds),
     docIds.length > 0
       ? supabase.from('documents').select('id, storage_url').in('id', docIds)
       : Promise.resolve({ data: [] as { id: string; storage_url: string }[] }),
   ])
 
-  const clientMap = new Map((clients ?? []).map(c => [c.id, c.full_name as string]))
+  const clientMap = new Map((clients ?? []).map(c => [c.id, c as { id: string; full_name: string; email: string | null }]))
   const docMap    = new Map((docs    ?? []).map(d => [d.id, d.storage_url as string]))
 
-  return items.map(item => ({
-    ...(item as unknown as BulkRunItem),
-    client_name: clientMap.get(item.client_id as string) ?? (item.client_id as string),
-    storage_url: item.document_id ? (docMap.get(item.document_id as string) ?? null) : null,
-  }))
+  return {
+    runType,
+    items: items.map(item => ({
+      ...(item as unknown as BulkRunItem),
+      client_name:     clientMap.get(item.client_id as string)?.full_name ?? (item.client_id as string),
+      storage_url:     item.document_id ? (docMap.get(item.document_id as string) ?? null) : null,
+      recipient_email: runType === 'portfolio_statement_send'
+        ? (clientMap.get(item.client_id as string)?.email ?? undefined)
+        : undefined,
+    })),
+  }
 }
 
 // ── getSignedUrlForDocument ───────────────────────────────────────────────────
