@@ -475,6 +475,20 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.35 — Per-investor "last statement sent" timestamp.** Once Updates sent integration is real (14.33), surface a "Last statement: 21 May 2026" timestamp on each investor's row on the Holdings summary or similar. Useful for the team to see at a glance which investors are due an update.
 
+- **14.36 — Bulk delivery (Outlook integration era).** Once Outlook integration ships, add a "Bulk send" action after a bulk run completes. Composes and sends all emails in one operation, with per-client subject/body templates applied. Replaces the current "team copies each email manually after bulk generation" workflow.
+
+- **14.37 — Per-client report frequency preferences.** Add `reporting_default_frequency` (quarterly/semi-annual/annual/never) and `reporting_default_include` (boolean) columns to `clients`. Bulk runs can respect these as a filter chip ("Due this quarter"). Investors marked "annual" only get statements in Q4 runs, etc.
+
+- **14.38 — Scheduled bulk runs.** Vercel Cron-triggered quarterly runs that fire automatically on the day after each quarter-end. Requires graduating from Option A polling to Option B background functions.
+
+- **14.39 — Bulk run notifications.** When a bulk run completes (or fails partway), notify the initiating team member via email or in-app banner. Removes the need to keep the browser open.
+
+- **14.40 — Saved presets per-user fork.** Currently presets are team-shared. If multiple users develop conflicting "their own" presets, add an `is_private` flag or per-user namespacing.
+
+- **14.41 — Bulk action audit logging.** When a bulk run starts/completes/cancels, record an entry in an `activity_log` table for compliance and audit.
+
+- **14.42 — Bulk run for other document types.** The `bulk_runs.type` and `bulk_run_presets.type` columns already support this: extend the bulk runner to EIS certificates, dividend statements, tax vouchers. Each type defines its own per-item generator function; the queue mechanism is shared.
+
 ---
 
 ## 9. Version history
