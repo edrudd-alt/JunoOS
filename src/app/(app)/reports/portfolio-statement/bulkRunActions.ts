@@ -268,10 +268,10 @@ export async function savePreset(
   name:        string,
   clientIds:   string[],
   filterState: Record<string, unknown>,
-): Promise<{ preset: BulkRunPreset }> {
+): Promise<{ preset: BulkRunPreset } | { error: string }> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  if (!user) return { error: 'Not authenticated' }
 
   const { data: preset, error } = await supabase
     .from('bulk_run_presets')
@@ -287,10 +287,10 @@ export async function savePreset(
     .single()
 
   if (error) {
-    if (error.code === '23505') throw new Error('A preset with this name already exists. Choose a different name or update the existing one.')
-    throw new Error(error.message)
+    if (error.code === '23505') return { error: 'A preset with this name already exists. Choose a different name or update the existing one.' }
+    return { error: error.message }
   }
-  return { preset }
+  return { preset: preset as BulkRunPreset }
 }
 
 // ── loadPresets ───────────────────────────────────────────────────────────────
@@ -309,10 +309,10 @@ export async function loadPresets(): Promise<BulkRunPreset[]> {
 
 // ── renamePreset ──────────────────────────────────────────────────────────────
 
-export async function renamePreset(presetId: string, newName: string): Promise<void> {
+export async function renamePreset(presetId: string, newName: string): Promise<{ error: string } | null> {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  if (!user) return { error: 'Not authenticated' }
 
   const { error } = await supabase
     .from('bulk_run_presets')
@@ -320,9 +320,10 @@ export async function renamePreset(presetId: string, newName: string): Promise<v
     .eq('id', presetId)
 
   if (error) {
-    if (error.code === '23505') throw new Error('A preset with this name already exists. Choose a different name or update the existing one.')
-    throw new Error(error.message)
+    if (error.code === '23505') return { error: 'A preset with this name already exists. Choose a different name or update the existing one.' }
+    return { error: error.message }
   }
+  return null
 }
 
 // ── deletePreset ──────────────────────────────────────────────────────────────

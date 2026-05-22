@@ -497,9 +497,10 @@ export default function BulkStatementRunPage({
           selectedCount={selectedIds.size}
           onClose={() => setShowSavePreset(false)}
           onSave={async (name) => {
-            const { preset } = await savePreset(name, [...selectedIds], filters as unknown as Record<string, unknown>)
-            setPresets(prev => [preset, ...prev])
-            setLoadedPresetId(preset.id)
+            const result = await savePreset(name, [...selectedIds], filters as unknown as Record<string, unknown>)
+            if ('error' in result) throw new Error(result.error)
+            setPresets(prev => [result.preset, ...prev])
+            setLoadedPresetId(result.preset.id)
             setLoadedPresetModified(false)
             setShowSavePreset(false)
           }}
@@ -512,7 +513,8 @@ export default function BulkStatementRunPage({
           loadedPresetId={loadedPresetId}
           onClose={() => setShowManagePresets(false)}
           onRename={async (id, name) => {
-            await renamePreset(id, name)
+            const result = await renamePreset(id, name)
+            if (result?.error) throw new Error(result.error)
             setPresets(prev => prev.map(p => p.id === id ? { ...p, name } : p))
           }}
           onDelete={async (id) => {
@@ -702,7 +704,12 @@ function InvestorTable({
                 onClick={() => onToggle(c.id)}
               >
                 <td style={td}>
-                  <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => onToggle(c.id)} />
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(c.id)}
+                    onClick={e => e.stopPropagation()}
+                    onChange={() => onToggle(c.id)}
+                  />
                 </td>
                 <td style={{ ...td, fontWeight: selectedIds.has(c.id) ? 500 : 400 }}>{c.full_name}</td>
                 <td style={{ ...td, color: c.email ? '#333' : '#ccc' }}>
