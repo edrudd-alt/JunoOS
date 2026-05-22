@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition, useEffect } from 'react'
-import { PORTFOLIO_STATEMENT_SUBJECT_RAW, PORTFOLIO_STATEMENT_BODY_RAW } from '@/lib/templates'
+import { getRawEmailTemplate } from '@/app/(app)/settings/email-templates/emailTemplateActions'
 import { startBulkSend, type BulkRunSummary } from '../bulkRunActions'
 
 interface Props {
@@ -12,16 +12,20 @@ interface Props {
 }
 
 export default function SendAllConfirmModal({ sourceRun, outlookEmail, onClose, onStarted }: Props) {
-  const [subject, setSubject] = useState(PORTFOLIO_STATEMENT_SUBJECT_RAW)
-  const [body,    setBody]    = useState(PORTFOLIO_STATEMENT_BODY_RAW)
+  const [subject, setSubject] = useState('')
+  const [body,    setBody]    = useState('')
   const [error,   setError]   = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
-  // Reset on open (sourceRun identity change = new open)
+  // Load template from DB on each open (sourceRun identity change = new open)
   useEffect(() => {
-    setSubject(PORTFOLIO_STATEMENT_SUBJECT_RAW)
-    setBody(PORTFOLIO_STATEMENT_BODY_RAW)
     setError(null)
+    getRawEmailTemplate('portfolio_statement').then(tmpl => {
+      if (tmpl) {
+        setSubject(tmpl.subject)
+        setBody(tmpl.body)
+      }
+    })
   }, [sourceRun.id])
 
   // Trap Escape
@@ -113,7 +117,7 @@ export default function SendAllConfirmModal({ sourceRun, outlookEmail, onClose, 
           borderRadius: 6, padding: '8px 12px', marginBottom: 16,
           fontSize: 11, color: '#0369a1', lineHeight: 1.6,
         }}>
-          Use <code style={{ background: '#e0f2fe', borderRadius: 3, padding: '1px 4px' }}>{'{{first_name}}'}</code> and{' '}
+          Use <code style={{ background: '#e0f2fe', borderRadius: 3, padding: '1px 4px' }}>{'{{client_first_name}}'}</code> and{' '}
           <code style={{ background: '#e0f2fe', borderRadius: 3, padding: '1px 4px' }}>{'{{period}}'}</code> as placeholders — substituted per investor at send time.
         </div>
 
