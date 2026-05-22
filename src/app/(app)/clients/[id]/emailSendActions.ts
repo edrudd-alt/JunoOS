@@ -3,8 +3,51 @@
 import { createClient } from '@/lib/supabase/server'
 import { sendDocumentEmail } from '@/lib/outlookSend'
 import { type OutlookConnection } from '@/lib/outlookTokens'
+import { getEmailTemplate, deriveFirstName, formatPeriodDateUK } from '@/lib/templates'
 
-export async function sendPortfolioStatement({
+export async function resolveDocumentTemplate(
+  documentId: string,
+  clientId: string,
+): Promise<{ subject: string; body: string } | null> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+
+  // Two-query pattern: fetch document, then fetch company if needed
+  const { data: doc } = await supabase
+    .from('documents')
+    .select('type, filename, period, company_id')
+    .eq('id', documentId)
+    .single()
+
+  if (!doc) return null
+
+  const [{ data: client }, { data: sender }, companyResult] = await Promise.all([
+    supabase.from('clients').select('full_name').eq('id', clientId).single(),
+    supabase.from('team_members').select('full_name').eq('id', user.id).single(),
+    doc.company_id
+      ? supabase.from('companies').select('name').eq('id', doc.company_id).single()
+      : Promise.resolve({ data: null }),
+  ])
+
+  const senderFullName = sender?.full_name ?? null
+  const senderFirstName = senderFullName
+    ? deriveFirstName(senderFullName)
+    : user.email?.split('@')[0] ?? ''
+
+  return getEmailTemplate(doc.type, {
+    clientFirstName: deriveFirstName(client?.full_name),
+    clientFullName:  client?.full_name ?? null,
+    senderFirstName,
+    senderFullName,
+    period:          doc.period ? formatPeriodDateUK(doc.period) : null,
+    companyName:     companyResult.data?.name ?? null,
+    filename:        doc.filename,
+    reference:       null,
+  })
+}
+
+export async function sendDocument({
   documentId,
   clientId,
   recipientEmail,

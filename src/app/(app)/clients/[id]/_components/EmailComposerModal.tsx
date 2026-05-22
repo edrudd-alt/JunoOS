@@ -1,25 +1,20 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
-import {
-  deriveClientFirstName,
-  formatPeriodDateUK,
-  PORTFOLIO_STATEMENT_SUBJECT_TEMPLATE,
-  PORTFOLIO_STATEMENT_BODY_TEMPLATE,
-} from '@/lib/templates'
 import { getDownloadUrlForDocument } from '../documentActions'
-import { sendPortfolioStatement } from '../emailSendActions'
+import { resolveDocumentTemplate, sendDocument } from '../emailSendActions'
 
-export interface ComposerStatement {
+export interface ComposerDocument {
   documentId: string
+  type: string
   filename: string
-  periodDate: string
+  period?: string | null
 }
 
 interface Props {
   open: boolean
   onClose: () => void
-  statement: ComposerStatement
+  document: ComposerDocument
   client: {
     fullName: string
     email: string | null
@@ -44,7 +39,14 @@ function useCopyButton(): { label: string; copy: (value: string) => void } {
   }
 }
 
-export default function EmailComposerModal({ open, onClose, statement, client, clientId, outlookConnected }: Props) {
+function formatPeriodDisplay(period: string | null | undefined): string {
+  if (!period) return ''
+  const d = new Date(`${period}T00:00:00`)
+  if (isNaN(d.getTime())) return period
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+export default function EmailComposerModal({ open, onClose, document, client, clientId, outlookConnected }: Props) {
   const subjectRef = useRef<HTMLInputElement>(null)
   const toCopy      = useCopyButton()
   const subjectCopy = useCopyButton()
@@ -52,32 +54,37 @@ export default function EmailComposerModal({ open, onClose, statement, client, c
   const [sending, startSend] = useTransition()
   const [sendResult, setSendResult] = useState<{ ok: true } | { error: string } | null>(null)
 
-  const periodFormatted  = formatPeriodDateUK(statement.periodDate)
-  const clientFirstName  = deriveClientFirstName(client.fullName)
-  const ctx = { clientFirstName, periodDateFormatted: periodFormatted }
+  const [subject,  setSubject]  = useState('')
+  const [body,     setBody]     = useState('')
+  const [loading,  setLoading]  = useState(false)
 
-  const [subject, setSubject] = useState(() => PORTFOLIO_STATEMENT_SUBJECT_TEMPLATE(ctx))
-  const [body,    setBody]    = useState(() => PORTFOLIO_STATEMENT_BODY_TEMPLATE(ctx))
+  const periodDisplay = formatPeriodDisplay(document.period)
 
-  // Reset fields and focus Subject on every open
+  // Load template from DB on each open
   useEffect(() => {
     if (!open) return
-    setSubject(PORTFOLIO_STATEMENT_SUBJECT_TEMPLATE({ clientFirstName: deriveClientFirstName(client.fullName), periodDateFormatted: formatPeriodDateUK(statement.periodDate) }))
-    setBody(PORTFOLIO_STATEMENT_BODY_TEMPLATE({ clientFirstName: deriveClientFirstName(client.fullName), periodDateFormatted: formatPeriodDateUK(statement.periodDate) }))
-    setSendResult(null)
-    setTimeout(() => subjectRef.current?.focus(), 0)
 
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose, client.fullName, statement.periodDate])
+    setSendResult(null)
+    setSubject('')
+    setBody('')
+    setLoading(true)
+
+    resolveDocumentTemplate(document.documentId, clientId).then(result => {
+      setSubject(result?.subject ?? '')
+      setBody(result?.body ?? '')
+      setLoading(false)
+      setTimeout(() => subjectRef.current?.focus(), 0)
+    })
+
+    function onKeyDown(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, document.documentId, clientId, onClose])
 
   if (!open) return null
 
   async function handleDownload() {
-    const url = await getDownloadUrlForDocument(statement.documentId)
+    const url = await getDownloadUrlForDocument(document.documentId)
     if (url) window.open(url, '_blank')
   }
 
@@ -117,7 +124,7 @@ export default function EmailComposerModal({ open, onClose, statement, client, c
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#0f2744' }}>Email portfolio statement</h2>
+          <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0, color: '#0f2744' }}>Email document</h2>
           <button
             onClick={onClose}
             aria-label="Close"
@@ -128,7 +135,7 @@ export default function EmailComposerModal({ open, onClose, statement, client, c
           </button>
         </div>
 
-        {/* Context row — which statement is being emailed */}
+        {/* Document context row */}
         <div style={{
           background: '#f5f5f2', borderRadius: 6, padding: '10px 14px',
           display: 'flex', alignItems: 'center', gap: 10,
@@ -142,162 +149,146 @@ export default function EmailComposerModal({ open, onClose, statement, client, c
             PDF
           </span>
           <div>
-            <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>{statement.filename}</div>
-            <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>{periodFormatted}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#0f2744' }}>{document.filename}</div>
+            {periodDisplay && <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>{periodDisplay}</div>}
           </div>
         </div>
 
-        {/* Outlook status banner */}
-        {outlookConnected ? (
-          sendResult && 'ok' in sendResult ? (
-            <div style={{
-              background: '#e6f9f2', border: '0.5px solid #a0dfc4',
-              borderRadius: 6, padding: '8px 12px', marginBottom: 16,
-              fontSize: 11, color: '#085041', lineHeight: 1.6,
-            }}>
-              Email sent to {client.email} — check Outlook Sent Items for confirmation.
-            </div>
-          ) : sendResult && 'error' in sendResult ? (
-            <div style={{
-              background: '#fef2f2', border: '0.5px solid #fca5a5',
-              borderRadius: 6, padding: '8px 12px', marginBottom: 16,
-              fontSize: 11, color: '#991b1b', lineHeight: 1.6,
-            }}>
-              {sendResult.error}
-            </div>
-          ) : null
-        ) : (
-          <div style={{
-            background: '#fffbeb', border: '0.5px solid #f0c674',
-            borderRadius: 6, padding: '8px 12px', marginBottom: 16,
-            fontSize: 11, color: '#78500a', lineHeight: 1.6,
-          }}>
-            Outlook not connected. Use Copy buttons to paste into your email client, or{' '}
-            <a href="/settings/integrations" style={{ color: '#78500a', fontWeight: 600 }}>
-              connect Outlook in Settings
-            </a>
-            {' '}to send directly.
+        {/* Loading state */}
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '20px 0', color: '#888', fontSize: 12 }}>
+            Loading template…
           </div>
         )}
 
-        {/* To field */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={labelRowSt}>
-            <span>To</span>
-            <button
-              style={copyBtnSt}
-              aria-label="Copy recipient address"
-              onClick={() => toCopy.copy(client.email ?? '')}
-            >
-              {toCopy.label}
-            </button>
-          </div>
-          <input
-            readOnly
-            tabIndex={-1}
-            value={client.email ?? ''}
-            placeholder="No email on file"
-            style={{
-              ...inputSt,
-              color: client.email ? '#0f2744' : '#aaa',
-              cursor: 'default',
-            }}
-          />
-        </div>
+        {!loading && (
+          <>
+            {/* Outlook status banner */}
+            {outlookConnected ? (
+              sendResult && 'ok' in sendResult ? (
+                <div style={{
+                  background: '#e6f9f2', border: '0.5px solid #a0dfc4',
+                  borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+                  fontSize: 11, color: '#085041', lineHeight: 1.6,
+                }}>
+                  Email sent to {client.email} — check Outlook Sent Items for confirmation.
+                </div>
+              ) : sendResult && 'error' in sendResult ? (
+                <div style={{
+                  background: '#fef2f2', border: '0.5px solid #fca5a5',
+                  borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+                  fontSize: 11, color: '#991b1b', lineHeight: 1.6,
+                }}>
+                  {sendResult.error}
+                </div>
+              ) : null
+            ) : (
+              <div style={{
+                background: '#fffbeb', border: '0.5px solid #f0c674',
+                borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+                fontSize: 11, color: '#78500a', lineHeight: 1.6,
+              }}>
+                Outlook not connected. Use Copy buttons to paste into your email client, or{' '}
+                <a href="/settings/integrations" style={{ color: '#78500a', fontWeight: 600 }}>
+                  connect Outlook in Settings
+                </a>
+                {' '}to send directly.
+              </div>
+            )}
 
-        {/* Subject field */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={labelRowSt}>
-            <span>Subject</span>
-            <button
-              style={copyBtnSt}
-              aria-label="Copy subject"
-              onClick={() => subjectCopy.copy(subject)}
-            >
-              {subjectCopy.label}
-            </button>
-          </div>
-          <input
-            ref={subjectRef}
-            value={subject}
-            onChange={e => setSubject(e.target.value)}
-            style={inputSt}
-          />
-        </div>
+            {/* To field */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={labelRowSt}>
+                <span>To</span>
+                <button style={copyBtnSt} aria-label="Copy recipient address" onClick={() => toCopy.copy(client.email ?? '')}>
+                  {toCopy.label}
+                </button>
+              </div>
+              <input
+                readOnly
+                tabIndex={-1}
+                value={client.email ?? ''}
+                placeholder="No email on file"
+                style={{ ...inputSt, color: client.email ? '#0f2744' : '#aaa', cursor: 'default' }}
+              />
+            </div>
 
-        {/* Body field */}
-        <div style={{ marginBottom: 12 }}>
-          <div style={labelRowSt}>
-            <span>Body</span>
-            <button
-              style={copyBtnSt}
-              aria-label="Copy body"
-              onClick={() => bodyCopy.copy(body)}
-            >
-              {bodyCopy.label}
-            </button>
-          </div>
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            style={{
-              ...inputSt,
-              resize: 'vertical',
-              minHeight: 140,
-              fontFamily: 'inherit',
-              lineHeight: 1.6,
-            }}
-          />
-        </div>
+            {/* Subject field */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={labelRowSt}>
+                <span>Subject</span>
+                <button style={copyBtnSt} aria-label="Copy subject" onClick={() => subjectCopy.copy(subject)}>
+                  {subjectCopy.label}
+                </button>
+              </div>
+              <input ref={subjectRef} value={subject} onChange={e => setSubject(e.target.value)} style={inputSt} />
+            </div>
 
-        {/* Attachment row */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '8px 12px', background: '#f5f5f2', borderRadius: 6,
-          border: '0.5px solid #e8e7e0', marginBottom: 16, gap: 8,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <span className="pill pill-grey" style={{ fontSize: 10, flexShrink: 0 }}>PDF</span>
-            <span style={{ fontSize: 11, color: '#0f2744', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {statement.filename}
-            </span>
-          </div>
-          <button onClick={handleDownload} style={{ ...copyBtnSt, fontSize: 11, flexShrink: 0 }}>
-            Download attachment
-          </button>
-        </div>
+            {/* Body field */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={labelRowSt}>
+                <span>Body</span>
+                <button style={copyBtnSt} aria-label="Copy body" onClick={() => bodyCopy.copy(body)}>
+                  {bodyCopy.label}
+                </button>
+              </div>
+              <textarea
+                value={body}
+                onChange={e => setBody(e.target.value)}
+                style={{ ...inputSt, resize: 'vertical', minHeight: 140, fontFamily: 'inherit', lineHeight: 1.6 }}
+              />
+            </div>
 
-        {/* Footer */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          paddingTop: 12, borderTop: '0.5px solid #f0f0ea', gap: 12,
-        }}>
-          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12, flexShrink: 0 }}>
-            Close
-          </button>
-          {outlookConnected && !(sendResult && 'ok' in sendResult) && (
-            <button
-              className="btn btn-primary"
-              disabled={sending || !client.email}
-              onClick={() => {
-                if (!client.email) return
-                startSend(async () => {
-                  const result = await sendPortfolioStatement({
-                    documentId: statement.documentId,
-                    clientId,
-                    recipientEmail: client.email!,
-                    subject,
-                    bodyText: body,
-                  })
-                  setSendResult(result)
-                })
-              }}
-              style={{ fontSize: 12, flexShrink: 0 }}
-            >
-              {sending ? 'Sending…' : 'Send via Outlook'}
-            </button>
-          )}
-        </div>
+            {/* Attachment row */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 12px', background: '#f5f5f2', borderRadius: 6,
+              border: '0.5px solid #e8e7e0', marginBottom: 16, gap: 8,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <span className="pill pill-grey" style={{ fontSize: 10, flexShrink: 0 }}>PDF</span>
+                <span style={{ fontSize: 11, color: '#0f2744', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {document.filename}
+                </span>
+              </div>
+              <button onClick={handleDownload} style={{ ...copyBtnSt, fontSize: 11, flexShrink: 0 }}>
+                Download attachment
+              </button>
+            </div>
+
+            {/* Footer */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              paddingTop: 12, borderTop: '0.5px solid #f0f0ea', gap: 12,
+            }}>
+              <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12, flexShrink: 0 }}>
+                Close
+              </button>
+              {outlookConnected && !(sendResult && 'ok' in sendResult) && (
+                <button
+                  className="btn btn-primary"
+                  disabled={sending || !client.email}
+                  onClick={() => {
+                    if (!client.email) return
+                    startSend(async () => {
+                      const result = await sendDocument({
+                        documentId:     document.documentId,
+                        clientId,
+                        recipientEmail: client.email!,
+                        subject,
+                        bodyText:       body,
+                      })
+                      setSendResult(result)
+                    })
+                  }}
+                  style={{ fontSize: 12, flexShrink: 0 }}
+                >
+                  {sending ? 'Sending…' : 'Send via Outlook'}
+                </button>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
