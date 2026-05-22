@@ -346,3 +346,54 @@ export async function loadRunItems(runId: string): Promise<BulkRunItem[]> {
   if (error) throw new Error(error.message)
   return (data ?? []) as BulkRunItem[]
 }
+
+// ── loadRunItemsWithDetails ───────────────────────────────────────────────────
+// Three queries, two-query-then-merge pattern. Enriches each item with the
+// client's display name and the document's storage_url (needed for View links).
+
+export interface BulkRunItemDetail extends BulkRunItem {
+  client_name: string
+  storage_url: string | null
+}
+
+export async function loadRunItemsWithDetails(runId: string): Promise<BulkRunItemDetail[]> {
+  const supabase = await createClient()
+
+  const { data: items, error } = await supabase
+    .from('bulk_run_items')
+    .select('*')
+    .eq('bulk_run_id', runId)
+    .order('id')
+  if (error) throw new Error(error.message)
+  if (!items?.length) return []
+
+  const clientIds = [...new Set(items.map(i => i.client_id as string))]
+  const docIds    = items.map(i => i.document_id as string | null).filter(Boolean) as string[]
+
+  const [{ data: clients }, { data: docs }] = await Promise.all([
+    supabase.from('clients').select('id, full_name').in('id', clientIds),
+    docIds.length > 0
+      ? supabase.from('documents').select('id, storage_url').in('id', docIds)
+      : Promise.resolve({ data: [] as { id: string; storage_url: string }[] }),
+  ])
+
+  const clientMap = new Map((clients ?? []).map(c => [c.id, c.full_name as string]))
+  const docMap    = new Map((docs    ?? []).map(d => [d.id, d.storage_url as string]))
+
+  return items.map(item => ({
+    ...(item as unknown as BulkRunItem),
+    client_name: clientMap.get(item.client_id as string) ?? (item.client_id as string),
+    storage_url: item.document_id ? (docMap.get(item.document_id as string) ?? null) : null,
+  }))
+}
+
+// ── getSignedUrlForDocument ───────────────────────────────────────────────────
+
+export async function getSignedUrlForDocument(storagePath: string): Promise<string> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.storage
+    .from('documents')
+    .createSignedUrl(storagePath, 60)
+  if (error || !data?.signedUrl) throw new Error('Failed to generate download link')
+  return data.signedUrl
+}

@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { formatDate } from '@/lib/utils'
+import PastRunDetails from './portfolio-statement/_components/PastRunDetails'
 
 interface InvestorUpdate {
   id: string
@@ -59,6 +61,8 @@ export default function Reports({
 }) {
   const updates        = updatesRaw as unknown as InvestorUpdate[]
   const recentBulkRuns = recentBulkRunsRaw as unknown as BulkRunRow[]
+
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null)
 
   const recent  = updates.filter(u => u.status === 'sent').slice(0, 10)
   const inDraft = updates.filter(u => u.status !== 'sent')
@@ -151,22 +155,31 @@ export default function Reports({
               </thead>
               <tbody>
                 {recentBulkRuns.map(run => (
-                  <tr key={run.id}>
-                    <td style={{ fontSize: 12 }}>{formatBulkRunDate(run.started_at)}</td>
-                    <td style={{ fontSize: 12 }}>{run.period_date ?? '—'}</td>
-                    <td style={{ fontSize: 12 }}>{run.total_items}</td>
-                    <td style={{ fontSize: 12, color: '#1d9e75' }}>{run.succeeded_count}</td>
-                    <td style={{ fontSize: 12, color: run.failed_count > 0 ? '#c0392b' : '#999' }}>{run.failed_count}</td>
-                    <td style={{ fontSize: 12 }}>{BULK_RUN_STATUS_LABELS[run.status] ?? run.status}</td>
-                    <td>
-                      <a
-                        href="/reports/portfolio-statement"
-                        style={{ fontSize: 11, color: '#185fa5', textDecoration: 'underline' }}
-                      >
-                        {run.status === 'in_progress' ? 'View progress' : 'View details'}
-                      </a>
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={run.id}>
+                      <td style={{ fontSize: 12 }}>{formatBulkRunDate(run.started_at)}</td>
+                      <td style={{ fontSize: 12 }}>{run.period_date ?? '—'}</td>
+                      <td style={{ fontSize: 12 }}>{run.total_items}</td>
+                      <td style={{ fontSize: 12, color: '#1d9e75' }}>{run.succeeded_count}</td>
+                      <td style={{ fontSize: 12, color: run.failed_count > 0 ? '#c0392b' : '#999' }}>{run.failed_count}</td>
+                      <td style={{ fontSize: 12 }}>{BULK_RUN_STATUS_LABELS[run.status] ?? run.status}</td>
+                      <td>
+                        <button
+                          style={{ fontSize: 11, color: '#185fa5', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}
+                          onClick={() => setExpandedRunId(prev => prev === run.id ? null : run.id)}
+                        >
+                          {expandedRunId === run.id ? 'Hide details' : 'View details'}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedRunId === run.id && (
+                      <tr key={`${run.id}-details`}>
+                        <td colSpan={7} style={{ padding: '10px 14px', background: '#fafaf8', borderBottom: '0.5px solid #e8e7e0' }}>
+                          <PastRunDetails runId={run.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>

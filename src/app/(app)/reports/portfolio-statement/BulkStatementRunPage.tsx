@@ -9,12 +9,12 @@ import {
   savePreset,
   renamePreset,
   deletePreset,
-  loadRunItems,
   type BulkRunSummary,
   type BulkRunItem,
   type TickResult,
   type BulkRunPreset,
 } from './bulkRunActions'
+import PastRunDetails from './_components/PastRunDetails'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -134,7 +134,6 @@ export default function BulkStatementRunPage({
   const [showManagePresets, setShowManagePresets]   = useState(false)
   const [runError, setRunError]                     = useState<string | null>(null)
   const [expandedRunId, setExpandedRunId]           = useState<string | null>(null)
-  const [expandedItems, setExpandedItems]           = useState<Record<string, BulkRunItem[]>>({})
 
   const pollingRef = useRef(false)
 
@@ -328,16 +327,8 @@ export default function BulkStatementRunPage({
     setTimeout(() => setPresetLoadedMsg(null), 4000)
   }
 
-  async function handleExpandRun(runId: string) {
-    if (expandedRunId === runId) {
-      setExpandedRunId(null)
-      return
-    }
-    setExpandedRunId(runId)
-    if (!expandedItems[runId]) {
-      const items = await loadRunItems(runId)
-      setExpandedItems(prev => ({ ...prev, [runId]: items }))
-    }
+  function handleExpandRun(runId: string) {
+    setExpandedRunId(prev => (prev === runId ? null : runId))
   }
 
   // ── Preset label ──────────────────────────────────────────────────────────────
@@ -482,9 +473,7 @@ export default function BulkStatementRunPage({
         <Section title="Past runs">
           <PastRunsTable
             runs={pastRuns}
-            clients={clients}
             expandedRunId={expandedRunId}
-            expandedItems={expandedItems}
             onExpand={handleExpandRun}
             onRetry={handleRetry}
           />
@@ -910,25 +899,15 @@ function BulkRunProgress({
 
 function PastRunsTable({
   runs,
-  clients,
   expandedRunId,
-  expandedItems,
   onExpand,
   onRetry,
 }: {
   runs:          BulkRunSummary[]
-  clients:       ClientRow[]
   expandedRunId: string | null
-  expandedItems: Record<string, BulkRunItem[]>
   onExpand:      (id: string) => void
   onRetry:       (id: string) => void
 }) {
-  const clientMap = useMemo(() => {
-    const m = new Map<string, string>()
-    for (const c of clients) m.set(c.id, c.full_name)
-    return m
-  }, [clients])
-
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead>
@@ -965,20 +944,10 @@ function PastRunsTable({
                 )}
               </td>
             </tr>
-            {expandedRunId === run.id && expandedItems[run.id] && (
+            {expandedRunId === run.id && (
               <tr key={`${run.id}-expanded`}>
                 <td colSpan={7} style={{ padding: '8px 16px', background: '#fafaf8' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <tbody>
-                      {expandedItems[run.id].map(item => (
-                        <tr key={item.id} style={{ borderBottom: '0.5px solid #f0efea' }}>
-                          <td style={{ ...td, width: 90 }}><StatusBadge status={item.status} /></td>
-                          <td style={td}>{clientMap.get(item.client_id) ?? item.client_id}</td>
-                          <td style={{ ...td, color: '#c0392b' }}>{item.error_message ?? ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <PastRunDetails runId={run.id} />
                 </td>
               </tr>
             )}
