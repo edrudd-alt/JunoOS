@@ -332,3 +332,16 @@ export async function deletePreset(presetId: string): Promise<void> {
   const { error } = await supabase.from('bulk_run_presets').delete().eq('id', presetId)
   if (error) throw new Error(error.message)
 }
+
+// ── loadRunItems ──────────────────────────────────────────────────────────────
+
+export async function loadRunItems(runId: string): Promise<BulkRunItem[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('bulk_run_items')
+    .select('*')
+    .eq('bulk_run_id', runId)
+    .order('id')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as BulkRunItem[]
+}
