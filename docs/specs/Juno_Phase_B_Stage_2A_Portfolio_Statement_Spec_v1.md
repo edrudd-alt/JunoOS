@@ -499,6 +499,8 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.47 — Supabase Vault evaluation.** Consider migrating token encryption to Supabase Vault rather than application-level AES-256-GCM. Lower maintenance burden but Vault is still in beta.
 
+- **14.48 — Per-user RLS for OAuth tables.** The `outlook_connections` and `oauth_pending` tables currently use the platform-wide "authenticated full access" RLS pattern. If JunoOS adds a reliable mapping between `auth.uid()` and `team_members.id` (e.g. a `team_members.auth_user_id` column), tighten these policies so each team member can only access their own tokens via RLS, not just via application code.
+
 ---
 
 ## 9. Version history
