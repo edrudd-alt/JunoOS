@@ -116,13 +116,13 @@ export default function BulkStatementRunPage({
     initialActiveRun as BulkRunSummary | null
   )
   const [runItems, setRunItems]                     = useState<BulkRunItem[]>(
-    initialActiveRunItems as BulkRunItem[]
+    initialActiveRunItems as unknown as BulkRunItem[]
   )
   const [pastRuns, setPastRuns]                     = useState<BulkRunSummary[]>(
-    initialPastRuns as BulkRunSummary[]
+    initialPastRuns as unknown as BulkRunSummary[]
   )
   const [presets, setPresets]                       = useState<BulkRunPreset[]>(
-    initialPresets as BulkRunPreset[]
+    initialPresets as unknown as BulkRunPreset[]
   )
   const [isPolling, setIsPolling]                   = useState(!!initialActiveRun)
   const [isStartingRun, setIsStartingRun]           = useState(false)
@@ -241,7 +241,7 @@ export default function BulkStatementRunPage({
   useEffect(() => {
     if (initialActiveRun) {
       pollingRef.current = true
-      poll((initialActiveRun as BulkRunSummary).id)
+      poll((initialActiveRun as unknown as BulkRunSummary).id)
     }
     return () => { pollingRef.current = false }
   }, [])  // eslint-disable-line react-hooks/exhaustive-deps
@@ -320,7 +320,7 @@ export default function BulkStatementRunPage({
   }
 
   function handleLoadPreset(preset: BulkRunPreset) {
-    setFilters(preset.filter_state as FilterState)
+    setFilters(preset.filter_state as unknown as FilterState)
     setSelectedIds(new Set(preset.client_ids))
     setLoadedPresetId(preset.id)
     setLoadedPresetModified(false)
@@ -497,7 +497,7 @@ export default function BulkStatementRunPage({
           selectedCount={selectedIds.size}
           onClose={() => setShowSavePreset(false)}
           onSave={async (name) => {
-            const { preset } = await savePreset(name, [...selectedIds], filters as Record<string, unknown>)
+            const { preset } = await savePreset(name, [...selectedIds], filters as unknown as Record<string, unknown>)
             setPresets(prev => [preset, ...prev])
             setLoadedPresetId(preset.id)
             setLoadedPresetModified(false)
