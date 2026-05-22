@@ -1,36 +1,87 @@
 import { createClient } from '@/lib/supabase/server'
-import PortfolioStatementWizard from './PortfolioStatementWizard'
+import BulkStatementRunPage from './BulkStatementRunPage'
 
-export default async function PortfolioStatementPage() {
+interface Props {
+  searchParams: Promise<{ client?: string }>
+}
+
+export default async function PortfolioStatementPage({ searchParams }: Props) {
+  const { client: preselectedClientId } = await searchParams
   const supabase = await createClient()
 
+  // 1. Lead clients only (no sub-entities)
   const { data: clients } = await supabase
     .from('clients')
-    .select('id, full_name, email, lead_investor_id')
+    .select('id, full_name, email, is_favourite')
     .is('lead_investor_id', null)
     .order('full_name')
 
-  const { data: companies } = await supabase
-    .from('companies')
-    .select('id, name')
-    .order('name')
+  const clientIds = (clients ?? []).map(c => c.id)
 
-  const { data: portfolio } = await supabase
-    .from('client_portfolio_summary')
-    .select('client_id, company_id, company_name, total_shares, total_invested, current_value, gain_loss')
+  // 2. Investments — two-query pattern, fund-type + active-investment logic
+  const { data: investments } = clientIds.length > 0
+    ? await supabase
+        .from('investments')
+        .select('client_id, fund_type, shares_purchased')
+        .in('client_id', clientIds)
+    : { data: [] as { client_id: string; fund_type: string | null; shares_purchased: number }[] }
 
-  const { data: investments } = await supabase
-    .from('investments')
-    .select('id, client_id, company_id, shares_purchased, sum_subscribed, investment_date, eis_status, share_class')
-    .eq('status', 'active')
-    .order('investment_date', { ascending: true })
+  // 3. Non-superseded portfolio statements (last-statement + hasCurrent columns)
+  const { data: statements } = clientIds.length > 0
+    ? await supabase
+        .from('documents')
+        .select('client_id, period, created_at')
+        .eq('type', 'portfolio_statement')
+        .eq('superseded', false)
+        .in('client_id', clientIds)
+        .order('created_at', { ascending: false })
+    : { data: [] as { client_id: string; period: string | null; created_at: string }[] }
+
+  // 4. In-progress run (latest first if somehow multiple exist)
+  const { data: activeRuns } = await supabase
+    .from('bulk_runs')
+    .select('*')
+    .eq('type', 'portfolio_statement')
+    .eq('status', 'in_progress')
+    .order('started_at', { ascending: false })
+    .limit(1)
+
+  const activeRun = activeRuns?.[0] ?? null
+
+  // 5. Items for the active run
+  const { data: activeRunItems } = activeRun
+    ? await supabase
+        .from('bulk_run_items')
+        .select('*')
+        .eq('bulk_run_id', activeRun.id)
+    : { data: [] as Record<string, unknown>[] }
+
+  // 6. Past runs (completed / cancelled / failed)
+  const { data: pastRuns } = await supabase
+    .from('bulk_runs')
+    .select('*')
+    .eq('type', 'portfolio_statement')
+    .in('status', ['completed', 'cancelled', 'failed'])
+    .order('started_at', { ascending: false })
+    .limit(10)
+
+  // 7. Presets
+  const { data: presets } = await supabase
+    .from('bulk_run_presets')
+    .select('*')
+    .eq('type', 'portfolio_statement')
+    .order('created_at', { ascending: false })
 
   return (
-    <PortfolioStatementWizard
-      clients={(clients ?? []) as Record<string, unknown>[]}
-      companies={(companies ?? []) as Record<string, unknown>[]}
-      portfolio={(portfolio ?? []) as Record<string, unknown>[]}
-      investments={(investments ?? []) as Record<string, unknown>[]}
+    <BulkStatementRunPage
+      clients={(clients ?? []) as { id: string; full_name: string; email: string | null; is_favourite: boolean }[]}
+      investments={(investments ?? []) as { client_id: string; fund_type: string | null; shares_purchased: number }[]}
+      statements={(statements ?? []) as { client_id: string; period: string | null; created_at: string }[]}
+      activeRun={activeRun ?? null}
+      activeRunItems={(activeRunItems ?? []) as Record<string, unknown>[]}
+      pastRuns={(pastRuns ?? []) as Record<string, unknown>[]}
+      initialPresets={(presets ?? []) as Record<string, unknown>[]}
+      preselectedClientId={preselectedClientId ?? null}
     />
   )
 }
