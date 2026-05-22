@@ -84,6 +84,24 @@ export default function SettingsPage() {
           </div>
         </Link>
 
+        {/* Email templates — active */}
+        <Link href="/settings/email-templates" style={{ textDecoration: 'none' }}>
+          <div className="card" style={{ cursor: 'pointer', transition: 'box-shadow 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 12px rgba(0,0,0,0.08)')}
+            onMouseLeave={e => (e.currentTarget.style.boxShadow = '')}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 8, background: '#e8f5f0', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>✉️</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744' }}>Email templates</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+                  Edit default subject and body for each document type sent via Outlook
+                </div>
+              </div>
+              <div style={{ fontSize: 12, color: '#185fa5', fontWeight: 500 }}>Open →</div>
+            </div>
+          </div>
+        </Link>
+
         {/* Integrations — active */}
         <Link href="/settings/integrations" style={{ textDecoration: 'none' }}>
           <div className="card" style={{ cursor: 'pointer', transition: 'box-shadow 0.15s' }}
