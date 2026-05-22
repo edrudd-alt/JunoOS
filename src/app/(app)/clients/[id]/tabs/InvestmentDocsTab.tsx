@@ -40,6 +40,9 @@ interface Props {
   documents: Record<string, unknown>[]
   clientFullName?: string
   clientEmail?: string | null
+  clientId?: string
+  outlookConnected?: boolean
+  latestSends?: Record<string, string>
 }
 
 // Group label for documents with no company_id, keyed by documents.type.
@@ -48,7 +51,7 @@ const NON_COMPANY_GROUP_BY_TYPE: Record<string, string> = {
   portfolio_statement: 'Valuations',
 }
 
-export default function InvestmentDocsTab({ documents, clientFullName = '', clientEmail = null }: Props) {
+export default function InvestmentDocsTab({ documents, clientFullName = '', clientEmail = null, clientId = '', outlookConnected, latestSends }: Props) {
   const docs = documents as unknown as Doc[]
 
   const [composerStatement, setComposerStatement] = useState<ComposerStatement | null>(null)
@@ -184,6 +187,11 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                             <span style={{ fontSize: 11, color: '#888' }}>
                               {formatDocumentTimestamp(doc.created_at)}
                             </span>
+                            {latestSends?.[doc.id] && (
+                              <span style={{ fontSize: 11, color: '#1d9e75', whiteSpace: 'nowrap' }}>
+                                Sent {formatDocumentTimestamp(latestSends[doc.id])}
+                              </span>
+                            )}
                             {SUPPORTS_EMAIL[doc.type] && (
                               <button
                                 onClick={() => setComposerStatement({
@@ -227,6 +235,8 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
           open={true}
           statement={composerStatement}
           client={{ fullName: clientFullName, email: clientEmail }}
+          clientId={clientId}
+          outlookConnected={outlookConnected}
           onClose={() => setComposerStatement(null)}
         />
       )}

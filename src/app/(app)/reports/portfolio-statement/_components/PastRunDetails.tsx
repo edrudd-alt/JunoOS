@@ -12,24 +12,26 @@ interface Props {
 }
 
 export default function PastRunDetails({ runId }: Props) {
-  const [items, setItems]     = useState<BulkRunItemDetail[] | null>(null)
+  const [result, setResult]     = useState<{ items: BulkRunItemDetail[]; runType: string } | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     loadRunItemsWithDetails(runId)
-      .then(setItems)
+      .then(setResult)
       .catch(err => setLoadError(err instanceof Error ? err.message : String(err)))
   }, [runId])
 
   if (loadError) {
     return <p style={{ fontSize: 12, color: '#c0392b', padding: '8px 0' }}>{loadError}</p>
   }
-  if (!items) {
+  if (!result) {
     return <p style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>Loading…</p>
   }
-  if (items.length === 0) {
+  if (result.items.length === 0) {
     return <p style={{ fontSize: 12, color: '#999', padding: '8px 0' }}>No items found.</p>
   }
+
+  const isSendRun = result.runType === 'portfolio_statement_send'
 
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -37,18 +39,24 @@ export default function PastRunDetails({ runId }: Props) {
         <tr style={{ borderBottom: '0.5px solid #e8e7e0' }}>
           <th style={th}>Status</th>
           <th style={th}>Investor</th>
+          {isSendRun && <th style={th}>Recipient</th>}
           <th style={th}></th>
         </tr>
       </thead>
       <tbody>
-        {items.map(item => (
+        {result.items.map(item => (
           <tr key={item.id} style={{ borderBottom: '0.5px solid #f5f4f0' }}>
             <td style={{ ...td, width: 100 }}>
-              <StatusLabel status={item.status} />
+              <StatusLabel status={item.status} isSendRun={isSendRun} />
             </td>
             <td style={td}>{item.client_name}</td>
-            <td style={{ ...td, width: 140 }}>
-              {item.status === 'succeeded' && item.storage_url && (
+            {isSendRun && (
+              <td style={{ ...td, color: '#555' }}>
+                {item.recipient_email ?? '—'}
+              </td>
+            )}
+            <td style={{ ...td, width: 200 }}>
+              {!isSendRun && item.status === 'succeeded' && item.storage_url && (
                 <ViewButton storagePath={item.storage_url} />
               )}
               {item.status === 'failed' && item.error_message && (
@@ -100,7 +108,7 @@ function ViewButton({ storagePath }: { storagePath: string }) {
 
 // ── StatusLabel ───────────────────────────────────────────────────────────────
 
-const STATUS_MAP: Record<string, [string, string]> = {
+const GENERATION_STATUS_MAP: Record<string, [string, string]> = {
   pending:     ['Pending',     '#999'],
   in_progress: ['Generating',  '#185fa5'],
   succeeded:   ['Done',        '#1d9e75'],
@@ -108,8 +116,17 @@ const STATUS_MAP: Record<string, [string, string]> = {
   skipped:     ['Skipped',     '#aaa'],
 }
 
-function StatusLabel({ status }: { status: string }) {
-  const [label, color] = STATUS_MAP[status] ?? [status, '#666']
+const SEND_STATUS_MAP: Record<string, [string, string]> = {
+  pending:     ['Pending',    '#999'],
+  in_progress: ['Sending',   '#185fa5'],
+  succeeded:   ['Sent',      '#1d9e75'],
+  failed:      ['Failed',    '#c0392b'],
+  skipped:     ['Skipped',   '#aaa'],
+}
+
+function StatusLabel({ status, isSendRun }: { status: string; isSendRun: boolean }) {
+  const map = isSendRun ? SEND_STATUS_MAP : GENERATION_STATUS_MAP
+  const [label, color] = map[status] ?? [status, '#666']
   return <span style={{ color, fontWeight: 500 }}>{label}</span>
 }
 

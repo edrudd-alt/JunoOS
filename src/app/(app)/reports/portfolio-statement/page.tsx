@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import BulkStatementRunPage from './BulkStatementRunPage'
+import { getOutlookConnectionStatus } from '@/app/(app)/settings/outlookActions'
 
 interface Props {
   searchParams: Promise<{ client?: string }>
@@ -37,7 +38,7 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
         .order('created_at', { ascending: false })
     : { data: [] as { client_id: string; period: string | null; created_at: string }[] }
 
-  // 4. In-progress run (latest first if somehow multiple exist)
+  // 4. In-progress run (generation type only — send runs start from UI)
   const { data: activeRuns } = await supabase
     .from('bulk_runs')
     .select('*')
@@ -56,21 +57,24 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
         .eq('bulk_run_id', activeRun.id)
     : { data: [] as Record<string, unknown>[] }
 
-  // 6. Past runs (completed / cancelled / failed)
+  // 6. Past runs — both generation and send runs, newest first
   const { data: pastRuns } = await supabase
     .from('bulk_runs')
     .select('*')
-    .eq('type', 'portfolio_statement')
+    .in('type', ['portfolio_statement', 'portfolio_statement_send'])
     .in('status', ['completed', 'cancelled', 'failed'])
     .order('started_at', { ascending: false })
-    .limit(10)
+    .limit(20)
 
-  // 7. Presets
-  const { data: presets } = await supabase
-    .from('bulk_run_presets')
-    .select('*')
-    .eq('type', 'portfolio_statement')
-    .order('created_at', { ascending: false })
+  // 7. Presets + Outlook connection status (parallel — independent)
+  const [{ data: presets }, outlookStatus] = await Promise.all([
+    supabase
+      .from('bulk_run_presets')
+      .select('*')
+      .eq('type', 'portfolio_statement')
+      .order('created_at', { ascending: false }),
+    getOutlookConnectionStatus(),
+  ])
 
   return (
     <BulkStatementRunPage
@@ -82,6 +86,7 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
       pastRuns={(pastRuns ?? []) as Record<string, unknown>[]}
       initialPresets={(presets ?? []) as Record<string, unknown>[]}
       preselectedClientId={preselectedClientId ?? null}
+      outlookEmail={outlookStatus.connected ? outlookStatus.email : undefined}
     />
   )
 }

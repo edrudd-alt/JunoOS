@@ -188,6 +188,7 @@ export default function GenerateStatementSection({ clientId, clientFullName, cli
           open={true}
           statement={composerStatement}
           client={{ fullName: clientFullName, email: clientEmail }}
+          clientId={clientId}
           onClose={() => setComposerStatement(null)}
         />
       )}

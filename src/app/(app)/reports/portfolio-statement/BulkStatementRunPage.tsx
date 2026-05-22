@@ -15,6 +15,7 @@ import {
   type BulkRunPreset,
 } from './bulkRunActions'
 import PastRunDetails from './_components/PastRunDetails'
+import SendAllConfirmModal from './_components/SendAllConfirmModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -56,6 +57,7 @@ interface Props {
   pastRuns:            Record<string, unknown>[]
   initialPresets:      Record<string, unknown>[]
   preselectedClientId: string | null
+  outlookEmail?:       string
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -97,6 +99,7 @@ export default function BulkStatementRunPage({
   pastRuns:      initialPastRuns,
   initialPresets,
   preselectedClientId,
+  outlookEmail = '',
 }: Props) {
   const [periodDate, setPeriodDate] = useState<string>(defaultPeriodDate)
   const [filters, setFilters] = useState<FilterState>({
@@ -134,6 +137,7 @@ export default function BulkStatementRunPage({
   const [showManagePresets, setShowManagePresets]   = useState(false)
   const [runError, setRunError]                     = useState<string | null>(null)
   const [expandedRunId, setExpandedRunId]           = useState<string | null>(null)
+  const [sendConfirmRun, setSendConfirmRun]         = useState<BulkRunSummary | null>(null)
 
   const pollingRef = useRef(false)
 
@@ -331,6 +335,21 @@ export default function BulkStatementRunPage({
     setExpandedRunId(prev => (prev === runId ? null : runId))
   }
 
+  function handleSendAll(run: BulkRunSummary) {
+    setSendConfirmRun(run)
+  }
+
+  async function handleSendStarted(bulkRunId: string) {
+    setSendConfirmRun(null)
+    const res  = await fetch(`/api/bulk-runs/${bulkRunId}/tick`, { method: 'POST' })
+    const data = await res.json() as TickResult
+    setActiveRun(data.run)
+    setRunItems(data.items)
+    pollingRef.current = true
+    setIsPolling(true)
+    setTimeout(() => poll(bulkRunId), 3000)
+  }
+
   // ── Preset label ──────────────────────────────────────────────────────────────
 
   const loadedPreset = presets.find(p => p.id === loadedPresetId)
@@ -476,6 +495,8 @@ export default function BulkStatementRunPage({
             expandedRunId={expandedRunId}
             onExpand={handleExpandRun}
             onRetry={handleRetry}
+            outlookEmail={outlookEmail}
+            onSendAll={handleSendAll}
           />
         </Section>
       )}
@@ -514,6 +535,15 @@ export default function BulkStatementRunPage({
               setLoadedPresetModified(false)
             }
           }}
+        />
+      )}
+
+      {sendConfirmRun && outlookEmail && (
+        <SendAllConfirmModal
+          sourceRun={sendConfirmRun}
+          outlookEmail={outlookEmail}
+          onClose={() => setSendConfirmRun(null)}
+          onStarted={handleSendStarted}
         />
       )}
     </div>
@@ -902,17 +932,22 @@ function PastRunsTable({
   expandedRunId,
   onExpand,
   onRetry,
+  outlookEmail,
+  onSendAll,
 }: {
   runs:          BulkRunSummary[]
   expandedRunId: string | null
   onExpand:      (id: string) => void
   onRetry:       (id: string) => void
+  outlookEmail?: string
+  onSendAll:     (run: BulkRunSummary) => void
 }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
       <thead>
         <tr style={{ borderBottom: '0.5px solid #e8e7e0' }}>
           <th style={th}>Started</th>
+          <th style={th}>Type</th>
           <th style={th}>Period</th>
           <th style={th}>Count</th>
           <th style={th}>Succeeded</th>
@@ -926,6 +961,15 @@ function PastRunsTable({
           <>
             <tr key={run.id} style={{ borderBottom: '0.5px solid #f0efea' }}>
               <td style={td}>{formatRunDate(run.started_at)}</td>
+              <td style={td}>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 4,
+                  background: run.type === 'portfolio_statement_send' ? '#e1f5ee' : '#f0f0ea',
+                  color:      run.type === 'portfolio_statement_send' ? '#085041' : '#555',
+                }}>
+                  {run.type === 'portfolio_statement_send' ? 'Send' : 'Generate'}
+                </span>
+              </td>
               <td style={td}>{run.period_date ? formatPeriodDateUK(run.period_date) : '—'}</td>
               <td style={td}>{run.total_items}</td>
               <td style={{ ...td, color: '#1d9e75' }}>{run.succeeded_count}</td>
@@ -933,7 +977,7 @@ function PastRunsTable({
                 {run.failed_count}
               </td>
               <td style={td}><StatusBadge status={run.status} /></td>
-              <td style={{ ...td, display: 'flex', gap: 8 }}>
+              <td style={{ ...td, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button style={linkBtn} onClick={() => onExpand(run.id)}>
                   {expandedRunId === run.id ? 'Hide details' : 'View details'}
                 </button>
@@ -942,11 +986,16 @@ function PastRunsTable({
                     Retry failed
                   </button>
                 )}
+                {run.type === 'portfolio_statement' && run.status === 'completed' && run.succeeded_count > 0 && outlookEmail && (
+                  <button style={{ ...linkBtn, color: '#1d9e75' }} onClick={() => onSendAll(run)}>
+                    Send all via Outlook
+                  </button>
+                )}
               </td>
             </tr>
             {expandedRunId === run.id && (
               <tr key={`${run.id}-expanded`}>
-                <td colSpan={7} style={{ padding: '8px 16px', background: '#fafaf8' }}>
+                <td colSpan={8} style={{ padding: '8px 16px', background: '#fafaf8' }}>
                   <PastRunDetails runId={run.id} />
                 </td>
               </tr>

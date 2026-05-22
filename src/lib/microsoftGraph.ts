@@ -136,6 +136,53 @@ export async function sendMail({
   // 202 Accepted; no response body
 }
 
+export async function sendMailWithAttachment({
+  accessToken,
+  subject,
+  bodyText,
+  to,
+  attachmentName,
+  attachmentBase64,
+  saveToSentItems = true,
+}: {
+  accessToken: string
+  subject: string
+  bodyText: string
+  to: string
+  attachmentName: string
+  attachmentBase64: string
+  saveToSentItems?: boolean
+}): Promise<{ ok: true } | { ok: false; status: number; body: string }> {
+  const res = await fetch(`${GRAPH_BASE}/me/sendMail`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'Text', content: bodyText },
+        toRecipients: [{ emailAddress: { address: to } }],
+        attachments: [
+          {
+            '@odata.type': '#microsoft.graph.fileAttachment',
+            name: attachmentName,
+            contentType: 'application/pdf',
+            contentBytes: attachmentBase64,
+          },
+        ],
+      },
+      saveToSentItems,
+    }),
+  })
+  if (!res.ok) {
+    const body = await res.text()
+    return { ok: false, status: res.status, body }
+  }
+  return { ok: true }
+}
+
 export function generatePkcePair(): { codeVerifier: string; codeChallenge: string } {
   const verifier = crypto.randomBytes(32).toString('base64url')
   const challenge = crypto

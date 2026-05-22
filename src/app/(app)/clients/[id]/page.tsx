@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
 import type { ClientRow } from './ClientRecord'
+import { getOutlookConnectionStatus } from '@/app/(app)/settings/outlookActions'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -266,6 +267,26 @@ export default async function ClientRecordPage({ params }: Props) {
   const lastActivity = (lastActivityRow as Record<string, unknown> | null)?.created_at as string | null
     ?? client.date_joined ?? null
 
+  // Latest successful send per document for Documents tab indicator
+  const docIds = mergedDocuments.map(d => (d as Record<string, unknown>).id as string)
+  const [outlookStatus, { data: latestSendsRows }] = await Promise.all([
+    getOutlookConnectionStatus(),
+    docIds.length > 0
+      ? supabase
+          .from('email_sends')
+          .select('document_id, completed_at')
+          .in('document_id', docIds)
+          .eq('status', 'succeeded')
+          .order('completed_at', { ascending: false })
+      : Promise.resolve({ data: [] as { document_id: string; completed_at: string }[] }),
+  ])
+
+  // Build documentId → latest completedAt (rows arrive newest-first; take first per doc)
+  const latestSends: Record<string, string> = {}
+  for (const row of latestSendsRows ?? []) {
+    if (!latestSends[row.document_id]) latestSends[row.document_id] = row.completed_at
+  }
+
   return (
     <ClientRecord
       client={client as unknown as ClientRow}
@@ -286,6 +307,8 @@ export default async function ClientRecordPage({ params }: Props) {
       feeSchedules={(feeSchedulesData ?? []) as { id: string; name: string }[]}
       nominees={(nomineesData ?? []) as { id: string; name: string }[]}
       portfolioStatements={(portfolioStatements ?? []) as import('./_components/GenerateStatementSection').StatementDoc[]}
+      outlookConnected={outlookStatus.connected}
+      latestSends={latestSends}
     />
   )
 }
