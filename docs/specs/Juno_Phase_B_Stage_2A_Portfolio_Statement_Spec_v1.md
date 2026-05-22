@@ -525,6 +525,8 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.60 — Editable templates for non-document email types.** When transaction-workflow emails arrive (Future Work 14.51), they won't be tied to a `documents` row but should still use centrally-managed templates. Will need a separate `notification_templates` table or a `document_type` of `NULL` / a separate type discriminator column on `email_templates`.
 
+- **14.61 — Documents tab needs proper column headers.** The Documents tab currently displays multiple dates per row (document date, sent date) without column headers, so two unlabelled dates sit next to each other looking like "two random dates" — readers have to know which is which. Convert the rendering to a proper table with column headers (Date, Type, Filename, Sent, Actions) so each piece of information is clearly labelled. Applies to per-client Documents tab AND deal-page Documents tab. Noted during 14.49 preview review.
+
 ---
 
 ## 9. Version history
