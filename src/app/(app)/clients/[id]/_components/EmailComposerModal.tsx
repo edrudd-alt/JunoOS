@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useTransition } from 'react'
 import {
   deriveClientFirstName,
   formatPeriodDateUK,
@@ -8,6 +8,7 @@ import {
   PORTFOLIO_STATEMENT_BODY_TEMPLATE,
 } from '@/lib/templates'
 import { getDownloadUrlForDocument } from '../documentActions'
+import { sendPortfolioStatement } from '../emailSendActions'
 
 export interface ComposerStatement {
   documentId: string
@@ -23,6 +24,8 @@ interface Props {
     fullName: string
     email: string | null
   }
+  clientId: string
+  outlookConnected?: boolean
 }
 
 type CopyState = 'idle' | 'copied' | 'failed'
@@ -41,11 +44,13 @@ function useCopyButton(): { label: string; copy: (value: string) => void } {
   }
 }
 
-export default function EmailComposerModal({ open, onClose, statement, client }: Props) {
+export default function EmailComposerModal({ open, onClose, statement, client, clientId, outlookConnected }: Props) {
   const subjectRef = useRef<HTMLInputElement>(null)
   const toCopy      = useCopyButton()
   const subjectCopy = useCopyButton()
   const bodyCopy    = useCopyButton()
+  const [sending, startSend] = useTransition()
+  const [sendResult, setSendResult] = useState<{ ok: true } | { error: string } | null>(null)
 
   const periodFormatted  = formatPeriodDateUK(statement.periodDate)
   const clientFirstName  = deriveClientFirstName(client.fullName)
@@ -59,6 +64,7 @@ export default function EmailComposerModal({ open, onClose, statement, client }:
     if (!open) return
     setSubject(PORTFOLIO_STATEMENT_SUBJECT_TEMPLATE({ clientFirstName: deriveClientFirstName(client.fullName), periodDateFormatted: formatPeriodDateUK(statement.periodDate) }))
     setBody(PORTFOLIO_STATEMENT_BODY_TEMPLATE({ clientFirstName: deriveClientFirstName(client.fullName), periodDateFormatted: formatPeriodDateUK(statement.periodDate) }))
+    setSendResult(null)
     setTimeout(() => subjectRef.current?.focus(), 0)
 
     function onKeyDown(e: KeyboardEvent) {
@@ -141,14 +147,38 @@ export default function EmailComposerModal({ open, onClose, statement, client }:
           </div>
         </div>
 
-        {/* Warning banner */}
-        <div style={{
-          background: '#fffbeb', border: '0.5px solid #f0c674',
-          borderRadius: 6, padding: '8px 12px', marginBottom: 16,
-          fontSize: 11, color: '#78500a', lineHeight: 1.6,
-        }}>
-          Outlook integration not yet available. Use Copy buttons to paste into your email client. The PDF needs to be downloaded and attached manually.
-        </div>
+        {/* Outlook status banner */}
+        {outlookConnected ? (
+          sendResult && 'ok' in sendResult ? (
+            <div style={{
+              background: '#e6f9f2', border: '0.5px solid #a0dfc4',
+              borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+              fontSize: 11, color: '#085041', lineHeight: 1.6,
+            }}>
+              Email sent to {client.email} — check Outlook Sent Items for confirmation.
+            </div>
+          ) : sendResult && 'error' in sendResult ? (
+            <div style={{
+              background: '#fef2f2', border: '0.5px solid #fca5a5',
+              borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+              fontSize: 11, color: '#991b1b', lineHeight: 1.6,
+            }}>
+              {sendResult.error}
+            </div>
+          ) : null
+        ) : (
+          <div style={{
+            background: '#fffbeb', border: '0.5px solid #f0c674',
+            borderRadius: 6, padding: '8px 12px', marginBottom: 16,
+            fontSize: 11, color: '#78500a', lineHeight: 1.6,
+          }}>
+            Outlook not connected. Use Copy buttons to paste into your email client, or{' '}
+            <a href="/settings/integrations" style={{ color: '#78500a', fontWeight: 600 }}>
+              connect Outlook in Settings
+            </a>
+            {' '}to send directly.
+          </div>
+        )}
 
         {/* To field */}
         <div style={{ marginBottom: 12 }}>
@@ -242,12 +272,31 @@ export default function EmailComposerModal({ open, onClose, statement, client }:
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           paddingTop: 12, borderTop: '0.5px solid #f0f0ea', gap: 12,
         }}>
-          <span style={{ fontSize: 11, color: '#aaa' }}>
-            Send button enabled once Outlook integration ships
-          </span>
           <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12, flexShrink: 0 }}>
             Close
           </button>
+          {outlookConnected && !(sendResult && 'ok' in sendResult) && (
+            <button
+              className="btn btn-primary"
+              disabled={sending || !client.email}
+              onClick={() => {
+                if (!client.email) return
+                startSend(async () => {
+                  const result = await sendPortfolioStatement({
+                    documentId: statement.documentId,
+                    clientId,
+                    recipientEmail: client.email!,
+                    subject,
+                    bodyText: body,
+                  })
+                  setSendResult(result)
+                })
+              }}
+              style={{ fontSize: 12, flexShrink: 0 }}
+            >
+              {sending ? 'Sending…' : 'Send via Outlook'}
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
 import type { ClientRow } from './ClientRecord'
+import { getOutlookConnectionStatus } from '@/app/(app)/settings/outlookActions'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -266,6 +267,8 @@ export default async function ClientRecordPage({ params }: Props) {
   const lastActivity = (lastActivityRow as Record<string, unknown> | null)?.created_at as string | null
     ?? client.date_joined ?? null
 
+  const outlookStatus = await getOutlookConnectionStatus()
+
   return (
     <ClientRecord
       client={client as unknown as ClientRow}
@@ -286,6 +289,7 @@ export default async function ClientRecordPage({ params }: Props) {
       feeSchedules={(feeSchedulesData ?? []) as { id: string; name: string }[]}
       nominees={(nomineesData ?? []) as { id: string; name: string }[]}
       portfolioStatements={(portfolioStatements ?? []) as import('./_components/GenerateStatementSection').StatementDoc[]}
+      outlookConnected={outlookStatus.connected}
     />
   )
 }
