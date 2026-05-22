@@ -38,7 +38,7 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
         .order('created_at', { ascending: false })
     : { data: [] as { client_id: string; period: string | null; created_at: string }[] }
 
-  // 4. In-progress run (latest first if somehow multiple exist)
+  // 4. In-progress run (generation type only — send runs start from UI)
   const { data: activeRuns } = await supabase
     .from('bulk_runs')
     .select('*')
@@ -57,14 +57,14 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
         .eq('bulk_run_id', activeRun.id)
     : { data: [] as Record<string, unknown>[] }
 
-  // 6. Past runs (completed / cancelled / failed)
+  // 6. Past runs — both generation and send runs, newest first
   const { data: pastRuns } = await supabase
     .from('bulk_runs')
     .select('*')
-    .eq('type', 'portfolio_statement')
+    .in('type', ['portfolio_statement', 'portfolio_statement_send'])
     .in('status', ['completed', 'cancelled', 'failed'])
     .order('started_at', { ascending: false })
-    .limit(10)
+    .limit(20)
 
   // 7. Presets + Outlook connection status (parallel — independent)
   const [{ data: presets }, outlookStatus] = await Promise.all([
