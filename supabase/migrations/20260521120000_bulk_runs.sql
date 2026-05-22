@@ -13,7 +13,7 @@ CREATE TABLE bulk_runs (
   started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at    TIMESTAMPTZ,
   cancelled_at    TIMESTAMPTZ,
-  started_by      UUID REFERENCES team_users(id),
+  started_by      UUID REFERENCES team_members(id),
   total_items     INTEGER NOT NULL,
   succeeded_count INTEGER NOT NULL DEFAULT 0,
   failed_count    INTEGER NOT NULL DEFAULT 0,
@@ -51,9 +51,9 @@ CREATE TABLE bulk_run_presets (
   client_ids    UUID[] NOT NULL,
   filter_state  JSONB NOT NULL DEFAULT '{}',
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  created_by    UUID REFERENCES team_users(id),
+  created_by    UUID REFERENCES team_members(id),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_by    UUID REFERENCES team_users(id)
+  updated_by    UUID REFERENCES team_members(id)
 );
 
 CREATE UNIQUE INDEX bulk_run_presets_type_name_idx ON bulk_run_presets (type, name);
