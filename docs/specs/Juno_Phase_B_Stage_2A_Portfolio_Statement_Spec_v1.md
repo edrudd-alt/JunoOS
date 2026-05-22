@@ -517,6 +517,14 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.56 — Smarter retry-failed safety analysis.** 2A.3b's retry-failed conservatively excludes items where Microsoft Graph returned 5xx to prevent double-send. A future improvement: query Microsoft Graph's message tracking API (requires Mail.ReadBasic scope) to confirm delivery status before deciding to retry a 5xx. This would allow safe retry of transient server errors while still blocking retries of genuinely delivered messages.
 
+- **14.57 — Per-investor template overrides.** Allow setting bespoke subject/body for specific investors (e.g. corporate vs individual). Would extend `email_templates` with an optional `client_id` for overrides, looked up before the default row. Foundation for 14.49's DB-backed template table is in place.
+
+- **14.58 — Template version history.** Track every edit to an email template with the before/after snapshot. Currently only the latest `updated_by`/`updated_at` is captured; for compliance, full history may matter. Could use a separate `email_template_history` audit table.
+
+- **14.59 — Default recipient logic per type.** Some document types (e.g. `eis_certificate`) should always go to the client's registered email; others (e.g. `invoice`) might target a billing contact. Currently every Email open pre-fills the client's email as recipient. A future improvement: per-type recipient rules in `email_templates`.
+
+- **14.60 — Editable templates for non-document email types.** When transaction-workflow emails arrive (Future Work 14.51), they won't be tied to a `documents` row but should still use centrally-managed templates. Will need a separate `notification_templates` table or a `document_type` of `NULL` / a separate type discriminator column on `email_templates`.
+
 ---
 
 ## 9. Version history
