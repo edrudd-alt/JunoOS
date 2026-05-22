@@ -3,7 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { sendDocumentEmail } from '@/lib/outlookSend'
 import { type OutlookConnection } from '@/lib/outlookTokens'
-import { getEmailTemplate, deriveFirstName, formatPeriodDateUK } from '@/lib/templates'
+import { getEmailTemplate } from '@/lib/templates'
+import { deriveFirstName, formatPeriodDateUK } from '@/lib/templateUtils'
 
 export async function resolveDocumentTemplate(
   documentId: string,

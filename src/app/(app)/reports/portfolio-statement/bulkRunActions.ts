@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { generatePortfolioValuationStatement } from '@/services/document-generation/generatePortfolioValuationStatement'
 import { sendDocumentEmail } from '@/lib/outlookSend'
 import { type OutlookConnection } from '@/lib/outlookTokens'
-import { deriveClientFirstName, formatPeriodDateUK, substituteBulkTemplate } from '@/lib/templates'
+import { deriveClientFirstName, formatPeriodDateUK, substituteBulkTemplate } from '@/lib/templateUtils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
