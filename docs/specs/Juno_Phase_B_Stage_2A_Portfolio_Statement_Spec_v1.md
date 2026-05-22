@@ -501,6 +501,14 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.48 — Per-user RLS for OAuth tables.** The `outlook_connections` and `oauth_pending` tables currently use the platform-wide "authenticated full access" RLS pattern. If JunoOS adds a reliable mapping between `auth.uid()` and `team_members.id` (e.g. a `team_members.auth_user_id` column), tighten these policies so each team member can only access their own tokens via RLS, not just via application code.
 
+- **14.49 — Send button for all document types on Documents tab.** Extend the 2A.1.5 Email composer modal (currently scoped to portfolio statements only) to support any document type: transaction statements, EIS certificates, share certificates, signed application forms, KYC documents. Each document type defines its own default subject/body template. Foundation: 2A.3a OAuth + Future Work 14.44 (Send button on composer). Should be designed so adding a new document type to the "supports email" list is a one-line config change.
+
+- **14.50 — Bulk email for transaction statements and completion documents.** The bulk-runner architecture in 2A.2 (`bulk_runs.type` is already a generic string column, see Future Work 14.42) supports this in principle. New bulk run types: `transaction_statement_send`, `share_certificate_send`, etc. Each type wires its own selection criteria, per-recipient template, and document-attachment fetch logic, but shares the polling queue and Outlook send path from 2A.3a/2A.3b. Note: buy-deal completion workflow exists today; sell-deal completion (Future Work 14.1) needs to land before sell-related bulk send is meaningful.
+
+- **14.51 — Email delivery as a first-class feature of the transaction workflow.** When the sell-deal redesign (Future Work 14.1) and broader transaction lifecycle work begins in earnest, email delivery of completion-process documents (application form, signed agreement, share certificate, etc.) should be designed in from the start: clear send-points in each stage, configurable per-type templates, auditable delivery log, retries on failure. Not bolted on as an afterthought. Implementation principle: every new transaction-workflow PR should include a "where does email touch this?" check during spec.
+
+- **14.52 — Audit log of all emails sent via JunoOS.** Across all email pathways (per-document Send from 14.44/14.49, bulk send from 14.43/14.50, transaction-workflow auto-sends from 14.51), maintain a record of: sender (team member), recipient, subject, document(s) attached, sent timestamp, Microsoft Graph response status, retry count. This becomes the "Updates sent" audit trail referenced in Future Work 14.33 and gives the team a single place to answer "did we send X to investor Y" questions.
+
 ---
 
 ## 9. Version history
