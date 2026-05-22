@@ -489,6 +489,16 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.42 — Bulk run for other document types.** The `bulk_runs.type` and `bulk_run_presets.type` columns already support this: extend the bulk runner to EIS certificates, dividend statements, tax vouchers. Each type defines its own per-item generator function; the queue mechanism is shared.
 
+- **14.43 — Bulk send (2A.3b).** Wire up the bulk-runner from 2A.2 to use the Outlook integration for actual sending. After a bulk generation completes, a "Send all" button kicks off a polling-based per-statement send queue using the connected user's Outlook. Subject and body come from existing 2A.1.5 templates.
+
+- **14.44 — Send button on existing 2A.1.5 composer modal.** Wire the existing per-statement Email composer modal to actually send via the connected user's Outlook when "Send" is clicked. Foundation is 2A.3a; this is a small follow-on.
+
+- **14.45 — Outlook connection health check.** Once a day, attempt a no-op token refresh for every connected team member. If it fails, mark the connection as needing attention and surface a banner the next time they visit JunoOS.
+
+- **14.46 — Send-from a shared mailbox.** Consider allowing certain emails to be sent from a shared `reports@junocapital.co.uk` mailbox instead of an individual's mailbox. Requires Mail.Send.Shared scope and additional consent.
+
+- **14.47 — Supabase Vault evaluation.** Consider migrating token encryption to Supabase Vault rather than application-level AES-256-GCM. Lower maintenance burden but Vault is still in beta.
+
 ---
 
 ## 9. Version history
