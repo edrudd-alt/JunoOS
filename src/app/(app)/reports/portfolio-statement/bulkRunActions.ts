@@ -2,6 +2,9 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { generatePortfolioValuationStatement } from '@/services/document-generation/generatePortfolioValuationStatement'
+import { sendDocumentEmail } from '@/lib/outlookSend'
+import { type OutlookConnection } from '@/lib/outlookTokens'
+import { deriveClientFirstName, formatPeriodDateUK, substitutePlaceholders } from '@/lib/templates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,6 +21,7 @@ export interface BulkRunSummary {
   succeeded_count: number
   failed_count:   number
   preset_id:      string | null
+  metadata:       Record<string, string> | null
 }
 
 export interface BulkRunItem {
@@ -90,6 +94,67 @@ export async function createBulkRun(
   return { runId: run.id }
 }
 
+// ── startBulkSend ─────────────────────────────────────────────────────────────
+
+export async function startBulkSend({
+  sourceRunId,
+  subjectTemplate,
+  bodyTemplate,
+}: {
+  sourceRunId: string
+  subjectTemplate: string
+  bodyTemplate: string
+}): Promise<{ bulkRunId: string }> {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data: sourceRun } = await supabase
+    .from('bulk_runs')
+    .select('period_date')
+    .eq('id', sourceRunId)
+    .single()
+
+  if (!sourceRun) throw new Error('Source run not found')
+
+  const { data: succeededItems, error: itemsError } = await supabase
+    .from('bulk_run_items')
+    .select('client_id, document_id')
+    .eq('bulk_run_id', sourceRunId)
+    .eq('status', 'succeeded')
+    .not('document_id', 'is', null)
+
+  if (itemsError) throw new Error(itemsError.message)
+  if (!succeededItems?.length) throw new Error('No succeeded items with documents to send')
+
+  const { data: run, error: runError } = await supabase
+    .from('bulk_runs')
+    .insert({
+      type:        'portfolio_statement_send',
+      period_date: sourceRun.period_date,
+      status:      'in_progress',
+      started_by:  user.id,
+      total_items: succeededItems.length,
+      metadata:    { subject_template: subjectTemplate, body_template: bodyTemplate, source_run_id: sourceRunId },
+    })
+    .select('id')
+    .single()
+
+  if (runError || !run) throw new Error(runError?.message ?? 'Failed to create send run')
+
+  const items = succeededItems.map(item => ({
+    bulk_run_id: run.id,
+    client_id:   item.client_id,
+    document_id: item.document_id,
+    status:      'pending',
+  }))
+
+  const { error: itemsInsertError } = await supabase.from('bulk_run_items').insert(items)
+  if (itemsInsertError) throw new Error(itemsInsertError.message)
+
+  return { bulkRunId: run.id }
+}
+
 // ── tickBulkRun ───────────────────────────────────────────────────────────────
 // Called by the API route POST /api/bulk-runs/[id]/tick, not directly by client.
 // Exported here so the route handler can import it.
@@ -157,9 +222,8 @@ export async function tickBulkRun(runId: string): Promise<TickResult> {
     return { run: freshRun ?? run, items: items ?? [], currentItem: null }
   }
 
-  // 4. Generate — errors caught, never propagated
-  //    Use the run's started_by as the uploader; fall back to authenticated user.
-  const uploadedBy: string =
+  // 4. Process item — branched by run type
+  const runOwnerId: string =
     run.started_by ??
     (await supabase.auth.getUser()).data.user?.id ??
     'system'
@@ -168,28 +232,85 @@ export async function tickBulkRun(runId: string): Promise<TickResult> {
   let documentId: string | null = null
   let errorMessage: string | null = null
 
-  try {
-    const result = await generatePortfolioValuationStatement(supabase, {
-      clientId:    clientId!,
-      periodDate:  periodDate!,
-      triggeredBy: uploadedBy,
-    })
-    documentId = result.documentId
-    succeeded  = true
-  } catch (err) {
-    errorMessage = err instanceof Error ? err.message : String(err)
+  if (run.type === 'portfolio_statement') {
+    // Generation branch
+    try {
+      const result = await generatePortfolioValuationStatement(supabase, {
+        clientId:    clientId!,
+        periodDate:  periodDate!,
+        triggeredBy: runOwnerId,
+      })
+      documentId = result.documentId
+      succeeded  = true
+    } catch (err) {
+      errorMessage = err instanceof Error ? err.message : String(err)
+    }
+  } else if (run.type === 'portfolio_statement_send') {
+    // Send branch — fetch document_id from item row (RPC only returns id + client_id)
+    const { data: claimedItem } = await supabase
+      .from('bulk_run_items')
+      .select('document_id')
+      .eq('id', itemId)
+      .single()
+
+    const sendDocId = claimedItem?.document_id ?? null
+    const meta = (run.metadata ?? {}) as Record<string, string>
+
+    if (!sendDocId) {
+      errorMessage = 'No document associated with this item'
+    } else {
+      const { data: connection } = await supabase
+        .from('outlook_connections')
+        .select('id, team_member_id, microsoft_user_email, encrypted_access_token, encrypted_refresh_token, access_token_expires_at')
+        .eq('team_member_id', runOwnerId)
+        .maybeSingle()
+
+      if (!connection) {
+        errorMessage = 'Outlook not connected — reconnect in Settings'
+      } else {
+        const [{ data: clientRow }, { data: docRow }] = await Promise.all([
+          supabase.from('clients').select('email, full_name').eq('id', clientId).single(),
+          supabase.from('documents').select('filename, storage_url').eq('id', sendDocId).single(),
+        ])
+
+        if (!clientRow?.email) {
+          errorMessage = 'Client has no email address on file'
+        } else if (!docRow?.storage_url) {
+          errorMessage = 'Document file not found in storage'
+        } else {
+          const ctx = {
+            clientFirstName: deriveClientFirstName(clientRow.full_name ?? ''),
+            periodDateFormatted: formatPeriodDateUK(run.period_date ?? ''),
+          }
+          const sendResult = await sendDocumentEmail({
+            connection:     connection as OutlookConnection,
+            teamMemberId:   runOwnerId,
+            documentId:     sendDocId,
+            clientId:       clientId!,
+            recipientEmail: clientRow.email,
+            subject:        substitutePlaceholders(meta.subject_template ?? '', ctx),
+            bodyText:       substitutePlaceholders(meta.body_template ?? '', ctx),
+            attachmentName: docRow.filename,
+            storageUrl:     docRow.storage_url,
+            bulkRunId:      runId,
+          })
+          succeeded    = sendResult.ok
+          errorMessage = sendResult.ok ? null : sendResult.error
+        }
+      }
+    }
   }
 
-  // 5. Mark item done
-  await supabase
-    .from('bulk_run_items')
-    .update({
-      status:       succeeded ? 'succeeded' : 'failed',
-      completed_at: new Date().toISOString(),
-      document_id:  documentId,
-      error_message: errorMessage,
-    })
-    .eq('id', itemId)
+  // 5. Mark item done (document_id only updated for generation runs; send runs pre-populate it)
+  const itemUpdate: Record<string, unknown> = {
+    status:        succeeded ? 'succeeded' : 'failed',
+    completed_at:  new Date().toISOString(),
+    error_message: errorMessage,
+  }
+  if (run.type === 'portfolio_statement') {
+    itemUpdate.document_id = documentId
+  }
+  await supabase.from('bulk_run_items').update(itemUpdate).eq('id', itemId)
 
   // 6. Update run counts
   const { data: counts } = await supabase
@@ -241,25 +362,74 @@ export async function retryFailedItems(runId: string): Promise<{ runId: string }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
 
+  const { data: originalRun } = await supabase
+    .from('bulk_runs')
+    .select('type, period_date, metadata')
+    .eq('id', runId)
+    .single()
+
+  if (!originalRun) throw new Error('Run not found')
+
   const { data: failedItems, error } = await supabase
     .from('bulk_run_items')
-    .select('client_id')
+    .select('client_id, document_id')
     .eq('bulk_run_id', runId)
     .eq('status', 'failed')
 
   if (error) throw new Error(error.message)
   if (!failedItems || failedItems.length === 0) throw new Error('No failed items to retry')
 
-  const { data: originalRun } = await supabase
-    .from('bulk_runs')
-    .select('period_date')
-    .eq('id', runId)
-    .single()
+  if (originalRun.type === 'portfolio_statement') {
+    if (!originalRun.period_date) throw new Error('Original run period date not found')
+    return createBulkRun(failedItems.map(i => i.client_id), originalRun.period_date)
+  }
 
-  if (!originalRun?.period_date) throw new Error('Original run period date not found')
+  if (originalRun.type === 'portfolio_statement_send') {
+    // Safety filter: never retry 5xx responses — Graph may have queued the send already.
+    // Only retry: null status (never reached Graph) or 4xx (Graph definitively rejected).
+    const { data: fiveXXSends } = await supabase
+      .from('email_sends')
+      .select('client_id')
+      .eq('bulk_run_id', runId)
+      .gte('graph_response_status', 500)
+      .lte('graph_response_status', 599)
 
-  const clientIds = failedItems.map(i => i.client_id)
-  return createBulkRun(clientIds, originalRun.period_date)
+    const excludeIds = new Set((fiveXXSends ?? []).map(s => s.client_id as string))
+    const safeItems = failedItems.filter(i => !excludeIds.has(i.client_id as string))
+
+    if (safeItems.length === 0) {
+      throw new Error('No items safe to retry — all failures were 5xx responses that may have been queued by Microsoft')
+    }
+
+    const { data: run, error: runError } = await supabase
+      .from('bulk_runs')
+      .insert({
+        type:        'portfolio_statement_send',
+        period_date: originalRun.period_date,
+        status:      'in_progress',
+        started_by:  user.id,
+        total_items: safeItems.length,
+        metadata:    originalRun.metadata,
+      })
+      .select('id')
+      .single()
+
+    if (runError || !run) throw new Error(runError?.message ?? 'Failed to create retry run')
+
+    const { error: itemsError } = await supabase.from('bulk_run_items').insert(
+      safeItems.map(item => ({
+        bulk_run_id: run.id,
+        client_id:   item.client_id,
+        document_id: item.document_id,
+        status:      'pending',
+      }))
+    )
+    if (itemsError) throw new Error(itemsError.message)
+
+    return { runId: run.id }
+  }
+
+  throw new Error(`Unknown run type: ${originalRun.type}`)
 }
 
 // ── savePreset ────────────────────────────────────────────────────────────────

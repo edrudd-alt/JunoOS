@@ -32,3 +32,24 @@ The statement covers your holdings across all entities and includes per-lot perf
 
 Kind regards,
 Juno Capital Partners LLP`
+
+// Raw placeholder strings for editable bulk-send templates.
+// {{first_name}} → client first name, {{period}} → formatted period date.
+export const PORTFOLIO_STATEMENT_SUBJECT_RAW =
+  'Portfolio statement as at {{period}}'
+
+export const PORTFOLIO_STATEMENT_BODY_RAW =
+  `Dear {{first_name}},
+
+Please find attached your portfolio valuation statement as at {{period}}.
+
+The statement covers your holdings across all entities and includes per-lot performance and a summary by company. If you have any questions, please get in touch.
+
+Kind regards,
+Juno Capital Partners LLP`
+
+export function substitutePlaceholders(template: string, ctx: EmailTemplateContext): string {
+  return template
+    .replace(/\{\{first_name\}\}/g, ctx.clientFirstName)
+    .replace(/\{\{period\}\}/g, ctx.periodDateFormatted)
+}
