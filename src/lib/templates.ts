@@ -1,55 +1,69 @@
-export interface EmailTemplateContext {
-  clientFirstName: string
-  periodDateFormatted: string
+'use server'
+
+import { createClient } from '@/lib/supabase/server'
+
+export interface TemplateContext {
+  clientFirstName?: string | null
+  clientFullName?: string | null
+  senderFirstName?: string | null
+  senderFullName?: string | null
+  period?: string | null
+  companyName?: string | null
+  filename?: string | null
+  reference?: string | null
 }
 
-export function deriveClientFirstName(fullName: string): string {
-  const trimmed = fullName.trim()
-  const firstSpace = trimmed.indexOf(' ')
-  if (firstSpace === -1) return trimmed || '[Client first name]'
-  return trimmed.substring(0, firstSpace) || '[Client first name]'
+export interface ResolvedTemplate {
+  subject: string
+  body: string
 }
 
-export function formatPeriodDateUK(isoDate: string): string {
-  const d = new Date(`${isoDate}T00:00:00`)
-  if (isNaN(d.getTime())) return '[Period date]'
-  return new Intl.DateTimeFormat('en-GB', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(d)
+const PLACEHOLDER_MAP: Record<string, keyof TemplateContext> = {
+  client_first_name: 'clientFirstName',
+  client_full_name:  'clientFullName',
+  sender_first_name: 'senderFirstName',
+  sender_full_name:  'senderFullName',
+  period:            'period',
+  company_name:      'companyName',
+  filename:          'filename',
+  reference:         'reference',
 }
 
-export const PORTFOLIO_STATEMENT_SUBJECT_TEMPLATE = (ctx: EmailTemplateContext) =>
-  `Portfolio statement as at ${ctx.periodDateFormatted}`
+function substitute(template: string, context: TemplateContext): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_match, placeholder) => {
+    const contextKey = PLACEHOLDER_MAP[placeholder]
+    if (!contextKey) return ''
+    return context[contextKey] ?? ''
+  })
+}
 
-export const PORTFOLIO_STATEMENT_BODY_TEMPLATE = (ctx: EmailTemplateContext) =>
-  `Dear ${ctx.clientFirstName},
+export async function getEmailTemplate(
+  documentType: string,
+  context: TemplateContext,
+): Promise<ResolvedTemplate | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('email_templates')
+    .select('subject, body')
+    .eq('document_type', documentType)
+    .single()
 
-Please find attached your portfolio valuation statement as at ${ctx.periodDateFormatted}.
+  if (error || !data) return null
 
-The statement covers your holdings across all entities and includes per-lot performance and a summary by company. If you have any questions, please get in touch.
+  return {
+    subject: substitute(data.subject, context),
+    body:    substitute(data.body,    context),
+  }
+}
 
-Kind regards,
-Juno Capital Partners LLP`
+export function deriveFirstName(fullName: string | null | undefined): string {
+  if (!fullName) return ''
+  return fullName.trim().split(/\s+/)[0] ?? ''
+}
 
-// Raw placeholder strings for editable bulk-send templates.
-// {{first_name}} → client first name, {{period}} → formatted period date.
-export const PORTFOLIO_STATEMENT_SUBJECT_RAW =
-  'Portfolio statement as at {{period}}'
-
-export const PORTFOLIO_STATEMENT_BODY_RAW =
-  `Dear {{first_name}},
-
-Please find attached your portfolio valuation statement as at {{period}}.
-
-The statement covers your holdings across all entities and includes per-lot performance and a summary by company. If you have any questions, please get in touch.
-
-Kind regards,
-Juno Capital Partners LLP`
-
-export function substitutePlaceholders(template: string, ctx: EmailTemplateContext): string {
-  return template
-    .replace(/\{\{first_name\}\}/g, ctx.clientFirstName)
-    .replace(/\{\{period\}\}/g, ctx.periodDateFormatted)
+export function formatPeriodDateUK(date: Date | string | null | undefined): string {
+  if (!date) return ''
+  const d = typeof date === 'string' ? new Date(`${date}T00:00:00`) : date
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
 }
