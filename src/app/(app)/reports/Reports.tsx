@@ -28,8 +28,37 @@ const STATUS_CONFIG: Record<string, { label: string; cls: string }> = {
   sent:     { label: 'Sent',     cls: 'pill-green' },
 }
 
-export default function Reports({ updates: updatesRaw }: { updates: Record<string, unknown>[] }) {
-  const updates = updatesRaw as unknown as InvestorUpdate[]
+interface BulkRunRow {
+  id: string
+  type: string
+  period_date: string | null
+  status: string
+  started_at: string
+  total_items: number
+  succeeded_count: number
+  failed_count: number
+}
+
+const BULK_RUN_STATUS_LABELS: Record<string, string> = {
+  in_progress: 'In progress',
+  completed:   'Completed',
+  cancelled:   'Cancelled',
+  failed:      'Failed',
+}
+
+function formatBulkRunDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+export default function Reports({
+  updates: updatesRaw,
+  recentBulkRuns: recentBulkRunsRaw,
+}: {
+  updates:         Record<string, unknown>[]
+  recentBulkRuns:  Record<string, unknown>[]
+}) {
+  const updates        = updatesRaw as unknown as InvestorUpdate[]
+  const recentBulkRuns = recentBulkRunsRaw as unknown as BulkRunRow[]
 
   const recent  = updates.filter(u => u.status === 'sent').slice(0, 10)
   const inDraft = updates.filter(u => u.status !== 'sent')
@@ -63,13 +92,13 @@ export default function Reports({ updates: updatesRaw }: { updates: Record<strin
               }}>📊</div>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#0f2744' }}>Portfolio Statement</div>
-                <div style={{ fontSize: 11, color: '#888' }}>For a single investor</div>
+                <div style={{ fontSize: 11, color: '#888' }}>For one or more investors</div>
               </div>
             </div>
             <p style={{ fontSize: 12, color: '#555', margin: 0, lineHeight: 1.5 }}>
-              Holdings table with all transactions, current values, gain/loss, and an optional summary page. Delivered by email or download.
+              Holdings table with current values, gain/loss, and per-company summary. Generate in bulk for a quarterly run or individually for ad-hoc requests.
             </p>
-            <div style={{ fontSize: 11, color: '#185fa5', fontWeight: 500 }}>Configure & preview →</div>
+            <div style={{ fontSize: 11, color: '#185fa5', fontWeight: 500 }}>Select investors & run →</div>
           </div>
         </Link>
 
@@ -100,6 +129,50 @@ export default function Reports({ updates: updatesRaw }: { updates: Record<strin
           </div>
         </Link>
       </div>
+
+      {/* Recent bulk runs */}
+      {recentBulkRuns.length > 0 && (
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#aaa', marginBottom: 8 }}>
+            Recent bulk statement runs
+          </div>
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Started</th>
+                  <th>Period</th>
+                  <th>Count</th>
+                  <th>Succeeded</th>
+                  <th>Failed</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentBulkRuns.map(run => (
+                  <tr key={run.id}>
+                    <td style={{ fontSize: 12 }}>{formatBulkRunDate(run.started_at)}</td>
+                    <td style={{ fontSize: 12 }}>{run.period_date ?? '—'}</td>
+                    <td style={{ fontSize: 12 }}>{run.total_items}</td>
+                    <td style={{ fontSize: 12, color: '#1d9e75' }}>{run.succeeded_count}</td>
+                    <td style={{ fontSize: 12, color: run.failed_count > 0 ? '#c0392b' : '#999' }}>{run.failed_count}</td>
+                    <td style={{ fontSize: 12 }}>{BULK_RUN_STATUS_LABELS[run.status] ?? run.status}</td>
+                    <td>
+                      <a
+                        href="/reports/portfolio-statement"
+                        style={{ fontSize: 11, color: '#185fa5', textDecoration: 'underline' }}
+                      >
+                        {run.status === 'in_progress' ? 'View progress' : 'View details'}
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* In-progress drafts */}
       {inDraft.length > 0 && (
