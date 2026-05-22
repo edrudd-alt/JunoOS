@@ -69,13 +69,14 @@ interface Props {
   nominees: { id: string; name: string }[]
   portfolioStatements: StatementDoc[]
   outlookConnected?: boolean
+  latestSends?: Record<string, string>
 }
 
 export default function ClientRecord({
   client, lead, linkedEntities, portfolioRows, investments,
   valuations, documents, updateRecipients, notes, membershipDocs,
   pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships,
-  feeSchedules, nominees, portfolioStatements, outlookConnected,
+  feeSchedules, nominees, portfolioStatements, outlookConnected, latestSends,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -259,6 +260,7 @@ export default function ClientRecord({
             clientEmail={client.email}
             clientId={clientId}
             outlookConnected={outlookConnected}
+            latestSends={latestSends}
           />
         )}
         {tab === 'updates_sent' && (
