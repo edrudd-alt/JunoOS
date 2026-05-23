@@ -1,23 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { formatDocumentTimestamp } from '@/lib/utils'
+import { formatPeriodDateUK } from '@/lib/templateUtils'
 import { getDownloadUrlForDocument } from '../documentActions'
 import { DocumentActions } from '@/components/documents/DocumentActions'
+import { DOCUMENT_TYPE_LABELS } from '@/lib/documentTypes'
 import EmailComposerModal, { type ComposerDocument } from '../_components/EmailComposerModal'
-
-const DOC_LABELS: Record<string, string> = {
-  application_form:      'Application form',
-  eis_certificate:       'EIS certificate',
-  transaction_statement: 'Transaction statement',
-  exit_statement:        'Exit statement',
-  side_letter:           'Side letter',
-  portfolio_statement:   'Portfolio statement',
-  company_update:        'Company update',
-  invoice:               'Invoice',
-  investment_agreement:  'Investment agreement',
-  other:                 'Other',
-}
 
 interface Doc {
   id: string
@@ -42,6 +30,11 @@ interface Props {
 
 const NON_COMPANY_GROUP_BY_TYPE: Record<string, string> = {
   portfolio_statement: 'Valuations',
+}
+
+function fmtDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—'
+  return formatPeriodDateUK(dateStr)
 }
 
 export default function InvestmentDocsTab({ documents, clientFullName = '', clientEmail = null, clientId = '', outlookConnected, latestSends }: Props) {
@@ -112,6 +105,7 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
 
           return (
             <div key={cid} style={{ borderBottom: '0.5px solid #e8e7e0' }}>
+              {/* Company header */}
               <button
                 onClick={() => toggleCompany(cid)}
                 style={{
@@ -133,6 +127,7 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                   const isYearExpanded = expandedYears.has(yearKey)
                   return (
                     <div key={yearKey}>
+                      {/* Year header */}
                       <button
                         onClick={() => toggleYear(yearKey)}
                         style={{
@@ -148,49 +143,75 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                         <span style={{ fontWeight: 400, color: '#aaa', fontSize: 11 }}>({yearDocs.length})</span>
                       </button>
 
-                      {isYearExpanded && yearDocs.map(doc => (
-                        <div
-                          key={doc.id}
-                          style={{
-                            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            padding: '8px 16px 8px 48px',
-                            borderTop: '0.5px solid #f5f5f2',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span className="pill pill-grey" style={{ fontSize: 10 }}>
-                              {DOC_LABELS[doc.type] ?? doc.type}
-                            </span>
-                            <span style={{ fontSize: 12 }}>{doc.filename}</span>
-                            {doc.period && (
-                              <span style={{ fontSize: 11, color: '#888' }}>{doc.period}</span>
-                            )}
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <span style={{ fontSize: 11, color: '#888' }}>
-                              {formatDocumentTimestamp(doc.created_at)}
-                            </span>
-                            {latestSends?.[doc.id] && (
-                              <span style={{ fontSize: 11, color: '#1d9e75', whiteSpace: 'nowrap' }}>
-                                Sent {formatDocumentTimestamp(latestSends[doc.id])}
-                              </span>
-                            )}
-                            <DocumentActions
-                              document={doc}
-                              onEmailClick={() => setComposerDoc({
-                                documentId: doc.id,
-                                type:       doc.type,
-                                filename:   doc.filename,
-                                period:     doc.period ?? doc.document_date,
-                              })}
-                              onViewClick={async () => {
-                                const url = await getDownloadUrlForDocument(doc.id)
-                                if (url) window.open(url, '_blank')
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
+                      {isYearExpanded && (
+                        <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '0.5px solid #f0f0ec' }}>
+                          <thead>
+                            <tr style={{ background: '#fafaf8' }}>
+                              <th style={thSt}>Date</th>
+                              <th style={thSt}>Type</th>
+                              <th style={thSt}>Filename</th>
+                              <th style={thSt}>Sent</th>
+                              <th style={{ ...thSt, textAlign: 'right' }}>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {yearDocs.map(doc => {
+                              const dateStr = doc.document_date ?? doc.created_at
+                              const sentDate = latestSends?.[doc.id]
+                              return (
+                                <tr key={doc.id} style={{ borderTop: '0.5px solid #f5f5f2' }}>
+                                  <td style={{ ...tdSt, whiteSpace: 'nowrap', color: '#555', paddingLeft: 48 }}>
+                                    {fmtDate(dateStr)}
+                                  </td>
+                                  <td style={tdSt}>
+                                    <span className="pill pill-grey" style={{ fontSize: 10 }}>
+                                      {DOCUMENT_TYPE_LABELS[doc.type] ?? doc.type}
+                                    </span>
+                                  </td>
+                                  <td style={{ ...tdSt, maxWidth: 320 }}>
+                                    <span
+                                      title={doc.filename}
+                                      style={{
+                                        display: 'block',
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      {doc.filename}
+                                    </span>
+                                  </td>
+                                  <td style={{ ...tdSt, whiteSpace: 'nowrap' }}>
+                                    {sentDate ? (
+                                      <span style={{ fontSize: 11, color: '#1d9e75' }}>
+                                        Sent {fmtDate(sentDate)} via Outlook
+                                      </span>
+                                    ) : (
+                                      <span style={{ fontSize: 11, color: '#bbb' }}>—</span>
+                                    )}
+                                  </td>
+                                  <td style={tdSt}>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                      <DocumentActions
+                                        document={doc}
+                                        onEmailClick={() => setComposerDoc({
+                                          documentId: doc.id,
+                                          type:       doc.type,
+                                          filename:   doc.filename,
+                                          period:     doc.period ?? doc.document_date,
+                                        })}
+                                        onViewClick={async () => {
+                                          const url = await getDownloadUrlForDocument(doc.id)
+                                          if (url) window.open(url, '_blank')
+                                        }}
+                                      />
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      )}
                     </div>
                   )
                 })}
@@ -211,4 +232,16 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
       )}
     </>
   )
+}
+
+const thSt: React.CSSProperties = {
+  padding: '6px 10px',
+  fontSize: 10, fontWeight: 600, color: '#888',
+  textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+
+const tdSt: React.CSSProperties = {
+  padding: '8px 10px',
+  fontSize: 12, color: '#0f2744',
+  verticalAlign: 'middle',
 }

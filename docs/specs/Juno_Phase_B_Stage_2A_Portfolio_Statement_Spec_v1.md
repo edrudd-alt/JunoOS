@@ -527,6 +527,8 @@ No RLS in v1; standing rule from prior stages.
 
 - **14.61 — Documents tab needs proper column headers.** The Documents tab currently displays multiple dates per row (document date, sent date) without column headers, so two unlabelled dates sit next to each other looking like "two random dates" — readers have to know which is which. Convert the rendering to a proper table with column headers (Date, Type, Filename, Sent, Actions) so each piece of information is clearly labelled. Applies to per-client Documents tab AND deal-page Documents tab. Noted during 14.49 preview review.
 
+- **14.62 — Consolidate document-type label maps.** `DocumentsTab.tsx` (deal), `InvestmentCockpit.tsx`, and `InvestmentDocsTab.tsx` each maintain their own local `TYPE_LABELS`/`DOC_LABELS`/`DOC_TYPE_LABELS` dictionaries. PR #16 added the canonical `DOCUMENT_TYPE_LABELS` export in `src/lib/documentTypes.ts`; the local copies should be removed and all call sites updated to use the shared constant. Noted but not fixed during 14.61 (out of scope for that PR).
+
 ---
 
 ## 9. Version history

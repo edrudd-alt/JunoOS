@@ -471,7 +471,6 @@ function ByInvestorView({
   collapsed: Set<string>
   onToggleCollapse: (id: string) => void
 } & SharedRowProps) {
-  // Group by deal_investor_id (falls back to client_id for orphan docs)
   const order: string[] = []
   const groups = new Map<string, { clientName: string; vehicleName: string | null; docs: DocumentRow[] }>()
 
@@ -491,7 +490,6 @@ function ByInvestorView({
     groups.get(sectionKey)!.docs.push(doc)
   }
 
-  // Sort sections alphabetically
   const sorted = order
     .map(k => ({ key: k, ...groups.get(k)! }))
     .sort((a, b) => a.clientName.localeCompare(b.clientName))
@@ -512,16 +510,23 @@ function ByInvestorView({
               isCollapsed={isCollapsed}
               onClick={() => onToggleCollapse(key)}
             />
-            {!isCollapsed && sortedDocs.map((doc, i) => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                showInvestor={false}
-                showType
-                borderTop={i > 0}
-                {...rowProps}
-              />
-            ))}
+            {!isCollapsed && (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderTop: '0.5px solid var(--card-border)', background: '#fafaf8' }}>
+                    <th style={thSt}>Date</th>
+                    <th style={thSt}>Type</th>
+                    <th style={thSt}>Filename</th>
+                    <th style={{ ...thSt, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedDocs.map(doc => (
+                    <DocRow key={doc.id} doc={doc} showInvestor={false} showType {...rowProps} />
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )
       })}
@@ -560,7 +565,7 @@ function ByTypeView({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {sorted.map(({ type, docs: typeDocs }) => {
-        const sectionId  = `type:${type}`
+        const sectionId   = `type:${type}`
         const isCollapsed = collapsed.has(sectionId)
         const sortedDocs  = [...typeDocs].sort(sortByDateDesc)
 
@@ -573,16 +578,23 @@ function ByTypeView({
               isCollapsed={isCollapsed}
               onClick={() => onToggleCollapse(sectionId)}
             />
-            {!isCollapsed && sortedDocs.map((doc, i) => (
-              <DocRow
-                key={doc.id}
-                doc={doc}
-                showInvestor
-                showType={false}
-                borderTop={i > 0}
-                {...rowProps}
-              />
-            ))}
+            {!isCollapsed && (
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderTop: '0.5px solid var(--card-border)', background: '#fafaf8' }}>
+                    <th style={thSt}>Date</th>
+                    <th style={thSt}>Investor</th>
+                    <th style={thSt}>Filename</th>
+                    <th style={{ ...thSt, textAlign: 'right' }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedDocs.map(doc => (
+                    <DocRow key={doc.id} doc={doc} showInvestor showType={false} {...rowProps} />
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         )
       })}
@@ -597,16 +609,22 @@ function ByDateView({ docs, ...rowProps }: { docs: DocumentRow[] } & SharedRowPr
 
   return (
     <div style={{ border: '0.5px solid var(--card-border)', borderRadius: 8, overflow: 'hidden' }}>
-      {sorted.map((doc, i) => (
-        <DocRow
-          key={doc.id}
-          doc={doc}
-          showInvestor
-          showType
-          borderTop={i > 0}
-          {...rowProps}
-        />
-      ))}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr style={{ background: '#fafaf8' }}>
+            <th style={thSt}>Date</th>
+            <th style={thSt}>Investor</th>
+            <th style={thSt}>Type</th>
+            <th style={thSt}>Filename</th>
+            <th style={{ ...thSt, textAlign: 'right' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map(doc => (
+            <DocRow key={doc.id} doc={doc} showInvestor showType {...rowProps} />
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -652,37 +670,60 @@ function SectionHeader({
 // ── Document row ──────────────────────────────────────────────────────────────
 
 function DocRow({
-  doc, showInvestor, showType, borderTop,
+  doc, showInvestor, showType,
   getDocMeta, openMenuId, setOpenMenuId, menuPos, setMenuPos,
   onSupersede, onReinstate, onDelete, onEmail,
 }: {
   doc: DocumentRow
   showInvestor: boolean
   showType: boolean
-  borderTop?: boolean
 } & SharedRowProps) {
   const isOpen = openMenuId === doc.id
   const { clientName, clientId, clientEmail, vehicleName } = getDocMeta(doc)
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
-      borderTop: borderTop ? '0.5px solid var(--card-border)' : undefined,
+    <tr style={{
+      borderTop: '0.5px solid var(--card-border)',
       background: '#fff',
       opacity: doc.superseded ? 0.6 : 1,
     }}>
-      {/* Icon */}
-      <span style={{ fontSize: 15, flexShrink: 0, lineHeight: 1 }}>📄</span>
+      {/* Date */}
+      <td style={{ ...tdSt, whiteSpace: 'nowrap', color: '#555' }}>
+        {fmtDate(doc.document_date)}
+      </td>
 
-      {/* Filename + badges */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+      {/* Investor — only in by-type and by-date views */}
+      {showInvestor && (
+        <td style={tdSt}>
+          <span style={{ fontSize: 12, color: '#555' }}>
+            {clientName}{vehicleName ? ` via ${vehicleName}` : ''}
+          </span>
+        </td>
+      )}
+
+      {/* Type — only in by-investor and by-date views */}
+      {showType && (
+        <td style={tdSt}>
           <span style={{
-            fontSize: 12, fontWeight: 500, color: '#0f2744',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-            textDecoration: doc.superseded ? 'line-through' : undefined,
-            maxWidth: 340,
+            fontSize: 10, fontWeight: 500, background: '#f0f0ec', color: '#666',
+            borderRadius: 4, padding: '2px 7px', whiteSpace: 'nowrap',
           }}>
+            {getTypeLabel(doc.type)}
+          </span>
+        </td>
+      )}
+
+      {/* Filename */}
+      <td style={{ ...tdSt, maxWidth: 360 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span
+            title={doc.filename}
+            style={{
+              fontSize: 12, fontWeight: 500, color: '#0f2744',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              textDecoration: doc.superseded ? 'line-through' : undefined,
+            }}
+          >
             {doc.filename}
           </span>
           {doc.version > 1 && (
@@ -702,30 +743,10 @@ function DocRow({
             </span>
           )}
         </div>
-        {showInvestor && (
-          <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>
-            {clientName}{vehicleName ? ` via ${vehicleName}` : ''}
-          </div>
-        )}
-      </div>
+      </td>
 
-      {/* Type badge */}
-      {showType && (
-        <span style={{
-          fontSize: 10, fontWeight: 500, background: '#f0f0ec', color: '#666',
-          borderRadius: 4, padding: '2px 7px', flexShrink: 0, whiteSpace: 'nowrap',
-        }}>
-          {getTypeLabel(doc.type)}
-        </span>
-      )}
-
-      {/* Date */}
-      <span style={{ fontSize: 11, color: '#888', flexShrink: 0, minWidth: 80, textAlign: 'right' }}>
-        {fmtDate(doc.document_date)}
-      </span>
-
-      {/* ⋯ menu */}
-      <div style={{ flexShrink: 0 }}>
+      {/* Actions */}
+      <td style={{ ...tdSt, textAlign: 'right', whiteSpace: 'nowrap' }}>
         <button
           onClick={e => {
             e.stopPropagation()
@@ -802,9 +823,23 @@ function DocRow({
             />
           </div>
         )}
-      </div>
-    </div>
+      </td>
+    </tr>
   )
+}
+
+// ── Table styles ─────────────────────────────────────────────────────────────
+
+const thSt: React.CSSProperties = {
+  padding: '6px 10px',
+  fontSize: 10, fontWeight: 600, color: '#888',
+  textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.04em',
+}
+
+const tdSt: React.CSSProperties = {
+  padding: '8px 10px',
+  fontSize: 12, color: '#0f2744',
+  verticalAlign: 'middle',
 }
 
 // ── Menu item ─────────────────────────────────────────────────────────────────
