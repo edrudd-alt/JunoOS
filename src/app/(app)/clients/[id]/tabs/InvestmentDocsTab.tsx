@@ -189,20 +189,22 @@ export default function InvestmentDocsTab({ documents, clientFullName = '', clie
                                       <span style={{ fontSize: 11, color: '#bbb' }}>—</span>
                                     )}
                                   </td>
-                                  <td style={{ ...tdSt, textAlign: 'right' }}>
-                                    <DocumentActions
-                                      document={doc}
-                                      onEmailClick={() => setComposerDoc({
-                                        documentId: doc.id,
-                                        type:       doc.type,
-                                        filename:   doc.filename,
-                                        period:     doc.period ?? doc.document_date,
-                                      })}
-                                      onViewClick={async () => {
-                                        const url = await getDownloadUrlForDocument(doc.id)
-                                        if (url) window.open(url, '_blank')
-                                      }}
-                                    />
+                                  <td style={tdSt}>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center' }}>
+                                      <DocumentActions
+                                        document={doc}
+                                        onEmailClick={() => setComposerDoc({
+                                          documentId: doc.id,
+                                          type:       doc.type,
+                                          filename:   doc.filename,
+                                          period:     doc.period ?? doc.document_date,
+                                        })}
+                                        onViewClick={async () => {
+                                          const url = await getDownloadUrlForDocument(doc.id)
+                                          if (url) window.open(url, '_blank')
+                                        }}
+                                      />
+                                    </div>
                                   </td>
                                 </tr>
                               )
