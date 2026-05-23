@@ -30,13 +30,10 @@ export interface Client {
   default_fee_rate: number
   report_delivery_email: string | null
   lead_investor_id: string | null
-  entity_type: string
   holding_location: string
   reporting_entity_defaults: string[]
   report_delivery_method: string
   notes: string | null
-  fund_type: string
-  active_fund_type: string | null
   fee_schedule_id: string | null
   vehicle_type: string | null
   default_nominee_id: string | null

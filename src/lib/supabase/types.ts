@@ -1,6 +1,5 @@
 export type KycStatus = 'verified' | 'renewal_due' | 'outstanding'
 export type TaxStatus = 'eis' | 'seis' | 'both' | 'neither'
-export type EntityType = 'own_name' | 'family' | 'corporate'
 export type HoldingLocation = 'direct' | 'nominee' | 'both'
 export type EisStatus = 'yes' | 'no' | 'tbc'
 export type InvestmentStatus = 'active' | 'pending' | 'exited'
@@ -34,7 +33,6 @@ export interface Database {
           default_fee_rate: number
           report_delivery_email: string | null
           lead_investor_id: string | null
-          entity_type: EntityType
           holding_location: HoldingLocation
           reporting_entity_defaults: string[]
           report_delivery_method: 'email' | 'download_only'
