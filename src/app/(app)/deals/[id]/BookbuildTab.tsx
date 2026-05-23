@@ -517,7 +517,7 @@ export default function BookbuildTab({
         <input
           type="text" value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search investors, vehicles, or locations…"
+          placeholder="Search by lead, beneficial owner, or legal owner…"
           style={{
             padding: '6px 10px', fontSize: 12, borderRadius: 6,
             border: '1px solid #d0d0c8', outline: 'none',
@@ -661,9 +661,9 @@ export default function BookbuildTab({
               title="Select all"
             />
           </div>
-          <ColHeader label="Client"      align="left"  />
-          <ColHeader label="Vehicle"     align="center"/>
-          <ColHeader label="Location"    align="center"/>
+          <ColHeader label="Lead investor"    align="left"  />
+          <ColHeader label="Beneficial owner" align="center"/>
+          <ColHeader label="Legal owner"      align="center"/>
           <ColHeader label="Soft-circle" align="right" />
           <ColHeader label="Confirmed"   align="right" />
           <ColHeader label="Shares"      align="right" />
@@ -1129,14 +1129,14 @@ function InvestorRow({
       <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
         {vehicleName
           ? <span style={{ color: '#0f2744', fontWeight: 500 }}>{vehicleName}</span>
-          : <span style={{ color: '#aaa' }}>Own name</span>}
+          : <span style={{ color: '#aaa' }}>Lead investor</span>}
       </div>
 
       {/* Location */}
       <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
         {nomineeName
           ? <span style={{ color: '#0f2744', fontWeight: 500 }}>{nomineeName}</span>
-          : <span style={{ color: '#aaa' }}>Direct</span>}
+          : <span style={{ color: '#aaa' }}>Direct (no nominee)</span>}
       </div>
 
       {/* Soft-circle */}

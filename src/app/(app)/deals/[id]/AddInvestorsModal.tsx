@@ -330,7 +330,7 @@ export default function AddInvestorsModal({
                 gridTemplateColumns: '1fr 148px 148px 120px',
                 marginBottom: 4,
               }}>
-                {['Investor', 'Vehicle', 'Location', 'Soft-circle (£)'].map(h => (
+                {['Lead investor', 'Beneficial owner', 'Legal owner', 'Soft-circle (£)'].map(h => (
                   <div key={h} style={{
                     fontSize: 10, fontWeight: 600,
                     textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -382,13 +382,13 @@ export default function AddInvestorsModal({
                             borderRadius: 6, fontSize: 12, outline: 'none',
                           }}
                         >
-                          <option value="">Own name</option>
+                          <option value="">Lead investor</option>
                           {vehicles.map(v => (
                             <option key={v.id} value={v.id}>{v.full_name}</option>
                           ))}
                         </select>
                       ) : (
-                        <span style={{ fontSize: 12, color: '#aaa', paddingLeft: 4 }}>Own name</span>
+                        <span style={{ fontSize: 12, color: '#aaa', paddingLeft: 4 }}>Lead investor</span>
                       )}
                     </div>
 
@@ -403,7 +403,7 @@ export default function AddInvestorsModal({
                           borderRadius: 6, fontSize: 12, outline: 'none',
                         }}
                       >
-                        <option value="">Direct</option>
+                        <option value="">Direct (no nominee)</option>
                         {nominees.map(n => (
                           <option key={n.id} value={n.id}>{n.name}</option>
                         ))}

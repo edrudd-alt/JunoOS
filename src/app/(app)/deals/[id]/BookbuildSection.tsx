@@ -259,7 +259,7 @@ export function BookbuildSection({ dealId, companyId, bookbuild, allClients, com
             <thead>
               <tr style={{ background: '#f9f9f7' }}>
                 <th style={thSt}>Investor</th>
-                <th style={thSt}>Vehicle</th>
+                <th style={thSt}>Beneficial owner</th>
                 <th style={{ ...thSt, textAlign: 'right' }}>Amount</th>
                 <th style={{ ...thSt, textAlign: 'right' }}>Shares</th>
                 <th style={thSt}>Status</th>
