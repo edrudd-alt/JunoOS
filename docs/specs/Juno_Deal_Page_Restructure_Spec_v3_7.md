@@ -1446,6 +1446,22 @@ This leaves the platform with **two parallel pipelines** for document generation
 
 **Trigger to start:** when Stage 6d (or any subsequent new document type) is being scoped — the question of "which pipeline does this go in" forces the decision. Before then, the current state is liveable.
 
+### 14.19 Application form PDF — investor-identity vocabulary review
+
+**[NEW IN v3.8 — Entity Model Cleanup Sub-stage B, 23 May 2026]** The application form template (`applicationForm@1.1.0`) uses terminology set before the Lead investor / Beneficial owner / Legal owner rename. Review the wording in the PDF template and accompanying Documenso email copy. Update if the old vocabulary ("Vehicle", "Own name", "Location") appears. Separate from this PR because it requires a new template version (`applicationForm@1.2.0` or similar) and Documenso re-testing.
+
+### 14.20 `client_relationships` — structural workflow
+
+**[NEW IN v3.8 — Entity Model Cleanup Sub-stage B, 23 May 2026]** The `client_relationships` table exists and works for the spousal/family link in test data, but there is no dedicated UI workflow for creating and managing relationships. The Details tab currently has a basic "Add relationship" modal. Build a proper relationship management workflow when relationship data becomes operationally important.
+
+### 14.21 Saved filter views on the bookbuild
+
+**[NEW IN v3.8 — Entity Model Cleanup Sub-stage B, 23 May 2026]** The new multi-select Beneficial owner and Legal owner filters (Sub-stage B, commit 3) reset on deal navigation. Add saved/named filter views so the team can switch between common filter combinations (e.g. "City Partnership holdings", "All direct investments") without re-selecting each time.
+
+### 14.22 Investor portal — beneficial-owner view
+
+**[NEW IN v3.8 — Entity Model Cleanup Sub-stage B, 23 May 2026]** The entity model cleanup now gives the data layer a clean "filter holdings by beneficial owner" shape. When the investor portal is built, it should expose this naturally — an investor who has holdings across multiple vehicles (own name, pension, company) should be able to drill into each beneficial owner's sub-portfolio separately.
+
 ---
 
 ## Stage 6 — Document Generation Architecture (settled 7 May 2026; Stage 6c merged 12 May 2026)

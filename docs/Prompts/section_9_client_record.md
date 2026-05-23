@@ -38,11 +38,13 @@ A linked entity (e.g. "BO'B SIPP") still has its own client record reachable dir
 
 The platform-wide three-dimensional investor identity model applies here unchanged:
 
-- **Client** — principal investor (always a real person; the lead)
-- **Vehicle** — legal entity through which the investment is made (NULL = own name)
-- **Location** — where the shares are physically held (NULL = direct, otherwise nominee company name)
+- **Lead investor** — principal investor (always a real person; the lead)
+- **Beneficial owner** — legal entity through which the investment is made (NULL = the lead is also the beneficial owner)
+- **Legal owner** — where the shares are physically held (NULL = direct/no nominee)
 
-In the client record UI, the client dimension is the page itself. Vehicle and location surface as tags on individual transaction rows.
+In the client record UI, the lead investor dimension is the page itself. Beneficial owner and legal owner surface as tags on individual transaction rows.
+
+*Vocabulary updated Entity Model Cleanup Sub-stage B, 23 May 2026. Database column names unchanged.*
 
 ## 9.3 Page Header
 
