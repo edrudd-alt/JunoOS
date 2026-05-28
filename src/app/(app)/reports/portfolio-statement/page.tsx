@@ -23,11 +23,20 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
   const { data: investments } = clientIds.length > 0
     ? await supabase
         .from('investments')
-        .select('client_id, fund_type, shares_purchased')
+        .select('client_id, fund_type, shares_purchased, id, status')
         .in('client_id', clientIds)
-    : { data: [] as { client_id: string; fund_type: string | null; shares_purchased: number }[] }
+    : { data: [] as { client_id: string; fund_type: string | null; shares_purchased: number; id: string; status: string }[] }
 
-  // 3. Non-superseded portfolio statements (last-statement + hasCurrent columns)
+  // 3. Deferred payments — contingent position detection
+  const investmentIds = (investments ?? []).map(inv => inv.id)
+  const { data: deferredPayments } = investmentIds.length > 0
+    ? await supabase
+        .from('deferred_payments')
+        .select('investment_id, status')
+        .in('investment_id', investmentIds)
+    : { data: [] as { investment_id: string; status: string }[] }
+
+  // 4. Non-superseded portfolio statements (last-statement + hasCurrent columns)
   const { data: statements } = clientIds.length > 0
     ? await supabase
         .from('documents')
@@ -79,7 +88,8 @@ export default async function PortfolioStatementPage({ searchParams }: Props) {
   return (
     <BulkStatementRunPage
       clients={(clients ?? []) as { id: string; full_name: string; email: string | null; is_favourite: boolean }[]}
-      investments={(investments ?? []) as { client_id: string; fund_type: string | null; shares_purchased: number }[]}
+      investments={(investments ?? []) as { client_id: string; fund_type: string | null; shares_purchased: number; id: string; status: string }[]}
+      deferredPayments={(deferredPayments ?? []) as Record<string, unknown>[]}
       statements={(statements ?? []) as { client_id: string; period: string | null; created_at: string }[]}
       activeRun={activeRun ?? null}
       activeRunItems={(activeRunItems ?? []) as Record<string, unknown>[]}

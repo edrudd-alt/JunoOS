@@ -2,6 +2,8 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { formatPeriodDateUK } from '@/lib/templateUtils'
+import { groupDeferredByInvestment, getAssetState } from '@/lib/assetState'
+import type { DeferredPayment } from '@/types'
 import {
   createBulkRun,
   cancelBulkRun,
@@ -30,6 +32,8 @@ interface InvestmentRow {
   client_id: string
   fund_type: string | null
   shares_purchased: number
+  id: string
+  status: string
 }
 
 interface StatementRow {
@@ -40,6 +44,7 @@ interface StatementRow {
 
 interface FilterState {
   activeInvestments: boolean
+  hasContingent:     boolean
   favouritesOnly:    boolean
   fundSyndicate:     boolean
   fundMultiManager:  boolean
@@ -51,6 +56,7 @@ interface FilterState {
 interface Props {
   clients:             ClientRow[]
   investments:         InvestmentRow[]
+  deferredPayments:    Record<string, unknown>[]
   statements:          StatementRow[]
   activeRun:           Record<string, unknown> | null
   activeRunItems:      Record<string, unknown>[]
@@ -93,6 +99,7 @@ function formatRunDate(iso: string): string {
 export default function BulkStatementRunPage({
   clients,
   investments,
+  deferredPayments,
   statements,
   activeRun:     initialActiveRun,
   activeRunItems: initialActiveRunItems,
@@ -104,6 +111,7 @@ export default function BulkStatementRunPage({
   const [periodDate, setPeriodDate] = useState<string>(defaultPeriodDate)
   const [filters, setFilters] = useState<FilterState>({
     activeInvestments: true,
+    hasContingent:     false,
     favouritesOnly:    false,
     fundSyndicate:     false,
     fundMultiManager:  false,
@@ -144,15 +152,19 @@ export default function BulkStatementRunPage({
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const investmentsByClient = useMemo(() => {
-    const map = new Map<string, { fundTypes: Set<string>; hasActive: boolean }>()
+    const deferredByInv = groupDeferredByInvestment(
+      deferredPayments as Pick<DeferredPayment, 'investment_id' | 'status'>[]
+    )
+    const map = new Map<string, { fundTypes: Set<string>; hasActive: boolean; hasContingent: boolean }>()
     for (const inv of investments) {
-      const entry = map.get(inv.client_id) ?? { fundTypes: new Set<string>(), hasActive: false }
+      const entry = map.get(inv.client_id) ?? { fundTypes: new Set<string>(), hasActive: false, hasContingent: false }
       if (inv.fund_type) entry.fundTypes.add(inv.fund_type)
       if (inv.shares_purchased > 0) entry.hasActive = true
+      if (getAssetState(inv.status, deferredByInv.get(inv.id) ?? []) === 'contingent') entry.hasContingent = true
       map.set(inv.client_id, entry)
     }
     return map
-  }, [investments])
+  }, [investments, deferredPayments])
 
   const statementsByClient = useMemo(() => {
     const map = new Map<string, { lastDate: string | null; hasCurrent: boolean }>()
@@ -187,7 +199,8 @@ export default function BulkStatementRunPage({
       const inv = investmentsByClient.get(c.id)
       const stmt = statementsByClient.get(c.id)
 
-      if (filters.activeInvestments && !inv?.hasActive)     return false
+      if (filters.activeInvestments && !inv?.hasActive && !inv?.hasContingent) return false
+      if (filters.hasContingent     && !inv?.hasContingent)                    return false
       if (filters.favouritesOnly    && !c.is_favourite)      return false
       if (filters.hasEmail          && !c.email)             return false
       if (filters.notSentThisPeriod && stmt?.hasCurrent)     return false
@@ -423,6 +436,7 @@ export default function BulkStatementRunPage({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '16px 0 12px' }}>
               {([
                 ['activeInvestments', 'Active investments'],
+                ['hasContingent',     'Has contingent'],
                 ['favouritesOnly',    'Favourites only'],
                 ['fundSyndicate',     'Fund: Syndicate'],
                 ['fundMultiManager',  'Fund: Multi Manager'],
