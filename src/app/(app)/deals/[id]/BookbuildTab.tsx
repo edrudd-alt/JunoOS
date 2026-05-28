@@ -135,20 +135,29 @@ export default function BookbuildTab({
   // Filters
   const [searchQuery,       setSearchQuery]       = useState('')
   const [statusFilters,     setStatusFilters]     = useState<Set<DisplayedStatus>>(new Set())
-  const [vehicleFilter,     setVehicleFilter]     = useState<string | null>(null)
+  const [boFilters,         setBoFilters]         = useState<Set<string>>(new Set())
+  const [nomineeFilters,    setNomineeFilters]    = useState<Set<string>>(new Set())
   const [statusDropOpen,    setStatusDropOpen]    = useState(false)
-  const [vehicleDropOpen,   setVehicleDropOpen]   = useState(false)
+  const [boDropOpen,        setBoDropOpen]        = useState(false)
+  const [nomineeDropOpen,   setNomineeDropOpen]   = useState(false)
 
   const isReadOnly = deal.status === 'complete'
   const showEis    = deal.eis_qualifying === 'yes'
   const locked     = isBookbuildLocked(dealInvestors)
   const nomineeMap = new Map(nominees.map(n => [n.id, n]))
 
-  // Unique vehicles in this deal for filter dropdown
-  const dealVehicles = [...new Map(
+  // Unique beneficial owners (vehicles) in this deal for filter dropdown
+  const dealBeneficialOwners = [...new Map(
     dealInvestors
       .filter(di => di.investing_vehicle_id != null)
       .map(di => [di.investing_vehicle_id!, clientMap.get(di.investing_vehicle_id!)?.full_name ?? ''])
+  ).entries()].sort((a, b) => a[1].localeCompare(b[1]))
+
+  // Unique legal owners (nominees) in this deal for filter dropdown
+  const dealNominees = [...new Map(
+    dealInvestors
+      .filter(di => di.nominee_id != null)
+      .map(di => [di.nominee_id!, nomineeMap.get(di.nominee_id!)?.name ?? ''])
   ).entries()].sort((a, b) => a[1].localeCompare(b[1]))
 
   // Filter logic
@@ -165,19 +174,23 @@ export default function BookbuildTab({
 
     if (statusFilters.size > 0 && !statusFilters.has(ds)) return false
 
-    if (vehicleFilter === 'own_name'    && di.investing_vehicle_id != null) return false
-    if (vehicleFilter === 'via_vehicle' && di.investing_vehicle_id == null) return false
-    if (vehicleFilter && vehicleFilter !== 'own_name' && vehicleFilter !== 'via_vehicle') {
-      if (di.investing_vehicle_id !== vehicleFilter) return false
+    if (boFilters.size > 0) {
+      const boKey = di.investing_vehicle_id ?? '__none__'
+      if (!boFilters.has(boKey)) return false
+    }
+
+    if (nomineeFilters.size > 0) {
+      const loKey = di.nominee_id ?? '__none__'
+      if (!nomineeFilters.has(loKey)) return false
     }
 
     return true
   }
 
-  const filtersActive = searchQuery.length > 0 || statusFilters.size > 0 || vehicleFilter != null
+  const filtersActive = searchQuery.length > 0 || statusFilters.size > 0 || boFilters.size > 0 || nomineeFilters.size > 0
 
   function clearFilters() {
-    setSearchQuery(''); setStatusFilters(new Set()); setVehicleFilter(null)
+    setSearchQuery(''); setStatusFilters(new Set()); setBoFilters(new Set()); setNomineeFilters(new Set())
   }
 
   // Partition and sort
@@ -517,7 +530,7 @@ export default function BookbuildTab({
         <input
           type="text" value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Search investors, vehicles, or locations…"
+          placeholder="Search by lead, beneficial owner, or legal owner…"
           style={{
             padding: '6px 10px', fontSize: 12, borderRadius: 6,
             border: '1px solid #d0d0c8', outline: 'none',
@@ -528,7 +541,7 @@ export default function BookbuildTab({
         {/* Status filter */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setStatusDropOpen(v => !v); setVehicleDropOpen(false) }}
+            onClick={() => { setStatusDropOpen(v => !v); setBoDropOpen(false); setNomineeDropOpen(false) }}
             className="btn btn-secondary"
             style={{ fontSize: 12 }}
           >
@@ -567,44 +580,85 @@ export default function BookbuildTab({
           )}
         </div>
 
-        {/* Vehicle filter */}
+        {/* Beneficial owner filter */}
         <div style={{ position: 'relative' }}>
           <button
-            onClick={() => { setVehicleDropOpen(v => !v); setStatusDropOpen(false) }}
+            onClick={() => { setBoDropOpen(v => !v); setStatusDropOpen(false); setNomineeDropOpen(false) }}
             className="btn btn-secondary"
             style={{ fontSize: 12 }}
           >
-            {vehicleFilter == null ? 'All vehicles'
-              : vehicleFilter === 'own_name' ? 'Own name only'
-              : vehicleFilter === 'via_vehicle' ? 'Via vehicle only'
-              : clientMap.get(vehicleFilter)?.full_name ?? 'Vehicle'}
+            {boFilters.size === 0 ? 'All beneficial owners' : `${boFilters.size} owner${boFilters.size !== 1 ? 's' : ''}`}
             {' ▾'}
           </button>
-          {vehicleDropOpen && (
+          {boDropOpen && (
             <div style={{
               position: 'absolute', top: '100%', left: 0, zIndex: 300,
               background: '#fff', border: '0.5px solid var(--card-border)',
-              borderRadius: 8, padding: '4px 0', minWidth: 180,
+              borderRadius: 8, padding: '8px 0', minWidth: 200,
               boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
             }}>
               {[
-                { value: null,          label: 'All vehicles' },
-                { value: 'own_name',    label: 'Own name only' },
-                { value: 'via_vehicle', label: 'Via vehicle only' },
-                ...dealVehicles.map(([id, name]) => ({ value: id, label: name })),
+                { value: '__none__', label: 'Lead investor (direct)' },
+                ...dealBeneficialOwners.map(([id, name]) => ({ value: id, label: name })),
               ].map(opt => (
-                <button
-                  key={String(opt.value)}
-                  onClick={() => { setVehicleFilter(opt.value); setVehicleDropOpen(false) }}
-                  style={{
-                    display: 'block', width: '100%', textAlign: 'left',
-                    padding: '7px 14px', fontSize: 12, background: 'none', border: 'none',
-                    color: vehicleFilter === opt.value ? 'var(--teal)' : '#0f2744',
-                    cursor: 'pointer', fontWeight: vehicleFilter === opt.value ? 600 : 400,
-                  }}
-                >
+                <label key={opt.value} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 14px', fontSize: 12, cursor: 'pointer', color: '#0f2744',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={boFilters.has(opt.value)}
+                    onChange={() => setBoFilters(prev => {
+                      const next = new Set(prev)
+                      next.has(opt.value) ? next.delete(opt.value) : next.add(opt.value)
+                      return next
+                    })}
+                    style={{ accentColor: 'var(--teal)' }}
+                  />
                   {opt.label}
-                </button>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Legal owner filter */}
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={() => { setNomineeDropOpen(v => !v); setStatusDropOpen(false); setBoDropOpen(false) }}
+            className="btn btn-secondary"
+            style={{ fontSize: 12 }}
+          >
+            {nomineeFilters.size === 0 ? 'All legal owners' : `${nomineeFilters.size} owner${nomineeFilters.size !== 1 ? 's' : ''}`}
+            {' ▾'}
+          </button>
+          {nomineeDropOpen && (
+            <div style={{
+              position: 'absolute', top: '100%', left: 0, zIndex: 300,
+              background: '#fff', border: '0.5px solid var(--card-border)',
+              borderRadius: 8, padding: '8px 0', minWidth: 200,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+            }}>
+              {[
+                { value: '__none__', label: 'Direct (no nominee)' },
+                ...dealNominees.map(([id, name]) => ({ value: id, label: name })),
+              ].map(opt => (
+                <label key={opt.value} style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '6px 14px', fontSize: 12, cursor: 'pointer', color: '#0f2744',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={nomineeFilters.has(opt.value)}
+                    onChange={() => setNomineeFilters(prev => {
+                      const next = new Set(prev)
+                      next.has(opt.value) ? next.delete(opt.value) : next.add(opt.value)
+                      return next
+                    })}
+                    style={{ accentColor: 'var(--teal)' }}
+                  />
+                  {opt.label}
+                </label>
               ))}
             </div>
           )}
@@ -639,7 +693,7 @@ export default function BookbuildTab({
       {/* Horizontally scrollable table */}
       <div
         style={{ overflowX: 'auto' }}
-        onClick={() => { setStatusDropOpen(false); setVehicleDropOpen(false) }}
+        onClick={() => { setStatusDropOpen(false); setBoDropOpen(false); setNomineeDropOpen(false) }}
       >
 
         {/* Header */}
@@ -661,9 +715,9 @@ export default function BookbuildTab({
               title="Select all"
             />
           </div>
-          <ColHeader label="Client"      align="left"  />
-          <ColHeader label="Vehicle"     align="center"/>
-          <ColHeader label="Location"    align="center"/>
+          <ColHeader label="Lead investor"    align="left"  />
+          <ColHeader label="Beneficial owner" align="center"/>
+          <ColHeader label="Legal owner"      align="center"/>
           <ColHeader label="Soft-circle" align="right" />
           <ColHeader label="Confirmed"   align="right" />
           <ColHeader label="Shares"      align="right" />
@@ -1129,14 +1183,14 @@ function InvestorRow({
       <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
         {vehicleName
           ? <span style={{ color: '#0f2744', fontWeight: 500 }}>{vehicleName}</span>
-          : <span style={{ color: '#aaa' }}>Own name</span>}
+          : <span style={{ color: '#aaa' }}>Lead investor</span>}
       </div>
 
       {/* Location */}
       <div style={{ padding: '10px 8px', fontSize: 12, textAlign: 'center' }}>
         {nomineeName
           ? <span style={{ color: '#0f2744', fontWeight: 500 }}>{nomineeName}</span>
-          : <span style={{ color: '#aaa' }}>Direct</span>}
+          : <span style={{ color: '#aaa' }}>Direct (no nominee)</span>}
       </div>
 
       {/* Soft-circle */}

@@ -190,15 +190,18 @@ export function RecordTransactionModal({
 
   const transferFundTypeMismatch = useMemo(() => {
     if (modalType !== 'transfer' || !fromClient || !toClient) return null
-    const from = clients.find(c => c.id === fromClient)
-    const to   = clients.find(c => c.id === toClient)
-    if (!from || !to) return null
-    const fromFt = from.fund_type
-    const toFt   = to.fund_type
-    const label = (ft: string) => ft === 'multi_manager' ? 'Multi Manager' : ft === 'both' ? 'Both' : 'Syndicate'
+    const deriveFundType = (clientId: string) => {
+      const clientInvs = investments.filter(i => i.client_id === clientId)
+      if (clientInvs.length === 0) return 'syndicate'
+      const latest = clientInvs.reduce((a, b) => a.investment_date > b.investment_date ? a : b)
+      return latest.fund_type ?? 'syndicate'
+    }
+    const fromFt = deriveFundType(fromClient)
+    const toFt   = deriveFundType(toClient)
+    const label = (ft: string) => ft === 'multi_manager' ? 'Multi Manager' : 'Syndicate'
     if (fromFt !== toFt) return { fromLabel: label(fromFt), toLabel: label(toFt) }
     return null
-  }, [modalType, fromClient, toClient, clients])
+  }, [modalType, fromClient, toClient, investments])
 
   const rowErrors = useMemo(() => {
     if (modalType === 'buy') return {} as Record<string, string>

@@ -135,10 +135,6 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
             <dd style={{ margin: 0 }}>{taxStatusLabel(client.tax_status)}</dd>
             <dt style={{ color: '#888' }}>Investor ref</dt>
             <dd style={{ margin: 0 }}>{client.investor_reference || '—'}</dd>
-            <dt style={{ color: '#888' }}>Fund type</dt>
-            <dd style={{ margin: 0 }}>
-              <FundTypeDisplay fundType={client.fund_type ?? 'syndicate'} activeFundType={client.active_fund_type ?? null} />
-            </dd>
             <dt style={{ color: '#888' }}>Fee schedule</dt>
             <dd style={{ margin: 0 }}>
               {changingFeeSchedule ? (
@@ -205,9 +201,7 @@ export default function DetailsTab({ client, linkedEntities, portfolioRows, memb
           )}
         </div>
 
-        {(client.fund_type === 'multi_manager' || client.fund_type === 'both') && (
-          <AccruedFeeCard investments={investments} />
-        )}
+        <AccruedFeeCard investments={investments} />
       </div>
 
       {/* RIGHT */}
@@ -627,11 +621,9 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
       lead_investor_id: leadClientId,
       vehicle_type:     vehicleType,
       default_nominee_id: null,
-      fund_type:              'syndicate',
       tax_status:             'neither',
       kyc_status:             'outstanding',
       default_fee_rate:       5,
-      entity_type:            null,
       holding_location:       'direct',
       report_delivery_method: 'email',
     })
@@ -705,16 +697,6 @@ function AddLinkedEntityModal({ leadClientId, nominees, onClose, onSaved }: {
 
 function taxStatusLabel(s: string) {
   return { eis: 'EIS', seis: 'SEIS', both: 'EIS & SEIS', neither: 'No EIS/SEIS' }[s] ?? s
-}
-
-function FundTypeDisplay({ fundType, activeFundType }: { fundType: string; activeFundType: string | null }) {
-  const labels: Record<string, string> = {
-    syndicate: 'Syndicate', multi_manager: 'Multi Manager', eis_fund: 'EIS Fund', both: 'Both',
-  }
-  if (fundType === 'both' && activeFundType) {
-    return <span>{labels[fundType]} <span style={{ color: '#888' }}>(active: {labels[activeFundType] ?? activeFundType})</span></span>
-  }
-  return <span>{labels[fundType] ?? fundType}</span>
 }
 
 function AccruedFeeCard({ investments }: { investments: InvestmentRow[] }) {

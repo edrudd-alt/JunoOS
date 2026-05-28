@@ -16,8 +16,6 @@ interface FundType {
 interface ClientRow {
   id: string
   full_name: string
-  fund_type: string
-  active_fund_type: string | null
 }
 
 interface FeeSchedule {
@@ -65,11 +63,13 @@ const BASIS_LABELS: Record<string, string> = {
 export default function FundManagementClient({
   fundTypes: fundTypesRaw,
   clients: clientsRaw,
+  fundTypeCounts,
   feeSchedules: feeSchedulesRaw,
   feeScheduleItems: feeScheduleItemsRaw,
 }: {
   fundTypes: Record<string, unknown>[]
   clients: Record<string, unknown>[]
+  fundTypeCounts: Record<string, number>
   feeSchedules: Record<string, unknown>[]
   feeScheduleItems: Record<string, unknown>[]
 }) {
@@ -82,10 +82,9 @@ export default function FundManagementClient({
   const feeScheduleItems = feeScheduleItemsRaw as unknown as FeeScheduleItem[]
 
   // Fund type card state
-  const [editingId,  setEditingId]  = useState<string | null>(null)
-  const [editDesc,   setEditDesc]   = useState('')
-  const [saving,     setSaving]     = useState(false)
-  const [fundFilter, setFundFilter] = useState<'all' | 'syndicate' | 'multi_manager' | 'eis' | 'both'>('all')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editDesc,  setEditDesc]  = useState('')
+  const [saving,    setSaving]    = useState(false)
 
   // Fee schedule state
   const [expandedScheduleId,  setExpandedScheduleId]  = useState<string | null>(null)
@@ -94,16 +93,12 @@ export default function FundManagementClient({
   const [showAddItemModal,    setShowAddItemModal]    = useState<string | null>(null)
   const [editingItem,         setEditingItem]         = useState<FeeScheduleItem | null>(null)
 
-  const syndicateCount    = clients.filter(c => c.fund_type === 'syndicate').length
-  const multiManagerCount = clients.filter(c => c.fund_type === 'multi_manager').length
-  const eisCount          = clients.filter(c => c.fund_type === 'eis').length
-  const bothCount         = clients.filter(c => c.fund_type === 'both').length
+  const syndicateCount    = fundTypeCounts['syndicate']     ?? 0
+  const multiManagerCount = fundTypeCounts['multi_manager'] ?? 0
+  const eisCount          = fundTypeCounts['eis']           ?? 0
 
   function clientCountForCode(code: string) {
-    if (code === 'syndicate')     return syndicateCount
-    if (code === 'multi_manager') return multiManagerCount
-    if (code === 'eis')           return eisCount
-    return 0
+    return fundTypeCounts[code] ?? 0
   }
 
   function startEdit(ft: FundType) {
@@ -131,10 +126,6 @@ export default function FundManagementClient({
     await supabase.from('fee_schedule_items').update({ active: false }).eq('id', itemId)
     router.refresh()
   }
-
-  const filteredClients = fundFilter === 'all'
-    ? clients
-    : clients.filter(c => c.fund_type === fundFilter)
 
   const activeFeeSchedules = feeSchedules.filter(s => s.active)
 
@@ -270,54 +261,37 @@ export default function FundManagementClient({
 
             {/* Client summary table */}
             <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #e8e7e0' }}>
                 <div style={{ fontSize: 12, fontWeight: 500 }}>
                   Clients
                   <span style={{ fontWeight: 400, color: '#888', marginLeft: 8, fontSize: 11 }}>
                     {syndicateCount} S · {multiManagerCount} MM · {eisCount} EIS
-                    {bothCount > 0 ? ` · ${bothCount} Both` : ''}
                   </span>
                 </div>
-                <div style={{ display: 'flex', gap: 3 }}>
-                  {(['all', 'syndicate', 'multi_manager', 'eis', 'both'] as const).map(f => (
-                    <button
-                      key={f}
-                      onClick={() => setFundFilter(f)}
-                      style={{
-                        fontSize: 10, padding: '2px 7px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                        background: fundFilter === f ? '#0f2744' : '#f5f5f2',
-                        color:      fundFilter === f ? '#fff' : '#555',
-                        fontWeight: fundFilter === f ? 600 : 400,
-                      }}
-                    >
-                      {f === 'all' ? 'All' : f === 'syndicate' ? 'S' : f === 'multi_manager' ? 'MM' : f === 'eis' ? 'EIS' : 'Both'}
-                    </button>
-                  ))}
+                <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+                  Counts reflect distinct investors per fund type based on their investments.
+                  A client with investments in multiple fund types is counted in each.
                 </div>
               </div>
 
-              {filteredClients.length === 0 ? (
+              {clients.length === 0 ? (
                 <div style={{ padding: '20px 14px', textAlign: 'center', color: '#888', fontSize: 12 }}>
-                  No clients in this category
+                  No clients yet
                 </div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#f9f9f7' }}>
                       <th style={thSt}>Client</th>
-                      <th style={thSt}>Fund type</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredClients.map(client => (
+                    {clients.map(client => (
                       <tr key={client.id}>
                         <td style={tdSt}>
                           <Link href={`/clients/${client.id}`} style={{ color: '#0f2744', textDecoration: 'none', fontWeight: 500 }}>
                             {client.full_name}
                           </Link>
-                        </td>
-                        <td style={tdSt}>
-                          <FundTypePill code={client.fund_type} />
                         </td>
                       </tr>
                     ))}
@@ -489,23 +463,6 @@ export default function FundManagementClient({
         />
       )}
     </>
-  )
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function FundTypePill({ code }: { code: string }) {
-  const isMM   = code === 'multi_manager'
-  const isEIS  = code === 'eis'
-  const isBoth = code === 'both'
-  return (
-    <span style={{
-      fontSize: 10, padding: '2px 7px', borderRadius: 4, fontWeight: 600,
-      background: isMM ? '#fff3e0' : isEIS ? '#f0eaff' : isBoth ? '#f0f0ec' : '#e8f5f0',
-      color:      isMM ? '#e0952a' : isEIS ? '#7c5cbf' : isBoth ? '#555'    : '#1d9e75',
-    }}>
-      {isMM ? 'Multi Manager' : isEIS ? 'EIS Fund' : isBoth ? 'Both' : 'Syndicate'}
-    </span>
   )
 }
 

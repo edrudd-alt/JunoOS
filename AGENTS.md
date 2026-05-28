@@ -117,9 +117,13 @@ The canonical pattern is `getDisplayedStatus()` in the deals workflow. New compu
 
 Every investment has three independent dimensions. Never collapse them into two.
 
-- **Client** — principal investor, always a real person
-- **Vehicle** — legal entity through which the investment is made (NULL = own name)
-- **Location** — where the shares are physically held (NULL = direct, otherwise nominee company name)
+- **Lead investor** — principal investor, always a real person (`deal_investors.client_id`)
+- **Beneficial owner** — legal entity through which the investment is made; NULL means the lead is also the beneficial owner (`deal_investors.investing_vehicle_id`)
+- **Legal owner** — where the shares are physically held; NULL means direct/no nominee (`deal_investors.nominee_id`)
+
+User-facing labels (updated Entity Model Cleanup Sub-stage B, 23 May 2026): **Lead investor / Beneficial owner / Legal owner**. Database column names are unchanged.
+
+The `clients` table no longer has `entity_type`, `fund_type`, or `active_fund_type` columns (removed in Sub-stage A, 23 May 2026). Fund type lives only on `investments.fund_type`.
 
 This applies platform-wide: deals, sells (future redesign), client records, reporting.
 
@@ -139,7 +143,7 @@ When a deal completes, only `share_price` locks. All other deal-level fields (in
 - **Multi Manager** — closed to new onboarding
 - **EIS Fund** — closed to new onboarding
 
-Clients are linked to a fund type via `clients.active_fund_type`. Clients may belong to more than one fund type; deal and transfer wizards must prompt for active designation in that case.
+Fund type is per-investment (`investments.fund_type`), not per-client. The `clients.fund_type` and `clients.active_fund_type` columns were dropped in Sub-stage A (23 May 2026). A client may have investments in multiple fund types.
 
 **Fees are never hardcoded in the platform.** They live in database tables and must be read from there at every use site. The lookup chain:
 

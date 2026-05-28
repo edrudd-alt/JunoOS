@@ -25,7 +25,7 @@ Section 6 (Closing tab) and Section 7 (Completion tab) substantially rewritten t
 
 **What was new in v3.2:**
 
-A structural addition to how investments are modelled. Through Stage 3a's preview review, it became clear that every investment has **three independent dimensions** rather than the two the spec previously implied. The spec now explicitly documents this Client / Vehicle / Location model, applies it to the Bookbuild table column structure (now 13 columns instead of 12), and references it as the canonical model for future work — including the eventual sell deal redesign (14.1) which will inherit the same three-dimensional structure. New Future Work items 14.9 (deal title naming convention), 14.10 (recapitalisation event handling), and 14.11 (last-deal-date in investor picker).
+A structural addition to how investments are modelled. Through Stage 3a's preview review, it became clear that every investment has **three independent dimensions** rather than the two the spec previously implied. The spec now explicitly documents this model (originally Client / Vehicle / Location; renamed Lead investor / Beneficial owner / Legal owner in Entity Model Cleanup Sub-stage B, May 2026), applies it to the Bookbuild table column structure (now 13 columns instead of 12), and references it as the canonical model for future work — including the eventual sell deal redesign (14.1) which will inherit the same three-dimensional structure. New Future Work items 14.9 (deal title naming convention), 14.10 (recapitalisation event handling), and 14.11 (last-deal-date in investor picker).
 
 **What was new in v3.1:**
 
@@ -383,9 +383,11 @@ Every row in the deal represents a single investment. An investment has **three 
 
 | Dimension | Database field | Examples | What it tells you |
 |---|---|---|---|
-| **Client** | `deal_investors.client_id` | "Nigel Rudd", "Bob Bigballs" | Who is the principal investor — always a real person, the relationship-holder |
-| **Vehicle** | `deal_investors.investing_vehicle_id` | NULL ("Own name"), "Rother House", "Robert Bigballs III" | How is the money wrapped — own name by default, or a legal entity through which the investment is made |
-| **Location** | `deal_investors.nominee_id` | NULL ("Direct"), "City Partnership Nominees Ltd" | Where are the shares held — directly in the legal investor's name, or via a nominee |
+| **Lead investor** | `deal_investors.client_id` | "Nigel Rudd", "Bob Bigballs" | Who is the principal investor — always a real person, the relationship-holder |
+| **Beneficial owner** | `deal_investors.investing_vehicle_id` | NULL ("Lead investor"), "Rother House", "Robert Bigballs III" | How is the money wrapped — lead as own beneficial owner by default, or a legal entity through which the investment is made |
+| **Legal owner** | `deal_investors.nominee_id` | NULL ("Direct (no nominee)"), "City Partnership Nominees Ltd" | Where are the shares held — directly in the beneficial owner's name, or via a nominee |
+
+*Vocabulary updated Entity Model Cleanup Sub-stage B, 23 May 2026. Database column names unchanged.*
 
 **Why three dimensions, not two:**
 
@@ -395,19 +397,19 @@ These are genuinely independent. The same investor might invest:
 - In their own name, but held via a nominee
 - Through their family vehicle, held via a nominee
 
-All four combinations occur in real syndicates. The platform must surface all three dimensions clearly because each affects different downstream paperwork: the legal investor (Client + Vehicle) signs the application form; the nominee (Location) appears on the share certificate.
+All four combinations occur in real syndicates. The platform must surface all three dimensions clearly because each affects different downstream paperwork: the legal investor (Lead investor + Beneficial owner) signs the application form; the nominee (Legal owner) appears on the share certificate.
 
 **The "legal investor" derived from the model:**
 
-For documents that go to the cap table or HMRC, the *legal investor* is determined by the Client + Vehicle:
-- If `investing_vehicle_id` is NULL → legal investor = the client themself
-- If `investing_vehicle_id` is set → legal investor = the vehicle (e.g. "Rother House Ltd")
+For documents that go to the cap table or HMRC, the *legal investor* is determined by Lead investor + Beneficial owner:
+- If `investing_vehicle_id` is NULL → legal investor = the lead investor themself
+- If `investing_vehicle_id` is set → legal investor = the beneficial owner entity (e.g. "Rother House Ltd")
 
-The Location is a separate concern — it's about the registered holder of the shares, not who put up the money.
+The Legal owner is a separate concern — it's about the registered holder of the shares, not who put up the money.
 
 **This model applies platform-wide.**
 
-The Client / Vehicle / Location triangulation is the canonical way investments are modelled in JunoOS. It applies to:
+The Lead investor / Beneficial owner / Legal owner triangulation is the canonical way investments are modelled in JunoOS. It applies to:
 - Buy deals (this spec)
 - Sell deals (Future Work 14.1) — when the redesign happens, sells will inherit the same three-dimensional structure
 - Reports — investments can be filtered/grouped by any combination of the three dimensions
@@ -418,9 +420,9 @@ The Client / Vehicle / Location triangulation is the canonical way investments a
 In order, left to right (13 columns total):
 
 1. Checkbox (28px wide) — for bulk selection
-2. **Client** — primary investor name with KYC indicator badge (🟢 verified / 🟡 renewal due / 🔴 outstanding) near the name. From `deal_investors.client_id` → `clients.full_name`. Min-width 160px to prevent CSS layout collapse on narrow screens.
-3. **Vehicle** — `deal_investors.investing_vehicle_id`. Shows "Own name" if NULL (in muted grey), otherwise the vehicle's `full_name`.
-4. **Location** — `deal_investors.nominee_id`. Shows "Direct" if NULL (in muted grey), otherwise the nominee's `name`.
+2. **Lead investor** — primary investor name with KYC indicator badge (🟢 verified / 🟡 renewal due / 🔴 outstanding) near the name. From `deal_investors.client_id` → `clients.full_name`. Min-width 160px to prevent CSS layout collapse on narrow screens.
+3. **Beneficial owner** — `deal_investors.investing_vehicle_id`. Shows "Lead investor" if NULL (in muted grey), otherwise the beneficial owner's `full_name`.
+4. **Legal owner** — `deal_investors.nominee_id`. Shows "Direct (no nominee)" if NULL (in muted grey), otherwise the nominee's `name`.
 5. Soft-circle (£) — right-aligned, tabular numerals
 6. Confirmed (£) — right-aligned, tabular numerals
 7. Shares — right-aligned, tabular numerals (calculated: confirmed_amount ÷ deals.share_price)
@@ -689,9 +691,9 @@ When `isBookbuildLocked()` returns false:
 In order, left to right (13 columns):
 
 1. Checkbox (28px wide, disabled for past rows)
-2. **Client** — primary investor name + KYC indicator (🟢 verified / 🟡 renewal due / 🔴 outstanding). min-width 160px
-3. **Vehicle** — `investing_vehicle_id` → "Own name" if NULL, otherwise vehicle's `full_name`
-4. **Location** — `nominee_id` → "Direct" if NULL, otherwise nominee's `name`
+2. **Lead investor** — primary investor name + KYC indicator (🟢 verified / 🟡 renewal due / 🔴 outstanding). min-width 160px
+3. **Beneficial owner** — `investing_vehicle_id` → "Lead investor" if NULL, otherwise beneficial owner's `full_name`
+4. **Legal owner** — `nominee_id` → "Direct (no nominee)" if NULL, otherwise nominee's `name`
 5. **Confirmed (£)** — right-aligned, tabular numerals (no soft-circle column — irrelevant for Closing)
 6. **Shares** — right-aligned, tabular numerals
 7. **Fee (%)** — right-aligned, always shown (always with 🔒 since fee is locked at this stage); no override possible
@@ -749,9 +751,9 @@ When the user opens the "⋯" menu on a signed row and clicks "Mark payment as r
 
 Same pattern as Bookbuild's toolbar (Section 4.8):
 
-1. **Search input** — placeholder "Search investors, vehicles, or locations..."
+1. **Search input** — placeholder "Search by lead, beneficial owner, or legal owner..."
 2. **Status filter dropdown** — checkboxes for: Signed, Paid, Complete
-3. **Vehicle filter dropdown** — same as Bookbuild
+3. **Beneficial owner filter dropdown** — same as Bookbuild
 4. **"+ Add investors" / "+ Add late addition" button** — see Section 6.9
 
 Filtering: substring search across client name, vehicle name, nominee name, POA holder name. Filters reset when navigating to a different deal.
@@ -834,9 +836,9 @@ UI: checklist visible inline in the Completion tab row (or expandable side panel
 In order (12 columns):
 
 1. Checkbox
-2. **Client** — primary investor name + KYC indicator. min-width 160px
-3. **Vehicle** — same as Closing (Section 6.4)
-4. **Location** — same as Closing
+2. **Lead investor** — primary investor name + KYC indicator. min-width 160px
+3. **Beneficial owner** — same as Closing (Section 6.4)
+4. **Legal owner** — same as Closing
 5. **Confirmed (£)** — the amount that came in
 6. **Shares** — calculated count
 7. **Checklist progress** — visual bar e.g. "3 of 5" or icons inline (design choice)
@@ -1247,7 +1249,7 @@ The new tabbed page applies to buy deals only. Sell deals continue using existin
 
 A future project will redesign the sell deal page using the same tabbed pattern, adapted for sell-specific flow: FIFO lot matching, deferred consideration, tranche schedules, and statuses (selling / not selling / undecided).
 
-**[UPDATED IN v3.2]** When the sell deal redesign happens, it should inherit the **Client / Vehicle / Location three-dimensional model** documented in Section 4.3. The model applies identically to sells: the seller has a client (relationship-holder), a vehicle (legal entity actually selling — own name or vehicle), and a location (where the shares are currently held — direct or nominee). FIFO lot matching needs to respect the Vehicle dimension (Bob's own-name shares are a separate lot from Bob's vehicle's shares) and may need to respect Location too if shares were originally bought via different nominees.
+**[UPDATED IN v3.2; vocabulary updated v3.8]** When the sell deal redesign happens, it should inherit the **Lead investor / Beneficial owner / Legal owner three-dimensional model** documented in Section 4.3. The model applies identically to sells: the seller has a lead investor (relationship-holder), a beneficial owner (legal entity actually selling — own name or vehicle), and a legal owner (where the shares are currently held — direct or nominee). FIFO lot matching needs to respect the Beneficial owner dimension (Bob's own-name shares are a separate lot from Bob's vehicle's shares) and may need to respect Legal owner too if shares were originally bought via different nominees.
 
 The sell deal table should have similar three-column structure for the seller identity, plus sell-specific columns (proceeds, current holding, FIFO lot mapping, etc.).
 
@@ -1590,7 +1592,7 @@ Trigger: client-section work scheduled within 2-3 weeks of Phase A completion.
 - **v3.5 (12 May 2026)** — Stage 6b reconciliation. Documenso integration documented as built. Application form template `applicationForm@1.1.0` in production. Webhook patterns (auth path exception, nil UUID actor, idempotency, dual signing_status update) documented. `created_not_sent` partial-failure state documented. POA-signing contradiction with `TRANSACTION_WORKFLOW_SPEC.md` flagged and corrected in that file.
 - **v3.4 (7 May 2026)** — Stage 6b designed. Review-before-send modal fully rewritten. Documenso integration designed end-to-end. Bank details fields added to companies and nominees. Stage 6 architectural design section added.
 - **v3.3** — Bookbuild auto-lock, 5-item completion checklist, Mark complete modal, Close the deal action, rolling-close UX, share certificate one-to-many model, share class onboarding workflow.
-- **v3.2** — Three-dimensional investor identity model (Client / Vehicle / Location). Bookbuild table expanded to 13 columns.
+- **v3.2** — Three-dimensional investor identity model (originally named Client / Vehicle / Location; renamed Lead investor / Beneficial owner / Legal owner in Entity Model Cleanup Sub-stage B). Bookbuild table expanded to 13 columns.
 - **v3.1** — deal_investors unique constraint correction.
 - **v3** — Full Supabase schema inspection. All v2 assumptions verified or corrected. Migration plan tightened.
 

@@ -30,7 +30,6 @@ interface Valuation {
 interface LinkedEntity {
   id: string
   full_name: string
-  entity_type: string
 }
 
 interface Props {

@@ -1,3 +1,5 @@
+*Historical reference. Terminology updated in Sub-stage B of the Entity Model Cleanup (PR #19, May 2026): Client → Lead investor, Vehicle → Beneficial owner, Location → Legal owner. The `entity_type`, `fund_type`, and `active_fund_type` columns on the `clients` table were removed in Sub-stage A. See the current platform spec for live terminology and schema.*
+
 # Prompt for Claude Code — Stage 3a.1: Three-Column Investor Identity Patch
 
 Copy and paste the text between the `===PROMPT START===` and `===PROMPT END===` lines into Claude Code. This is a patch on top of Stage 3a, before Stage 3a is merged to main.

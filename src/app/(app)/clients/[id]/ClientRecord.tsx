@@ -83,7 +83,6 @@ export default function ClientRecord({
 
   const [tab, setTab] = useState<Tab>('overview')
   const [actionsOpen, setActionsOpen] = useState(false)
-  const [showFundTypeModal, setShowFundTypeModal] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
   function showToast(msg: string) {
@@ -139,7 +138,6 @@ export default function ClientRecord({
                 {client.investor_reference && (
                   <span style={{ fontSize: 11, color: '#888' }}>Ref: {client.investor_reference}</span>
                 )}
-                <span className="pill pill-grey">{entityTypeLabel(client.entity_type)}</span>
                 <KycBadge status={client.kyc_status} />
                 <TaxBadge status={client.tax_status} />
               </div>
@@ -183,7 +181,6 @@ export default function ClientRecord({
                   <ActionGroup label="Client">
                     <ActionItem label="Add note" onClick={() => { switchTab('notes'); setActionsOpen(false) }} />
                     <ActionItem label="Edit client details" href={`/clients/${clientId}/edit`} />
-                    <ActionItem label="Edit fund type" onClick={() => { setShowFundTypeModal(true); setActionsOpen(false) }} />
                   </ActionGroup>
                 </div>
               )}
@@ -295,88 +292,6 @@ export default function ClientRecord({
         </div>
       )}
 
-      {/* Edit fund type modal */}
-      {showFundTypeModal && (
-        <EditFundTypeModal
-          clientId={client.id}
-          currentFundType={client.fund_type ?? 'syndicate'}
-          currentActiveFundType={client.active_fund_type ?? null}
-          onClose={() => setShowFundTypeModal(false)}
-          onSaved={() => { setShowFundTypeModal(false); router.refresh() }}
-        />
-      )}
-    </div>
-  )
-}
-
-function EditFundTypeModal({
-  clientId, currentFundType, currentActiveFundType, onClose, onSaved,
-}: {
-  clientId: string
-  currentFundType: string
-  currentActiveFundType: string | null
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const supabase = createClient()
-  const [fundType,       setFundType]       = useState(currentFundType)
-  const [activeFundType, setActiveFundType] = useState(currentActiveFundType ?? 'syndicate')
-  const [saving,         setSaving]         = useState(false)
-  const [err,            setErr]            = useState('')
-
-  const inputSt: React.CSSProperties = { width: '100%', padding: '7px 10px', border: '0.5px solid #d0d0c8', borderRadius: 5, fontSize: 12, outline: 'none', boxSizing: 'border-box', background: '#fff' }
-  const labelSt: React.CSSProperties = { display: 'block', fontSize: 11, fontWeight: 500, color: '#555', marginBottom: 4 }
-
-  async function handleSave() {
-    setSaving(true); setErr('')
-    const { error } = await supabase.from('clients').update({
-      fund_type: fundType,
-      active_fund_type: fundType === 'both' ? activeFundType : null,
-    }).eq('id', clientId)
-    setSaving(false)
-    if (error) { setErr(error.message); return }
-    onSaved()
-  }
-
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 300 }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="card" style={{ width: 400, padding: '24px 28px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>Edit fund type</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, color: '#aaa' }}>×</button>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label style={labelSt}>Fund type</label>
-          <select value={fundType} onChange={e => setFundType(e.target.value)} style={inputSt}>
-            <option value="syndicate">Syndicate</option>
-            <option value="multi_manager">Multi Manager</option>
-            <option value="eis_fund">EIS Fund</option>
-            <option value="both">Both</option>
-          </select>
-        </div>
-        {fundType === 'both' && (
-          <div style={{ marginBottom: 14 }}>
-            <label style={labelSt}>Currently active fund type</label>
-            <select value={activeFundType} onChange={e => setActiveFundType(e.target.value)} style={inputSt}>
-              <option value="syndicate">Syndicate</option>
-              <option value="multi_manager">Multi Manager</option>
-            </select>
-          </div>
-        )}
-        {fundType === 'multi_manager' && (
-          <div style={{ background: '#fffbeb', border: '0.5px solid #f0c674', borderRadius: 6, padding: '8px 12px', marginBottom: 14, fontSize: 11, color: '#78500a' }}>
-            Multi Manager is closed to new clients. Only assign this to existing Multi Manager investors.
-          </div>
-        )}
-        {err && <div style={{ fontSize: 11, color: '#a32d2d', marginBottom: 10 }}>{err}</div>}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving} style={{ fontSize: 12 }}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button className="btn btn-secondary" onClick={onClose} style={{ fontSize: 12 }}>Cancel</button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -427,9 +342,3 @@ function ActionItem({ label, onClick, href }: { label: string; onClick?: () => v
   )
 }
 
-function entityTypeLabel(type: string) {
-  const map: Record<string, string> = {
-    own_name: 'Own name', family: 'Family', corporate: 'Corporate',
-  }
-  return map[type] ?? type
-}
