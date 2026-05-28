@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { TrendingUp } from 'lucide-react'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
+import { getAssetState, groupDeferredByInvestment, settledDeferredTotal, unsettledDeferredTotal } from '@/lib/assetState'
+import type { DeferredPayment } from '@/types'
 
 interface Investment {
   id: string
@@ -36,6 +38,7 @@ interface Props {
   investments: Record<string, unknown>[]
   valuations: Record<string, unknown>[]
   linkedEntities: LinkedEntity[]
+  deferredPayments: Record<string, unknown>[]
 }
 
 function EisTag({ status }: { status: string }) {
@@ -58,7 +61,7 @@ function isSellTx(tx: Investment) {
   return t === 'sell' || t === 'transfer_out'
 }
 
-export default function InvestmentsTab({ investments, valuations }: Props) {
+export default function InvestmentsTab({ investments, valuations, deferredPayments }: Props) {
   const [accountFilter, setAccountFilter] = useState('all')
   const [heldByFilter, setHeldByFilter] = useState('all')
   const [locationFilter, setLocationFilter] = useState('all')
@@ -184,6 +187,38 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
       .filter(isSellTx)
       .sort((a, b) => b.investment_date.localeCompare(a.investment_date))
   }, [inv])
+
+  // Deferred payments grouped by investment_id
+  const deferredByInvestment = useMemo(
+    () => groupDeferredByInvestment(deferredPayments as unknown as DeferredPayment[]),
+    [deferredPayments],
+  )
+
+  // Contingent: exited buy rows with ≥1 unsettled deferred payment, grouped by company
+  const contingentByCompany = useMemo(() => {
+    const map = new Map<string, { company: Investment['companies']; rows: Investment[] }>()
+    for (const i of inv) {
+      if (!isBuyTx(i)) continue
+      if (i.status !== 'exited') continue
+      const invDps = deferredByInvestment.get(i.id) ?? []
+      if (getAssetState(i.status, invDps) !== 'contingent') continue
+      const cid = i.companies?.id ?? '__unknown'
+      if (!map.has(cid)) map.set(cid, { company: i.companies, rows: [] })
+      map.get(cid)!.rows.push(i)
+    }
+    return map
+  }, [inv, deferredByInvestment])
+
+  // Total unsettled expected amount across all contingent investments (for memo line)
+  const totalContingentExpected = useMemo(() => {
+    let total = 0
+    for (const { rows } of contingentByCompany.values()) {
+      for (const i of rows) {
+        total += unsettledDeferredTotal(deferredByInvestment.get(i.id) ?? [])
+      }
+    }
+    return total
+  }, [contingentByCompany, deferredByInvestment])
 
   function toggleCompany(cid: string) {
     setExpandedCompanies(prev => {
@@ -345,6 +380,87 @@ export default function InvestmentsTab({ investments, valuations }: Props) {
           </tbody>
         </table>
       </div>
+
+      {/* Memo: contingent deferred proceeds not included in portfolio value */}
+      {contingentByCompany.size > 0 && (
+        <div style={{ fontSize: 11, color: '#888', padding: '4px 0 10px 2px', fontStyle: 'italic' }}>
+          Plus {formatCurrency(totalContingentExpected)} expected in contingent deferred proceeds (estimated, not guaranteed)
+        </div>
+      )}
+
+      {/* Contingent — Deferred Proceeds */}
+      {contingentByCompany.size > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 12 }}>
+          <div style={{ padding: '12px 16px', borderBottom: '0.5px solid #e8e7e0', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 3, height: 14, background: '#ba7517', borderRadius: 2, display: 'inline-block', flexShrink: 0 }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#ba7517' }}>Contingent — Deferred Proceeds</span>
+          </div>
+          {Array.from(contingentByCompany.entries()).map(([cid, { company, rows }], idx, arr) => {
+            const companySellRows = sellRows.filter(s => (s.companies?.id ?? '__unknown') === cid)
+            const disposalDate = companySellRows.length > 0 ? companySellRows[0].investment_date : null
+            const sellProceeds = companySellRows.reduce((sum, s) => sum + s.sum_subscribed, 0)
+            const settledDeferred = rows.reduce((sum, i) => sum + settledDeferredTotal(deferredByInvestment.get(i.id) ?? []), 0)
+            const proceedsToDate = sellProceeds + settledDeferred
+            const outstandingDps = rows
+              .flatMap(i => (deferredByInvestment.get(i.id) ?? []).filter(dp => dp.status === 'expected' || dp.status === 'overdue'))
+              .sort((a, b) => (a.tranche_number ?? 0) - (b.tranche_number ?? 0))
+            const isLast = idx === arr.length - 1
+            return (
+              <div key={cid} style={{ padding: '12px 16px', borderBottom: isLast ? 'none' : '0.5px solid #f0f0ec' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 8, gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                    <Link href={`/portfolio/${cid}`} style={{ fontWeight: 500, color: '#0f2744', textDecoration: 'none', fontSize: 13 }}>
+                      {company?.name ?? 'Unknown'}
+                    </Link>
+                    {disposalDate && (
+                      <span style={{ fontSize: 11, color: '#888' }}>Disposed {formatDate(disposalDate)}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#555', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: '#888' }}>Proceeds received to date: </span>
+                    <span style={{ fontWeight: 500 }}>{formatCurrency(proceedsToDate)}</span>
+                  </div>
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#fafaf8' }}>
+                      <th style={{ ...thL, fontSize: 10, padding: '6px 8px' }}>Tranche</th>
+                      <th style={{ ...thR, fontSize: 10, padding: '6px 8px' }}>Expected amount</th>
+                      <th style={{ ...thR, fontSize: 10, padding: '6px 8px' }}>Expected date</th>
+                      <th style={{ ...thL, fontSize: 10, padding: '6px 8px' }}>Status</th>
+                      <th style={{ ...thL, fontSize: 10, padding: '6px 8px' }}>Contingency description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {outstandingDps.map(dp => (
+                      <tr key={dp.id}>
+                        <td style={{ padding: '6px 8px', fontSize: 11 }}>
+                          {dp.tranche_number != null ? `Tranche ${dp.tranche_number}` : '—'}
+                        </td>
+                        <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>
+                          {dp.expected_amount != null ? formatCurrency(dp.expected_amount) : '—'}
+                        </td>
+                        <td style={{ padding: '6px 8px', fontSize: 11, textAlign: 'right' }}>
+                          {dp.expected_date ? formatDate(dp.expected_date) : '—'}
+                        </td>
+                        <td style={{ padding: '6px 8px', fontSize: 11 }}>
+                          {dp.status === 'overdue'
+                            ? <span className="pill pill-red"  style={{ fontSize: 9 }}>Overdue</span>
+                            : <span className="pill pill-amber" style={{ fontSize: 9 }}>Expected</span>
+                          }
+                        </td>
+                        <td style={{ padding: '6px 8px', fontSize: 11, color: '#555' }}>
+                          {dp.contingency_description ?? '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Exit history toggle */}
       {sellRows.length > 0 && (

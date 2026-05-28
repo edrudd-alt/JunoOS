@@ -186,6 +186,7 @@ export default async function ClientRecordPage({ params }: Props) {
     : { data: [] as { id: string; deal_type: string; status: string; company_id: string | null }[] }
 
   // Query 4b: all secondary lookups in parallel (now all company IDs are known)
+  const investmentIds  = (rawInvestments ?? []).map(i => (i as Record<string, unknown>).id as string).filter(Boolean)
   const investmentCids = [...new Set((rawInvestments ?? []).map(i => (i as Record<string, unknown>).company_id as string).filter(Boolean))]
   const documentCids   = [...new Set((documents ?? []).map(d => (d as Record<string, unknown>).company_id as string).filter(Boolean))]
   const pendingCids    = [...new Set((pendingInvestments ?? []).map(i => (i as Record<string, unknown>).company_id as string).filter(Boolean))]
@@ -203,6 +204,7 @@ export default async function ClientRecordPage({ params }: Props) {
     { data: teamMembersData },
     { data: valuations },
     { data: allDealInvestorRows },
+    { data: deferredPaymentsData },
   ] = await Promise.all([
     allCids.length > 0
       ? supabase.from('companies').select('id, name, sector, stage').in('id', allCids)
@@ -219,6 +221,9 @@ export default async function ClientRecordPage({ params }: Props) {
     activeDealIds.length > 0
       ? supabase.from('deal_investors').select('deal_id').in('deal_id', activeDealIds)
       : { data: [] as { deal_id: string }[] },
+    investmentIds.length > 0
+      ? supabase.from('deferred_payments').select('*').in('investment_id', investmentIds)
+      : { data: [] as Record<string, unknown>[] },
   ])
 
   // Merge secondary data into results
@@ -309,6 +314,7 @@ export default async function ClientRecordPage({ params }: Props) {
       portfolioStatements={(portfolioStatements ?? []) as import('./_components/GenerateStatementSection').StatementDoc[]}
       outlookConnected={outlookStatus.connected}
       latestSends={latestSends}
+      deferredPayments={(deferredPaymentsData ?? []) as Record<string, unknown>[]}
     />
   )
 }

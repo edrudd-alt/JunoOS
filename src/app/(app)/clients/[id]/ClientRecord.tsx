@@ -70,6 +70,7 @@ interface Props {
   portfolioStatements: StatementDoc[]
   outlookConnected?: boolean
   latestSends?: Record<string, string>
+  deferredPayments: Record<string, unknown>[]
 }
 
 export default function ClientRecord({
@@ -77,6 +78,7 @@ export default function ClientRecord({
   valuations, documents, updateRecipients, notes, membershipDocs,
   pendingInvestments, activeDeals, followUpNotes, lastActivity, relationships,
   feeSchedules, nominees, portfolioStatements, outlookConnected, latestSends,
+  deferredPayments,
 }: Props) {
   const router = useRouter()
   const supabase = createClient()
@@ -228,6 +230,7 @@ export default function ClientRecord({
             membershipDocs={membershipDocs as unknown as { id: string; type: string; company_id: string | null }[]}
             onSwitchToInvestments={() => switchTab('investments')}
             portfolioStatements={portfolioStatements}
+            deferredPayments={deferredPayments}
           />
         )}
         {tab === 'investments' && (
@@ -235,6 +238,7 @@ export default function ClientRecord({
             investments={investments}
             valuations={valuations}
             linkedEntities={linkedEntities}
+            deferredPayments={deferredPayments}
           />
         )}
         {tab === 'details' && (

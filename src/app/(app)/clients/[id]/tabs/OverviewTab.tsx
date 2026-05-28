@@ -61,6 +61,7 @@ interface Props {
   membershipDocs: MembershipDoc[]
   onSwitchToInvestments: () => void
   portfolioStatements: StatementDoc[]
+  deferredPayments?: Record<string, unknown>[]
 }
 
 function isBuyTx(tx: Investment) {
