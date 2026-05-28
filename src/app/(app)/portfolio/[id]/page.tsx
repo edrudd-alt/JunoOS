@@ -119,6 +119,15 @@ export default async function PortfolioCompanyPage({ params }: Props) {
         .in('deal_id', openDealIds)
     : { data: [] as { deal_id: string }[] }
 
+  // Fetch deferred payments for all investments at this company
+  const investmentIds = (rawInvestments ?? []).map(i => i.id)
+  const { data: rawDeferredPayments } = investmentIds.length > 0
+    ? await supabase
+        .from('deferred_payments')
+        .select('id, investment_id, expected_amount, actual_amount, expected_date, actual_date, contingency_description, status, tranche_number, is_final_tranche')
+        .in('investment_id', investmentIds)
+    : { data: [] as Record<string, unknown>[] }
+
   const clientMap = new Map((clientsData ?? []).map(c => [c.id, c]))
   const investments = (rawInvestments ?? []).map(i => ({
     ...i,
@@ -160,6 +169,7 @@ export default async function PortfolioCompanyPage({ params }: Props) {
       valuations={(valuations ?? []) as Record<string, unknown>[]}
       currentValuation={currentValuation as Record<string, unknown> | null}
       investments={investments as Record<string, unknown>[]}
+      deferredPayments={(rawDeferredPayments ?? []) as Record<string, unknown>[]}
       kpiData={kpiData ?? []}
       internalUpdates={(internalUpdates ?? []) as Record<string, unknown>[]}
       news={(news ?? []) as Record<string, unknown>[]}
