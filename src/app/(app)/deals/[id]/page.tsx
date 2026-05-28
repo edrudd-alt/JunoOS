@@ -62,7 +62,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
         .order('created_at'),
       // All clients in one shot — covers fund-type header, bookbuild table, and Add Investors modal
       supabase.from('clients')
-        .select('id, full_name, email, kyc_status, entity_type, lead_investor_id, fund_type, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
+        .select('id, full_name, email, kyc_status, lead_investor_id, is_favourite, default_nominee_id, fee_schedule_id, default_fee_rate')
         .order('full_name'),
       supabase.from('nominees').select('id, name').eq('active', true).order('name'),
       supabase.from('investments')
@@ -138,7 +138,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
     supabase.from('documents').select('id, filename, type, storage_url, document_date').eq('deal_id', id).order('document_date', { ascending: false }),
     supabase.from('invoices').select('id, client_id, amount, status, issued_at').eq('deal_id', id),
     supabase.from('bookbuilds').select('id, deal_id, company_id, target_raise, status').eq('deal_id', id).maybeSingle(),
-    supabase.from('clients').select('id, full_name, email, default_fee_rate, fund_type, lead_investor_id, fee_schedule_id').order('full_name'),
+    supabase.from('clients').select('id, full_name, email, default_fee_rate, lead_investor_id, fee_schedule_id').order('full_name'),
     supabase.from('investments').select('id, client_id, sum_subscribed, shares_purchased, status, completion_date, eis_status, fee_rate, fee_amount').eq('deal_id', id),
     rawDeal.company_id
       ? supabase

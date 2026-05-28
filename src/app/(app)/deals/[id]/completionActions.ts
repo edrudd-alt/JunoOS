@@ -142,7 +142,7 @@ export interface MarkCompleteParams {
   sharePrice: number | null
   companyId: string | null
   eisQualifying: string | null
-  fundType: string              // from client.fund_type, falls back to 'syndicate'
+  fundType: string              // from investment.fund_type, defaults to 'syndicate'
   checklistState: ChecklistState
   investmentDate: string
   completionDate: string

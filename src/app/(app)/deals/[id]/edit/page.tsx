@@ -34,7 +34,7 @@ export default async function EditDealPage({ params }: { params: Promise<{ id: s
   const [{ data: clients }, { data: investments }] = await Promise.all([
     supabase
       .from('clients')
-      .select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id, fund_type, active_fund_type')
+      .select('id, full_name, email, default_fee_rate, tax_status, lead_investor_id')
       .order('full_name'),
     supabase
       .from('investments')

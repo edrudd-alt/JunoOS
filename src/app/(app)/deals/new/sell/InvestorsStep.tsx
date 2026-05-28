@@ -13,8 +13,6 @@ interface RawClient {
   full_name: string
   email?: string | null
   default_fee_rate?: number | null
-  fund_type?: string | null
-  active_fund_type?: string | null
 }
 
 interface RawInvestment {
@@ -26,6 +24,7 @@ interface RawInvestment {
   sum_subscribed?: number | null
   investment_date?: string | null
   transaction_type?: string | null
+  fund_type?: string | null
 }
 
 interface ExistingInvestorData {
@@ -47,11 +46,6 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
-
-function resolveClientFundType(c: RawClient): 'syndicate' | 'multi_manager' {
-  const ft = c.active_fund_type ?? c.fund_type
-  return ft === 'multi_manager' ? 'multi_manager' : 'syndicate'
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -77,6 +71,7 @@ export function InvestorsStep({
       shareClass:     string
       earliestDate:   string | null
       isNegative:     boolean
+      fundType:       string
     }>()
 
     for (const inv of investments) {
@@ -95,6 +90,7 @@ export function InvestorsStep({
           shareClass:     inv.share_class ?? '',
           earliestDate:   isSell ? null : date,
           isNegative:     false,
+          fundType:       isSell ? 'syndicate' : (inv.fund_type ?? 'syndicate'),
         })
       } else {
         const h = map.get(clientId)!
@@ -154,7 +150,7 @@ export function InvestorsStep({
         totalCost:              holding.totalCost,
         avgCostPrice,
         earliestInvestmentDate: holding.earliestDate,
-        fundType:               resolveClientFundType(client),
+        fundType:               holding.fundType as 'syndicate' | 'multi_manager',
         shareClass:             setupData.shareClass || holding.shareClass,
         sharesSold:             prefilledSold,
         sellAll,
