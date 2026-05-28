@@ -184,6 +184,7 @@ function PageFooter({ generatedOn }: { generatedOn: string }) {
 
 export function PortfolioValuationStatementTemplate({
   client, period, lots, companySummary, grandTotals, showDividendColumn,
+  contingentLots = [], contingentTotal = 0,
 }: PortfolioStatementContext) {
 
   // Right-align shorthand for numeric columns
@@ -225,6 +226,22 @@ export function PortfolioValuationStatementTemplate({
   const sW = computeColumnWidths(sColSpecs, USABLE_W, 8, 8)
   const [swCompany, swClass, swShares, swSub, swCurrVal, swChange] = sW
   const swDiv = sW[6] ?? 0
+
+  // ── Section B column widths ────────────────────────────────────────────────
+  const cColSpecs: ColSpec[] = contingentLots.length > 0 ? [
+    { header: 'Company',              values: contingentLots.map(l => l.company_name) },
+    { header: 'Disposal Date',        values: contingentLots.map(l => fmtDDMMYY(l.disposal_date)) },
+    { header: 'Proceeds Received',    values: contingentLots.map(l => fmtCurrency(l.settled_deferred)) },
+    { header: 'Outstanding Expected', values: [
+      ...contingentLots.map(l => fmtCurrency(l.outstanding_payments.reduce((s, p) => s + p.expected_amount, 0))),
+      fmtCurrency(contingentTotal),
+    ]},
+    { header: 'Status', values: contingentLots.map(l =>
+      l.outstanding_payments.some(p => p.status === 'overdue') ? 'Overdue' : 'Expected'
+    )},
+  ] : []
+  const cW = cColSpecs.length > 0 ? computeColumnWidths(cColSpecs, USABLE_W, 8, 8) : []
+  const [cwCompany, cwDate, cwReceived, cwOutstanding, cwStatus] = cW
 
   return (
     <Document>
@@ -355,6 +372,56 @@ export function PortfolioValuationStatementTemplate({
             <Text style={[styles.tdTotalBold, { width: swDiv, ...RA }]}>{fmtCurrency(grandTotals.dividends)}</Text>
           )}
         </View>
+
+        {/* ── Section B — Contingent Deferred Proceeds ──────────────────── */}
+        {contingentLots.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <Text style={[styles.sectionTitle, { marginBottom: 2 }]}>
+              {'Section B — Contingent Deferred Proceeds'}
+            </Text>
+            <Text style={{ fontSize: 8, color: '#888', marginBottom: 10 }}>
+              {'Holdings sold with deferred consideration outstanding. Not included in portfolio value above.'}
+            </Text>
+
+            <View style={styles.tableHeaderRow}>
+              <Text style={[styles.thCell, { width: cwCompany }]}>Company</Text>
+              <Text style={[styles.thCell, { width: cwDate }]}>Disposal Date</Text>
+              <Text style={[styles.thCell, { width: cwReceived, ...RA }]}>Proceeds Received</Text>
+              <Text style={[styles.thCell, { width: cwOutstanding, ...RA }]}>Outstanding Expected</Text>
+              <Text style={[styles.thCell, { width: cwStatus }]}>Status</Text>
+            </View>
+
+            {contingentLots.map((lot, i) => {
+              const outstandingTotal = lot.outstanding_payments.reduce((s, p) => s + p.expected_amount, 0)
+              const worstStatus = lot.outstanding_payments.some(p => p.status === 'overdue') ? 'Overdue' : 'Expected'
+              return (
+                <View
+                  key={lot.investment_id}
+                  style={i % 2 === 0 ? styles.tableDataRow : styles.tableDataRowAlt}
+                  wrap={false}
+                >
+                  <Text style={[styles.tdCell, { width: cwCompany }]}>{lot.company_name}</Text>
+                  <Text style={[styles.tdCell, { width: cwDate }]}>{fmtDDMMYY(lot.disposal_date)}</Text>
+                  <Text style={[styles.tdCell, { width: cwReceived, ...RA }]}>{fmtCurrency(lot.settled_deferred)}</Text>
+                  <Text style={[styles.tdCell, { width: cwOutstanding, ...RA }]}>{fmtCurrency(outstandingTotal)}</Text>
+                  <Text style={[styles.tdCell, { width: cwStatus }]}>{worstStatus}</Text>
+                </View>
+              )
+            })}
+
+            <View style={styles.tableTotalRow} wrap={false}>
+              <Text style={[styles.tdTotalLabel, { width: cwCompany }]}>{'Total contingent'}</Text>
+              <Text style={[styles.tdCell,      { width: cwDate }]}>{''}</Text>
+              <Text style={[styles.tdCell,      { width: cwReceived }]}>{''}</Text>
+              <Text style={[styles.tdTotalBold, { width: cwOutstanding, ...RA }]}>{fmtCurrency(contingentTotal)}</Text>
+              <Text style={[styles.tdCell,      { width: cwStatus }]}>{''}</Text>
+            </View>
+
+            <Text style={{ fontSize: 7, color: '#888', marginTop: 5 }}>
+              {`Total contingent expected: ${fmtCurrency(contingentTotal)} (estimated, not guaranteed)`}
+            </Text>
+          </View>
+        )}
 
         <PageFooter generatedOn={period.generatedOn} />
       </Page>
