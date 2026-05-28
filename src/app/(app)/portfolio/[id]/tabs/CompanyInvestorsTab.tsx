@@ -3,6 +3,8 @@
 import { useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
+import { getAssetState, groupDeferredByInvestment, settledDeferredTotal, unsettledDeferredTotal } from '@/lib/assetState'
+import type { DeferredPayment } from '@/types'
 
 interface Investment {
   id: string
@@ -24,6 +26,7 @@ interface Investment {
 interface Props {
   investments: Record<string, unknown>[]
   currentValuation: Record<string, unknown> | null
+  deferredPayments: Record<string, unknown>[]
 }
 
 function isBuyTx(tx: Investment) {
@@ -49,14 +52,16 @@ function accountLabel(key: string) {
   return parts.join(' · ') || 'All accounts'
 }
 
-export default function CompanyInvestorsTab({ investments: invRaw, currentValuation: cvRaw }: Props) {
-  const inv  = invRaw as unknown as Investment[]
-  const cv   = cvRaw  as unknown as { share_price: number; valuation_date: string } | null
+export default function CompanyInvestorsTab({ investments: invRaw, currentValuation: cvRaw, deferredPayments }: Props) {
+  const inv = invRaw as unknown as Investment[]
+  const cv  = cvRaw  as unknown as { share_price: number; valuation_date: string } | null
+  const dp  = deferredPayments as unknown as DeferredPayment[]
 
-  const [currentCollapsed, setCurrentCollapsed] = useState(false)
-  const [exitsCollapsed,   setExitsCollapsed]   = useState(true)
-  const [expandedInvestors, setExpandedInvestors] = useState<Set<string>>(new Set())
-  const [accountFilter, setAccountFilter] = useState<string>('all')
+  const [currentCollapsed,    setCurrentCollapsed]    = useState(false)
+  const [contingentCollapsed, setContingentCollapsed] = useState(false)
+  const [exitsCollapsed,      setExitsCollapsed]      = useState(true)
+  const [expandedInvestors,   setExpandedInvestors]   = useState<Set<string>>(new Set())
+  const [accountFilter,       setAccountFilter]       = useState<string>('all')
 
   const toggleInvestor = useCallback((cid: string) => {
     setExpandedInvestors(prev => {
@@ -68,7 +73,37 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
 
   const currentPrice = cv?.share_price ?? 0
 
-  // Net position per client
+  // Deferred payments grouped by investment_id
+  const deferredByInvestment = useMemo(
+    () => groupDeferredByInvestment(dp),
+    [dp],
+  )
+
+  // Contingent investment IDs: exited buy rows with ≥1 unsettled deferred payment
+  const contingentInvestmentIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const i of inv) {
+      if (!isBuyTx(i)) continue
+      if (i.status !== 'exited') continue
+      const invDps = deferredByInvestment.get(i.id) ?? []
+      if (getAssetState(i.status, invDps) === 'contingent') set.add(i.id)
+    }
+    return set
+  }, [inv, deferredByInvestment])
+
+  // Contingent investors grouped by client_id
+  const contingentByClient = useMemo(() => {
+    const map = new Map<string, { client: Investment['clients']; rows: Investment[] }>()
+    for (const i of inv) {
+      if (!contingentInvestmentIds.has(i.id)) continue
+      const cid = i.client_id
+      if (!map.has(cid)) map.set(cid, { client: i.clients, rows: [] })
+      map.get(cid)!.rows.push(i)
+    }
+    return map
+  }, [inv, contingentInvestmentIds])
+
+  // Net position per client — contingent buy rows excluded from shares/valuation
   const netByClient = useMemo(() => {
     const map = new Map<string, {
       client: Investment['clients']
@@ -83,7 +118,7 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
         totalCost: 0, totalProceeds: 0, costOfRemaining: 0, buyRows: [],
       })
       const pos = map.get(cid)!
-      if (isBuyTx(i)) {
+      if (isBuyTx(i) && !contingentInvestmentIds.has(i.id)) {
         pos.sharesIn  += i.shares_purchased
         pos.totalCost += i.sum_subscribed
         pos.buyRows.push(i)
@@ -98,7 +133,7 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
       pos.costOfRemaining = avg * Math.max(pos.remaining, 0)
     }
     return map
-  }, [inv])
+  }, [inv, contingentInvestmentIds])
 
   const currentInvestors = useMemo(() =>
     [...netByClient.values()].filter(p => p.remaining > 0)
@@ -106,17 +141,18 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
     [netByClient]
   )
 
-  // Account filter combos — from buy transactions only
+  // Account filter combos — from non-contingent buy transactions only
   const accountCombos = useMemo(() => {
     const seen = new Set<string>()
     const combos: string[] = []
     for (const i of inv) {
       if (!isBuyTx(i)) continue
+      if (contingentInvestmentIds.has(i.id)) continue
       const key = accountKey(i)
       if (!seen.has(key)) { seen.add(key); combos.push(key) }
     }
     return combos
-  }, [inv])
+  }, [inv, contingentInvestmentIds])
 
   // Filter currentInvestors by selected account combo
   const filteredInvestors = useMemo(() => {
@@ -124,14 +160,13 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
     return currentInvestors.map(pos => {
       const filteredBuyRows = pos.buyRows.filter(r => accountKey(r) === accountFilter)
       if (filteredBuyRows.length === 0) return null
-      const sharesIn    = filteredBuyRows.reduce((s, r) => s + r.shares_purchased, 0)
-      const totalCost   = filteredBuyRows.reduce((s, r) => s + r.sum_subscribed, 0)
-      const costOfRem   = totalCost // for filtered view, treat cost as all remaining cost in filter
-      return { ...pos, buyRows: filteredBuyRows, sharesIn, totalCost, costOfRemaining: costOfRem, remaining: sharesIn }
+      const sharesIn  = filteredBuyRows.reduce((s, r) => s + r.shares_purchased, 0)
+      const totalCost = filteredBuyRows.reduce((s, r) => s + r.sum_subscribed, 0)
+      return { ...pos, buyRows: filteredBuyRows, sharesIn, totalCost, costOfRemaining: totalCost, remaining: sharesIn }
     }).filter(Boolean) as typeof currentInvestors
   }, [currentInvestors, accountFilter])
 
-  // Exit history
+  // Exit history (all sell rows, newest first)
   const sellRows = useMemo(() =>
     inv.filter(isSellTx).sort((a, b) => b.investment_date.localeCompare(a.investment_date)),
     [inv]
@@ -141,7 +176,9 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
   const totalInvested = filteredInvestors.reduce((s, p) => s + p.costOfRemaining, 0)
   const currentValue  = filteredInvestors.reduce((s, p) => s + p.remaining * currentPrice, 0)
   const { change, pct } = calcGainLoss(totalInvested, currentValue)
-  const shareClasses  = new Set(inv.filter(isBuyTx).map(i => i.share_class))
+  const shareClasses  = new Set(
+    inv.filter(isBuyTx).filter(i => !contingentInvestmentIds.has(i.id)).map(i => i.share_class)
+  )
 
   const thStyle: React.CSSProperties = {
     textAlign: 'left', fontWeight: 500, color: '#aaa',
@@ -150,10 +187,10 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
   const thR: React.CSSProperties = { ...thStyle, textAlign: 'right' }
 
   // Totals for current investors
-  const totalShares    = filteredInvestors.reduce((s, p) => s + p.remaining, 0)
-  const totalCost      = filteredInvestors.reduce((s, p) => s + p.costOfRemaining, 0)
-  const totalCurVal    = filteredInvestors.reduce((s, p) => s + p.remaining * currentPrice, 0)
-  const totalPL        = currentPrice > 0 ? totalCurVal - totalCost : null
+  const totalShares = filteredInvestors.reduce((s, p) => s + p.remaining, 0)
+  const totalCost   = filteredInvestors.reduce((s, p) => s + p.costOfRemaining, 0)
+  const totalCurVal = filteredInvestors.reduce((s, p) => s + p.remaining * currentPrice, 0)
+  const totalPL     = currentPrice > 0 ? totalCurVal - totalCost : null
 
   // Totals for exit history
   const exitTotalShares   = sellRows.reduce((s, r) => s + r.shares_purchased, 0)
@@ -261,14 +298,15 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
                 </thead>
                 <tbody>
                   {filteredInvestors.map(pos => {
-                    const cid      = pos.client?.id ?? ''
-                    const name     = pos.client?.full_name ?? 'Unknown'
-                    const curVal   = pos.remaining * currentPrice
-                    const unrlPL   = currentPrice > 0 ? curVal - pos.costOfRemaining : null
+                    const cid        = pos.client?.id ?? ''
+                    const name       = pos.client?.full_name ?? 'Unknown'
+                    const curVal     = pos.remaining * currentPrice
+                    const unrlPL     = currentPrice > 0 ? curVal - pos.costOfRemaining : null
                     const { pct: uPct } = calcGainLoss(pos.costOfRemaining, curVal)
-                    const isExpanded = expandedInvestors.has(cid)
-                    const classes  = [...new Set(pos.buyRows.map(r => r.share_class))].join(', ')
-                    const isPartial = pos.sharesOut > 0
+                    const isExpanded   = expandedInvestors.has(cid)
+                    const classes      = [...new Set(pos.buyRows.map(r => r.share_class))].join(', ')
+                    const isPartial    = pos.sharesOut > 0
+                    const isContingent = contingentByClient.has(cid)
 
                     return (
                       <>
@@ -306,7 +344,8 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
                           </td>
                           <td style={{ paddingLeft: 8, color: '#555' }}>{classes}</td>
                           <td style={{ paddingLeft: 8 }}>
-                            {isPartial && <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>}
+                            {isPartial    && <span className="pill pill-amber" style={{ fontSize: 9 }}>Partial exit</span>}
+                            {isContingent && <span className="pill pill-amber" style={{ fontSize: 9, marginLeft: isPartial ? 4 : 0 }}>Contingent</span>}
                           </td>
                         </tr>
                         {isExpanded && pos.buyRows.map(r => (
@@ -355,7 +394,6 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
                     )
                   })}
                 </tbody>
-                {/* Totals row */}
                 <tfoot>
                   <tr style={{ borderTop: '1.5px solid #e8e7e0', background: '#f9f9f7' }}>
                     <td style={{ padding: '8px 0', fontWeight: 600, fontSize: 12, color: '#0f2744' }}>
@@ -385,6 +423,80 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
           </div>
         )}
       </div>
+
+      {/* Contingent Investors */}
+      {contingentByClient.size > 0 && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <button
+            onClick={() => setContingentCollapsed(c => !c)}
+            style={{ width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ width: 3, height: 14, background: '#ba7517', borderRadius: 2, display: 'inline-block', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, fontWeight: 500, color: '#ba7517' }}>
+                Contingent Investors ({contingentByClient.size})
+              </span>
+            </div>
+            <span className={`expand-arrow${contingentCollapsed ? '' : ' open'}`} />
+          </button>
+
+          {!contingentCollapsed && (
+            <div style={{ marginTop: 14 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <th style={thStyle}>Investor</th>
+                    <th style={thR}>Disposal date</th>
+                    <th style={thR}>Proceeds received to date</th>
+                    <th style={thR}>Outstanding</th>
+                    <th style={{ ...thStyle, paddingLeft: 8 }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from(contingentByClient.entries()).map(([clientId, { client, rows }]) => {
+                    const clientSellRows  = sellRows.filter(r => r.client_id === clientId)
+                    const disposalDate    = clientSellRows[0]?.investment_date ?? null
+                    const sellProceeds    = clientSellRows.reduce((s, r) => s + r.sum_subscribed, 0)
+                    const settledDeferred = rows.reduce((s, i) => s + settledDeferredTotal(deferredByInvestment.get(i.id) ?? []), 0)
+                    const proceedsToDate  = sellProceeds + settledDeferred
+                    const outstanding     = rows.reduce((s, i) => s + unsettledDeferredTotal(deferredByInvestment.get(i.id) ?? []), 0)
+                    const outstandingDps  = rows
+                      .flatMap(i => deferredByInvestment.get(i.id) ?? [])
+                      .filter(dp => dp.status === 'expected' || dp.status === 'overdue')
+                    const hasOverdue  = outstandingDps.some(dp => dp.status === 'overdue')
+                    const hasExpected = outstandingDps.some(dp => dp.status === 'expected')
+                    const name   = client?.full_name ?? 'Unknown'
+                    const linkId = client?.id ?? clientId
+
+                    return (
+                      <tr key={clientId} style={{ borderBottom: '1px solid #f8f8f8' }}>
+                        <td style={{ padding: '8px 0' }}>
+                          <Link href={`/clients/${linkId}`} style={{ color: '#185fa5', textDecoration: 'none', fontWeight: 500 }}>
+                            {name}
+                          </Link>
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#555' }}>
+                          {disposalDate ? formatDate(disposalDate) : '—'}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744' }}>
+                          {formatCurrency(proceedsToDate)}
+                        </td>
+                        <td style={{ textAlign: 'right', padding: '8px 0', color: '#0f2744', fontWeight: 600 }}>
+                          {formatCurrency(outstanding)}
+                        </td>
+                        <td style={{ paddingLeft: 8 }}>
+                          {hasOverdue  && <span className="pill pill-red"   style={{ fontSize: 9 }}>Overdue</span>}
+                          {hasExpected && <span className="pill pill-amber" style={{ fontSize: 9 }}>Expected</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Exit History */}
       {sellRows.length > 0 && (
@@ -456,7 +568,6 @@ export default function CompanyInvestorsTab({ investments: invRaw, currentValuat
                     )
                   })}
                 </tbody>
-                {/* Totals row */}
                 <tfoot>
                   <tr style={{ borderTop: '1.5px solid #e8e7e0', background: '#f9f9f7' }}>
                     <td style={{ padding: '8px 0', fontWeight: 600, fontSize: 12, color: '#0f2744' }}>

@@ -1,0 +1,15 @@
+Application Client 9f5ec5ae-4ec4-4581-a6b3-1b20999cbfb5
+
+JUNOOS AZURE CREDENTIALS
+
+Application (client) ID: 
+9f5ec5ae-4ec4-4581-a6b3-1b20999cbfb5
+
+Directory (tenant) ID:
+df585174-23f9-46bc-9f21-261f9faf55b7
+
+Client Secret:
+<we'll add this later>
+
+Secret expires:
+<we'll add this later>

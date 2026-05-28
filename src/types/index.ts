@@ -199,6 +199,35 @@ export interface CompanyNews {
   companies: { id?: string; name: string } | null
 }
 
+// ─── DeferredPayment ─────────────────────────────────────────────────────────
+
+/** Row from the deferred_payments table. */
+export interface DeferredPayment {
+  id: string
+  investment_id: string
+  deal_id: string | null
+  client_id: string | null
+  expected_amount: number | null
+  actual_amount: number | null
+  expected_date: string | null
+  actual_date: string | null
+  contingency_description: string | null
+  payment_route: 'direct' | 'nominee' | null
+  status: 'expected' | 'received' | 'overdue' | 'waived'
+  tranche_number: number | null
+  is_final_tranche: boolean | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+// ─── Asset State ─────────────────────────────────────────────────────────────
+
+/**
+ * Three-state asset classification, derived on read.
+ * See docs/specs/Juno_Asset_Register_ThreeState_Spec_v1.md §3.
+ */
+export type AssetState = 'owned' | 'contingent' | 'disposed'
+
 // ─── PortfolioRow ─────────────────────────────────────────────────────────────
 
 /** Row from the client_portfolio_summary view. */

@@ -36,6 +36,7 @@ interface Props {
   valuations: Record<string, unknown>[]
   currentValuation: Record<string, unknown> | null
   investments: Record<string, unknown>[]
+  deferredPayments: Record<string, unknown>[]
   kpiData: Record<string, unknown>[]
   internalUpdates: Record<string, unknown>[]
   news: Record<string, unknown>[]
@@ -85,7 +86,7 @@ const TABS: { key: Tab; label: string }[] = [
 ]
 
 export default function CompanyPage({
-  company, valuations, currentValuation, investments,
+  company, valuations, currentValuation, investments, deferredPayments,
   kpiData, internalUpdates, news, openDeals, companyDocs,
   shareClasses, rankingHistory,
 }: Props) {
@@ -197,6 +198,7 @@ export default function CompanyPage({
         <CompanyInvestorsTab
           investments={investments}
           currentValuation={currentValuation}
+          deferredPayments={deferredPayments}
         />
       )}
 

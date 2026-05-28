@@ -122,6 +122,24 @@ export interface PortfolioStatementContext {
     dividends:         number
   }
   showDividendColumn: boolean
+  /** Section B — exited investments with at least one unsettled deferred payment. */
+  contingentLots: Array<{
+    investment_id:        string
+    company_name:         string
+    disposal_date:        string  // YYYY-MM-DD (investments.investment_date of the exited row)
+    proceeds:             number  // investments.sum_subscribed (proceeds column added later)
+    settled_deferred:     number  // sum of received deferred_payments.actual_amount
+    outstanding_payments: Array<{
+      id:                      string
+      expected_amount:         number
+      expected_date:           string | null
+      status:                  'expected' | 'overdue'
+      contingency_description: string | null
+      tranche_number:          number | null
+    }>
+  }>
+  /** Sum of all outstanding expected_amounts across contingentLots. */
+  contingentTotal: number
 }
 
 export type ContextFor<T extends TemplateId> = ContextMap[T]

@@ -24,7 +24,7 @@ export interface PortfolioStatementResult {
 }
 
 // ── Context fetcher ───────────────────────────────────────────────────────────
-// Six queries, two-query-then-merge pattern throughout. No PostgREST joins.
+// Eight queries, two-query-then-merge pattern throughout. No PostgREST joins.
 
 async function fetchPortfolioStatementContext(
   supabase: SupabaseClient,
@@ -38,29 +38,44 @@ async function fetchPortfolioStatementContext(
     .single()
   if (clientErr || !client) throw new Error(`Client not found: ${params.clientId}`)
 
-  // Query 2: Active investments for this client
-  const { data: investments, error: invErr } = await supabase
-    .from('investments')
-    .select('id, company_id, share_class_id, investment_date, original_share_price, shares_purchased, sum_subscribed, eis_status')
-    .eq('client_id', params.clientId)
-    .eq('status', 'active')
-    .order('investment_date', { ascending: true })
+  // Queries 2a + 2b in parallel: active investments and exited investments
+  const [
+    { data: investments, error: invErr },
+    { data: exitedInvestments, error: exitedErr },
+  ] = await Promise.all([
+    supabase
+      .from('investments')
+      .select('id, company_id, share_class_id, investment_date, original_share_price, shares_purchased, sum_subscribed, eis_status')
+      .eq('client_id', params.clientId)
+      .eq('status', 'active')
+      .order('investment_date', { ascending: true }),
+    supabase
+      .from('investments')
+      .select('id, company_id, investment_date, sum_subscribed')
+      .eq('client_id', params.clientId)
+      .eq('status', 'exited'),
+  ])
   if (invErr) throw new Error(`Failed to fetch investments: ${invErr.message}`)
+  if (exitedErr) throw new Error(`Failed to fetch exited investments: ${exitedErr.message}`)
   if (!investments || investments.length === 0) {
     throw new Error('No active investments found for this client')
   }
 
-  const companyIds = [...new Set(investments.map(i => i.company_id as string).filter(Boolean))]
+  const activeCompanyIds  = investments.map(i => i.company_id as string).filter(Boolean)
+  const exitedCompanyIds  = (exitedInvestments ?? []).map(i => i.company_id as string).filter(Boolean)
+  const companyIds = [...new Set([...activeCompanyIds, ...exitedCompanyIds])]
   const classIds   = [...new Set(investments.map(i => i.share_class_id as string | null).filter((id): id is string => Boolean(id)))]
+  const exitedIds  = (exitedInvestments ?? []).map(i => i.id as string)
 
-  // Queries 3, 4, 5, 6 in parallel
+  // Queries 3–7 in parallel
   const [
     { data: companies },
     { data: shareClasses },
     { data: valuations },
     { data: dividendRows },
+    { data: deferredRows },
   ] = await Promise.all([
-    // Query 3: Companies
+    // Query 3: Companies (active + exited, deduplicated)
     supabase.from('companies').select('id, name').in('id', companyIds),
     // Query 4: Share classes
     classIds.length > 0
@@ -69,13 +84,34 @@ async function fetchPortfolioStatementContext(
     // Query 5: Current valuations (latest per company+class)
     supabase.from('company_current_valuations')
       .select('company_id, share_class_id, share_price')
-      .in('company_id', companyIds),
-    // Query 6: Dividends for this client across the relevant companies
+      .in('company_id', activeCompanyIds.length > 0 ? [...new Set(activeCompanyIds)] : ['']),
+    // Query 6: Dividends for this client across active companies
     supabase.from('dividends')
       .select('company_id, share_class_id, total_amount')
       .eq('client_id', params.clientId)
-      .in('company_id', companyIds),
+      .in('company_id', activeCompanyIds.length > 0 ? [...new Set(activeCompanyIds)] : ['']),
+    // Query 7: Deferred payments for all exited investments
+    exitedIds.length > 0
+      ? supabase
+          .from('deferred_payments')
+          .select('id, investment_id, expected_amount, actual_amount, expected_date, status, contingency_description, tranche_number')
+          .in('investment_id', exitedIds)
+      : { data: [] as Array<{
+          id: string; investment_id: string; expected_amount: number | null
+          actual_amount: number | null; expected_date: string | null
+          status: string; contingency_description: string | null; tranche_number: number | null
+        }> },
   ])
+
+  // ── Build contingent lots (Section B) ────────────────────────────────────────
+  // Group deferred payments by investment_id, then filter exited investments
+  // to those with at least one 'expected' or 'overdue' payment.
+  type DeferredRow = NonNullable<typeof deferredRows>[number]
+  const deferredByInv = new Map<string, DeferredRow[]>()
+  for (const p of deferredRows ?? []) {
+    if (!deferredByInv.has(p.investment_id)) deferredByInv.set(p.investment_id, [])
+    deferredByInv.get(p.investment_id)!.push(p)
+  }
 
   // Build lookup maps
   const companyMap   = new Map((companies ?? []).map(c => [c.id, c.name]))
@@ -187,6 +223,42 @@ async function fetchPortfolioStatementContext(
     { subscribed: 0, current_valuation: 0, valuation_change: 0, dividends: 0 },
   )
 
+  // Build contingent lots from exited investments that have unsettled payments
+  const contingentInvestments = (exitedInvestments ?? []).filter(inv => {
+    const payments = deferredByInv.get(inv.id as string) ?? []
+    return payments.some(p => p.status === 'expected' || p.status === 'overdue')
+  })
+
+  const contingentLots: PortfolioStatementContext['contingentLots'] = contingentInvestments.map(inv => {
+    const payments = deferredByInv.get(inv.id as string) ?? []
+    const outstanding = payments.filter(p => p.status === 'expected' || p.status === 'overdue')
+    const settledDeferred = payments
+      .filter(p => p.status === 'received')
+      .reduce((sum, p) => sum + Number(p.actual_amount ?? 0), 0)
+
+    return {
+      investment_id:    inv.id as string,
+      company_name:     companyMap.get(inv.company_id as string) ?? (inv.company_id as string),
+      disposal_date:    inv.investment_date as string,
+      // Use sum_subscribed as proceeds proxy; replace with investments.proceeds when that column exists
+      proceeds:         Number(inv.sum_subscribed),
+      settled_deferred: settledDeferred,
+      outstanding_payments: outstanding.map(p => ({
+        id:                      p.id,
+        expected_amount:         Number(p.expected_amount ?? 0),
+        expected_date:           p.expected_date,
+        status:                  p.status as 'expected' | 'overdue',
+        contingency_description: p.contingency_description,
+        tranche_number:          p.tranche_number,
+      })),
+    }
+  }).sort((a, b) => a.company_name.localeCompare(b.company_name))
+
+  const contingentTotal = contingentLots.reduce(
+    (sum, lot) => sum + lot.outstanding_payments.reduce((s, p) => s + p.expected_amount, 0),
+    0,
+  )
+
   return {
     client: {
       id:                 client.id,
@@ -201,6 +273,8 @@ async function fetchPortfolioStatementContext(
     companySummary,
     grandTotals,
     showDividendColumn,
+    contingentLots,
+    contingentTotal,
   }
 }
 
