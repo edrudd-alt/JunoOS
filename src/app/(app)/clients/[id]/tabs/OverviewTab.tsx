@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { formatCurrency, formatPercent, formatDate, calcGainLoss } from '@/lib/utils'
+import { getAssetState, groupDeferredByInvestment, unsettledDeferredTotal } from '@/lib/assetState'
+import type { DeferredPayment } from '@/types'
 import type { ClientRow } from '../ClientRecord'
 import GenerateStatementSection from '../_components/GenerateStatementSection'
 import type { StatementDoc } from '../_components/GenerateStatementSection'
@@ -103,6 +105,7 @@ function DealStatusPill({ status }: { status: string }) {
 export default function OverviewTab({
   client, investments: invRaw, valuations: valsRaw,
   pendingDeals: dealsRaw, membershipDocs, onSwitchToInvestments, portfolioStatements,
+  deferredPayments: deferredRaw,
 }: Props) {
   const [accountFilter, setAccountFilter] = useState('all')
   const [uploadToast, setUploadToast] = useState(false)
@@ -238,6 +241,21 @@ export default function OverviewTab({
 
     return items
   }, [client, membershipDocs, inv])
+
+  const contingentSummary = useMemo(() => {
+    const deferred = (deferredRaw ?? []) as unknown as DeferredPayment[]
+    const groupedDeferred = groupDeferredByInvestment(deferred)
+    const contingentCompanies = new Set<string>()
+    let totalExpected = 0
+    for (const i of inv) {
+      const dps = groupedDeferred.get(i.id) ?? []
+      if (getAssetState(i.status, dps) === 'contingent') {
+        contingentCompanies.add(i.companies?.id ?? i.id)
+        totalExpected += unsettledDeferredTotal(dps)
+      }
+    }
+    return { count: contingentCompanies.size, totalExpected }
+  }, [inv, deferredRaw])
 
   const VISIBLE_MAX = 8
   const visibleHoldings = holdings.slice(0, VISIBLE_MAX)
@@ -402,6 +420,27 @@ export default function OverviewTab({
           </div>
         </div>
       </div>
+
+      {contingentSummary.count > 0 && (
+        <div style={{
+          marginTop: 12,
+          background: '#fffbf0',
+          border: '0.5px solid #e8e7e0',
+          borderLeft: '3px solid #ba7517',
+          borderRadius: 8,
+          padding: '10px 14px',
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#ba7517', marginBottom: 3 }}>
+            Contingent positions
+          </div>
+          <div style={{ fontSize: 12, color: '#333' }}>
+            {contingentSummary.count} contingent {contingentSummary.count === 1 ? 'position' : 'positions'} — {formatCurrency(contingentSummary.totalExpected)} expected in deferred proceeds (estimated)
+          </div>
+          <div style={{ fontSize: 10, color: '#888', marginTop: 3 }}>
+            Not included in portfolio value
+          </div>
+        </div>
+      )}
 
       {/* Portfolio statement generator */}
       <div style={{ marginTop: 20 }}>
