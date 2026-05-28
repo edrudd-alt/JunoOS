@@ -15,8 +15,6 @@ interface Client {
   default_fee_rate: number
   tax_status:       string
   lead_investor_id: string | null
-  fund_type:        string
-  active_fund_type: string
 }
 
 interface Investment {
@@ -99,13 +97,6 @@ export function InvestorsStep({
   const [clientSearch,  setClientSearch]  = useState('')
   const [saving,        setSaving]        = useState(false)
   const [error,         setError]         = useState('')
-  const [bothClientQueue, setBothClientQueue] = useState<Client[]>([])
-
-  const [fundTypePrompt, setFundTypePrompt] = useState<{
-    client: Client
-    resolve: (ft: 'syndicate' | 'multi_manager') => void
-  } | null>(null)
-
   const [confirmRemove, setConfirmRemove] = useState<{ uid: string; name: string } | null>(null)
 
   const [priceConfirm, setPriceConfirm] = useState<{ latestPrice: number | null } | null>(null)
@@ -169,36 +160,10 @@ export function InvestorsStep({
     if (!holdings) return
 
     const newRows: InvestorRow[] = []
-    const bothClients: Client[]  = []
 
     for (const [clientId, holding] of holdings) {
       const client = clients.find(c => c.id === clientId)
       if (!client) continue
-
-      if (client.fund_type === 'both') {
-        // Use active_fund_type if it resolves unambiguously, otherwise queue for prompt
-        const activeFt = client.active_fund_type
-        if (activeFt === 'syndicate' || activeFt === 'multi_manager') {
-          newRows.push({
-            uid:               uid(),
-            clientId,
-            name:              client.full_name,
-            email:             client.email ?? '',
-            currentShares:     holding.shares,
-            currentValue:      holding.cost,
-            currentShareClass: holding.shareClass,
-            shares:            '',
-            shareClassOverride: null,
-            eisOverride:       null,
-            poaHeld:           false,
-            feePct:            String(client.default_fee_rate || 2),
-            fundType:          activeFt,
-          })
-        } else {
-          bothClients.push(client)
-        }
-        continue
-      }
 
       newRows.push({
         uid:               uid(),
@@ -213,27 +178,11 @@ export function InvestorsStep({
         eisOverride:       null,
         poaHeld:           false,
         feePct:            String(client.default_fee_rate || 2),
-        fundType:          (client.fund_type === 'multi_manager' || client.active_fund_type === 'multi_manager')
-                             ? 'multi_manager' : 'syndicate',
+        fundType:          'syndicate',
       })
     }
     setRows(newRows)
-    if (bothClients.length > 0) setBothClientQueue(bothClients)
   }, [isFollowOn, isEditMode, setupData.companyId, holdingsByCompany, clients])
-
-  // Process 'both'-fund-type clients sequentially via prompt
-  useEffect(() => {
-    if (bothClientQueue.length === 0 || fundTypePrompt) return
-    const [next, ...rest] = bothClientQueue
-    setBothClientQueue(rest)
-    setFundTypePrompt({
-      client: next,
-      resolve: (ft) => {
-        setFundTypePrompt(null)
-        doAddInvestor(next, ft)
-      },
-    })
-  }, [bothClientQueue, fundTypePrompt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const computeRow = useCallback((row: InvestorRow) => {
     const sharesNum  = parseFloat(row.shares) || 0
@@ -285,11 +234,7 @@ export function InvestorsStep({
   }
 
   function addInvestor(client: Client) {
-    if (client.fund_type === 'both') {
-      setFundTypePrompt({ client, resolve: (ft) => { setFundTypePrompt(null); doAddInvestor(client, ft) } })
-    } else {
-      doAddInvestor(client, client.fund_type === 'multi_manager' ? 'multi_manager' : 'syndicate')
-    }
+    doAddInvestor(client, 'syndicate')
   }
 
   const existingIds     = new Set(rows.map(r => r.clientId))
@@ -826,30 +771,6 @@ export function InvestorsStep({
         </div>
       )}
 
-      {/* Fund type prompt */}
-      {fundTypePrompt && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: 340, padding: 24 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Select fund type</div>
-            <p style={{ fontSize: 12, color: '#555', margin: '0 0 20px' }}>
-              <strong>{fundTypePrompt.client.full_name}</strong> is invested in both Syndicate and Multi Manager. Which fund type does this investment belong to?
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button onClick={() => fundTypePrompt.resolve('syndicate')} className="btn btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }}>
-                <div style={{ fontWeight: 600, fontSize: 12 }}>Syndicate</div>
-                <div style={{ fontSize: 11, color: '#888' }}>Standard deal — no deferred management fee</div>
-              </button>
-              <button onClick={() => fundTypePrompt.resolve('multi_manager')} className="btn btn-secondary" style={{ textAlign: 'left', padding: '10px 14px', borderColor: '#e0952a' }}>
-                <div style={{ fontWeight: 600, fontSize: 12, color: '#b97000' }}>Multi Manager</div>
-                <div style={{ fontSize: 11, color: '#888' }}>Deferred management fee applies at exit</div>
-              </button>
-            </div>
-            <button onClick={() => setFundTypePrompt(null)} style={{ marginTop: 14, fontSize: 11, color: '#888', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
