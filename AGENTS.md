@@ -53,6 +53,16 @@ Use Supabase MCP's `apply_migration` for any schema change so it's tracked in mi
 
 No exceptions. Propose the SQL in plain text, wait for explicit approval, then apply. This rule precedes every other database rule.
 
+### 1.4 Canonical column types — schema drift guard
+
+`src/types/index.ts` is the single source of truth for what columns exist on each table. Before writing any query that selects named columns (not `select('*')`), check the relevant interface in that file.
+
+**Why this matters:** When a migration drops columns, PostgREST returns an error (not null rows) for any query that still references those columns. The code discards errors silently (`const { data } = await supabase…`), so the entire result set becomes `null` and the page renders empty with no visible indication of failure. This is extremely hard to diagnose.
+
+**Incident record:** Entity Model Cleanup Sub-stage A (23 May 2026) dropped `clients.fund_type`, `clients.entity_type`, and `clients.active_fund_type`. PR #21 patched the deals section; the clients section was missed entirely and only caught on 29 May 2026 when new dummy data didn't appear on the client listing (PR #22).
+
+**Rule:** Every inline interface that describes a `clients` row (e.g. `ClientData` in a form component) must be consistent with `Client` in `src/types/index.ts`. When adding a new clients query, copy the column list from that interface rather than from an older query — older queries may reference dropped columns. When a migration drops a column, update `src/types/index.ts` first, then grep for every `.select(…)` that names the column and every interface that declares it.
+
 ---
 
 ## 2. Document generation
@@ -153,7 +163,7 @@ Fund type is per-investment (`investments.fund_type`), not per-client. The `clie
 
 Any new feature that needs a fee value follows this chain. Never write fee percentages as constants in code.
 
-The persistent deal-header "Fund type" cell derives from the deal's primary client → `clients.active_fund_type` → `fund_types` row. Deals don't currently have a direct `fund_type` field — it's implicit from the investors involved.
+Deals don't have a direct `fund_type` field — fund type is implicit from the `investments.fund_type` values of the investors involved. There is no deal-header "Fund type" display; `clients.active_fund_type` was dropped (Sub-stage A, May 2026).
 
 ### 4.5 Payment reconciliation is permanently out of scope
 
