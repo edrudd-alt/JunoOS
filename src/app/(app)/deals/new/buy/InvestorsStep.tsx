@@ -185,7 +185,7 @@ export function InvestorsStep({
   }, [isFollowOn, isEditMode, setupData.companyId, holdingsByCompany, clients])
 
   const computeRow = useCallback((row: InvestorRow) => {
-    const sharesNum  = parseFloat(row.shares) || 0
+    const sharesNum  = Math.round(parseFloat(row.shares) || 0)
     const cost       = sharesNum * sharePriceNum
     const feePct     = parseFloat(row.feePct) || 0
     const feePayable = cost * feePct / 100
