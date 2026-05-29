@@ -65,6 +65,11 @@ export interface Company {
   logo_url: string | null
   website: string | null
   description: string | null
+  bank_account_name: string | null
+  bank_sort_code: string | null
+  bank_account_number: string | null
+  bank_iban: string | null
+  bank_swift_bic: string | null
 }
 
 // ─── Investment ───────────────────────────────────────────────────────────────
