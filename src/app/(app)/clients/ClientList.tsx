@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import Link from 'next/link'
@@ -19,7 +19,6 @@ type Client = {
   tax_status: string
   date_joined: string | null
   lead_investor_id: string | null
-  fund_type: string
 }
 
 type PortfolioData = {
@@ -95,19 +94,6 @@ function Avatar({ name, muted }: { name: string; muted?: boolean }) {
   )
 }
 
-function FundTypePill({ code }: { code: string }) {
-  const isMM = code === 'multi_manager', isBoth = code === 'both', isEIS = code === 'eis_fund'
-  return (
-    <span style={{
-      fontSize: 9, padding: '1px 5px', borderRadius: 3, fontWeight: 600,
-      background: isMM ? '#fff3e0' : isBoth ? '#f0f0ec' : isEIS ? '#f0ecfb' : '#e8f5f0',
-      color:      isMM ? '#e0952a' : isBoth ? '#555'    : isEIS ? '#6b21a8' : '#1d9e75',
-    }}>
-      {isMM ? 'MM' : isBoth ? 'Both' : isEIS ? 'EIS' : 'S'}
-    </span>
-  )
-}
-
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const VEHICLE_TYPE_LABELS: Record<string, string> = {
@@ -128,7 +114,6 @@ export default function ClientList({
   const [search,         setSearch]         = useState('')
   const [kycFilter,      setKycFilter]      = useState('all')
   const [companyFilter,  setCompanyFilter]  = useState('all')
-  const [fundTypeFilter, setFundTypeFilter] = useState('all')
   const [flagsFilter,    setFlagsFilter]    = useState('all')
   const [sortKey,        setSortKey]        = useState<SortKey>('last_investment')
   const [sortDir,        setSortDir]        = useState<SortDir>('desc')
@@ -207,7 +192,6 @@ export default function ClientList({
       const s = new Set(clientsByCompany[companyFilter] ?? [])
       r = r.filter(c => s.has(c.id))
     }
-    if (fundTypeFilter !== 'all') r = r.filter(c => (c.fund_type || 'syndicate') === fundTypeFilter)
     if (flagsFilter === 'has_flags') {
       r = r.filter(c => { const f = clientFlags[c.id]; return !!(f && (f.kycOverdue || f.kycRenewalDue || f.appUnsigned)) })
     } else if (flagsFilter === 'no_flags') {
@@ -224,7 +208,7 @@ export default function ClientList({
       })
     }
     return r
-  }, [clients, search, kycFilter, companyFilter, fundTypeFilter, flagsFilter, attentionFilter, clientsByCompany, clientFlags])
+  }, [clients, search, kycFilter, companyFilter, flagsFilter, attentionFilter, clientsByCompany, clientFlags])
 
   // Sort
   const sorted = useMemo(() => {
@@ -311,7 +295,7 @@ export default function ClientList({
     borderBottom: '0.5px solid #e8e7e0', whiteSpace: 'nowrap', background: '#f9f9f7',
   }
 
-  const hasFilters = !!(search || kycFilter !== 'all' || companyFilter !== 'all' || fundTypeFilter !== 'all' || flagsFilter !== 'all' || attentionFilter)
+  const hasFilters = !!(search || kycFilter !== 'all' || companyFilter !== 'all' || flagsFilter !== 'all' || attentionFilter)
 
   // Attention cells definition
   const ATTENTION_CELLS = [
@@ -422,14 +406,6 @@ export default function ClientList({
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
 
-          <select value={fundTypeFilter} onChange={e => { setFundTypeFilter(e.target.value); setPage(1) }} style={chipStyle(fundTypeFilter !== 'all')}>
-            <option value="all">Fund type ▾</option>
-            <option value="syndicate">Syndicate</option>
-            <option value="multi_manager">Multi Manager</option>
-            <option value="eis_fund">EIS Fund</option>
-            <option value="both">Both</option>
-          </select>
-
           <select value={flagsFilter} onChange={e => { setFlagsFilter(e.target.value); setPage(1) }} style={chipStyle(flagsFilter !== 'all')}>
             <option value="all">Flags ▾</option>
             <option value="has_flags">Has flags</option>
@@ -478,12 +454,6 @@ export default function ClientList({
             <span style={tagStyle}>
               {companies.find(c => c.id === companyFilter)?.name ?? 'Company'}
               <button style={xBtn} onClick={() => { setCompanyFilter('all'); setPage(1) }}>×</button>
-            </span>
-          )}
-          {fundTypeFilter !== 'all' && (
-            <span style={tagStyle}>
-              {fundTypeFilter === 'multi_manager' ? 'Multi Manager' : fundTypeFilter === 'both' ? 'Both' : fundTypeFilter === 'eis_fund' ? 'EIS Fund' : 'Syndicate'}
-              <button style={xBtn} onClick={() => { setFundTypeFilter('all'); setPage(1) }}>×</button>
             </span>
           )}
           {flagsFilter !== 'all' && (
@@ -537,7 +507,7 @@ export default function ClientList({
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: 12, marginTop: 4 }}
-                        onClick={() => { setSearch(''); setKycFilter('all'); setCompanyFilter('all'); setFundTypeFilter('all'); setFlagsFilter('all'); setAttentionFilter(null) }}
+                        onClick={() => { setSearch(''); setKycFilter('all'); setCompanyFilter('all'); setFlagsFilter('all'); setAttentionFilter(null) }}
                       >
                         Clear filters
                       </button>
@@ -592,7 +562,6 @@ export default function ClientList({
                           >
                             {client.full_name}
                           </Link>
-                          <FundTypePill code={client.fund_type || 'syndicate'} />
                         </div>
                         <div style={{ fontSize: 11, color: '#888', marginTop: 1 }}>{subtitle}</div>
                       </div>

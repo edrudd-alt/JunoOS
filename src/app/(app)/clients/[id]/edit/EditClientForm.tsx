@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -26,11 +26,9 @@ interface ClientData {
   kyc_expiry: string | null
   default_fee_rate: number
   report_delivery_email: string | null
-  entity_type: string
   holding_location: string
   lead_investor_id: string | null
   notes: string | null
-  fund_type: string
 }
 
 interface Props {
@@ -93,11 +91,9 @@ export default function EditClientForm({ client, leads }: Props) {
     kyc_expiry:           client.kyc_expiry ?? '',
     default_fee_rate:     String(client.default_fee_rate),
     report_delivery_email: client.report_delivery_email ?? '',
-    entity_type:          client.entity_type,
     holding_location:     client.holding_location,
     lead_investor_id:     client.lead_investor_id ?? '',
     notes:                client.notes ?? '',
-    fund_type:            client.fund_type,
   })
 
   function set(key: string, value: string) {
@@ -126,11 +122,9 @@ export default function EditClientForm({ client, leads }: Props) {
       kyc_expiry:            form.kyc_expiry || null,
       default_fee_rate:      parseFloat(form.default_fee_rate) || 5,
       report_delivery_email: form.report_delivery_email.trim() || form.email.trim() || null,
-      entity_type:           form.entity_type,
       holding_location:      form.holding_location,
       lead_investor_id:      isLinked && form.lead_investor_id ? form.lead_investor_id : null,
       notes:                 form.notes.trim() || null,
-      fund_type:             form.fund_type,
     }
 
     const { error: dbError } = await supabase
@@ -216,34 +210,18 @@ export default function EditClientForm({ client, leads }: Props) {
                 ))}
               </div>
 
-              {isLinked ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <Field label="Lead investor" required>
-                    <select
-                      value={form.lead_investor_id}
-                      onChange={e => set('lead_investor_id', e.target.value)}
-                      required
-                      style={inputStyle}
-                    >
-                      <option value="">Select lead investor…</option>
-                      {leads.filter(l => l.id !== client.id).map(l => (
-                        <option key={l.id} value={l.id}>{l.full_name}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Entity type">
-                    <select value={form.entity_type} onChange={e => set('entity_type', e.target.value)} style={inputStyle}>
-                      <option value="own_name">Own name</option>
-                      <option value="family">Family member</option>
-                      <option value="corporate">Corporate vehicle</option>
-                    </select>
-                  </Field>
-                </div>
-              ) : (
-                <Field label="Entity type">
-                  <select value={form.entity_type} onChange={e => set('entity_type', e.target.value)} style={inputStyle}>
-                    <option value="own_name">Own name / Individual</option>
-                    <option value="corporate">Corporate vehicle</option>
+              {isLinked && (
+                <Field label="Lead investor" required>
+                  <select
+                    value={form.lead_investor_id}
+                    onChange={e => set('lead_investor_id', e.target.value)}
+                    required
+                    style={inputStyle}
+                  >
+                    <option value="">Select lead investor…</option>
+                    {leads.filter(l => l.id !== client.id).map(l => (
+                      <option key={l.id} value={l.id}>{l.full_name}</option>
+                    ))}
                   </select>
                 </Field>
               )}
@@ -253,14 +231,6 @@ export default function EditClientForm({ client, leads }: Props) {
                   <option value="direct">Direct</option>
                   <option value="nominee">Nominee</option>
                   <option value="both">Direct &amp; Nominee</option>
-                </select>
-              </Field>
-
-              <Field label="Fund type">
-                <select value={form.fund_type} onChange={e => set('fund_type', e.target.value)} style={inputStyle}>
-                  <option value="syndicate">Syndicate</option>
-                  <option value="multi_manager">Multi Manager</option>
-                  <option value="both">Both</option>
                 </select>
               </Field>
             </Section>

@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+﻿import { createClient } from '@/lib/supabase/server'
 import NewClientForm from './NewClientForm'
 
 export default async function NewClientPage() {
@@ -12,7 +12,7 @@ export default async function NewClientPage() {
   ] = await Promise.all([
     supabase
       .from('clients')
-      .select('id, full_name, fee_schedule_id, fund_type')
+      .select('id, full_name, fee_schedule_id')
       .is('lead_investor_id', null)
       .order('full_name'),
     supabase
@@ -33,9 +33,8 @@ export default async function NewClientPage() {
 
   return (
     <NewClientForm
-      leads={(leads ?? []) as { id: string; full_name: string; fee_schedule_id: string | null; fund_type: string }[]}
+      leads={(leads ?? []) as { id: string; full_name: string; fee_schedule_id: string | null }[]}
       feeSchedules={(feeSchedules ?? []) as { id: string; name: string }[]}
-      fundTypes={(fundTypes ?? []) as { id: string; name: string; code: string; default_fee_schedule_id: string | null }[]}
       nominees={(nominees ?? []) as { id: string; name: string }[]}
     />
   )

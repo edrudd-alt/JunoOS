@@ -12,7 +12,15 @@
 
 // ─── Client ───────────────────────────────────────────────────────────────────
 
-/** Full row from the clients table. */
+/**
+ * Canonical shape of the clients table. This is the source of truth for column
+ * names — use it when writing selects or inline form interfaces.
+ *
+ * DROPPED COLUMNS (do not re-add; will cause silent PostgREST failures):
+ *   - entity_type         (dropped Entity Model Cleanup Sub-stage A, 23 May 2026)
+ *   - fund_type           (dropped same; fund type lives on investments.fund_type)
+ *   - active_fund_type    (dropped same)
+ */
 export interface Client {
   id: string
   full_name: string

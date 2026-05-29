@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -10,7 +10,6 @@ interface Lead {
   id: string
   full_name: string
   fee_schedule_id: string | null
-  fund_type: string
 }
 
 interface FeeSchedule {
@@ -18,17 +17,10 @@ interface FeeSchedule {
   name: string
 }
 
-interface FundType {
-  id: string
-  name: string
-  code: string
-  default_fee_schedule_id: string | null
-}
 
 interface Props {
   leads: Lead[]
   feeSchedules: FeeSchedule[]
-  fundTypes: FundType[]
   nominees: { id: string; name: string }[]
 }
 
@@ -54,7 +46,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
   )
 }
 
-export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees }: Props) {
+export default function NewClientForm({ leads, feeSchedules, nominees }: Props) {
   const router   = useRouter()
   const supabase = createClient()
 
@@ -70,7 +62,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
     address_line2:          '',
     city:                   '',
     postcode:               '',
-    fund_type:              fundTypes[0]?.code ?? 'syndicate',
     fee_schedule_id:        '',
     report_delivery_method: 'email',
     lead_investor_id:       '',
@@ -91,7 +82,7 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
       setForm(f => ({ ...f, lead_investor_id: '', vehicle_type: '' }))
       setLeadSearch('')
     } else {
-      setForm(f => ({ ...f, fund_type: fundTypes[0]?.code ?? 'syndicate', fee_schedule_id: '', report_delivery_method: 'email' }))
+      setForm(f => ({ ...f, fee_schedule_id: '', report_delivery_method: 'email' }))
     }
   }
 
@@ -99,16 +90,11 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
     setForm(f => ({ ...f, vehicle_type: value }))
   }
 
-  function handleFundTypeChange(value: string) {
-    const defaultScheduleId = fundTypes.find(ft => ft.code === value)?.default_fee_schedule_id ?? ''
-    setForm(f => ({ ...f, fund_type: value, fee_schedule_id: defaultScheduleId }))
-  }
 
   function selectLead(lead: Lead) {
     setForm(f => ({
       ...f,
       lead_investor_id: lead.id,
-      fund_type:        lead.fund_type || 'syndicate',
       fee_schedule_id:  f.fee_schedule_id || lead.fee_schedule_id || '',
     }))
     setLeadSearch(lead.full_name)
@@ -127,7 +113,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
     const base = {
       full_name:       form.full_name.trim(),
       fee_schedule_id: form.fee_schedule_id || null,
-      entity_type:     null,
     }
 
     const payload: Record<string, unknown> = isLinked
@@ -135,7 +120,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
           ...base,
           lead_investor_id:       form.lead_investor_id,
           vehicle_type:           form.vehicle_type,
-          fund_type:              form.fund_type,
           report_delivery_method: 'email',
         }
       : {
@@ -146,7 +130,6 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
           address_line2:          form.address_line2.trim() || null,
           city:                   form.city.trim() || null,
           postcode:               form.postcode.trim() || null,
-          fund_type:              form.fund_type,
           report_delivery_method: form.report_delivery_method,
           report_delivery_email:  form.email.trim() || null,
           lead_investor_id:       null,
@@ -269,40 +252,18 @@ export default function NewClientForm({ leads, feeSchedules, fundTypes, nominees
                 </Field>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <Field label="Fund type" required>
-                  <select
-                    value={form.fund_type}
-                    onChange={e => handleFundTypeChange(e.target.value)}
-                    required
-                    style={inputStyle}
-                  >
-                    {fundTypes.length > 0
-                      ? fundTypes.map(ft => (
-                          <option key={ft.id} value={ft.code}>{ft.name}</option>
-                        ))
-                      : (
-                        <>
-                          <option value="syndicate">Syndicate</option>
-                          <option value="multi_manager">Multi Manager</option>
-                          <option value="eis_fund">EIS Fund</option>
-                        </>
-                      )}
-                  </select>
-                </Field>
-                <Field label="Fee schedule">
-                  <select
-                    value={form.fee_schedule_id}
-                    onChange={e => set('fee_schedule_id', e.target.value)}
-                    style={inputStyle}
-                  >
-                    <option value="">None</option>
-                    {feeSchedules.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Fee schedule">
+                <select
+                  value={form.fee_schedule_id}
+                  onChange={e => set('fee_schedule_id', e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">None</option>
+                  {feeSchedules.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </Field>
 
               <Field label="Report delivery method" required>
                 <select
