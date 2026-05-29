@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+﻿import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
 import EditClientForm from './EditClientForm'
 
@@ -13,8 +13,8 @@ export default async function EditClientPage({ params }: { params: Promise<{ id:
         id, full_name, investor_reference, email, phone,
         address_line1, address_line2, city, postcode, date_joined,
         tax_status, kyc_status, kyc_expiry, default_fee_rate,
-        report_delivery_email, entity_type, holding_location,
-        lead_investor_id, notes, fund_type
+        report_delivery_email, holding_location,
+        lead_investor_id, notes
       `)
       .eq('id', id)
       .single(),

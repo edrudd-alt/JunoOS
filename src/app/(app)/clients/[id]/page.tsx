@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation'
+﻿import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientRecord from './ClientRecord'
 import type { ClientRow } from './ClientRecord'
@@ -25,7 +25,7 @@ export default async function ClientRecordPage({ params }: Props) {
   const leadId = client.lead_investor_id ?? client.id
   const { data: allInGroup } = await supabase
     .from('clients')
-    .select('id, full_name, entity_type, holding_location, kyc_status, lead_investor_id, vehicle_type, default_nominee_id')
+    .select('id, full_name, holding_location, kyc_status, lead_investor_id, vehicle_type, default_nominee_id')
     .or(`id.eq.${leadId},lead_investor_id.eq.${leadId}`)
 
   const lead = (allInGroup?.find(c => c.id === leadId) ?? null) as ClientRow | null
